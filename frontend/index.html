@@ -15,6 +15,24 @@
       height: 100vh;
     }
 
+    /* ── 세션 만료 배너 ── */
+    #session-banner {
+      display: none;
+      background: #b71c1c;
+      color: #fff;
+      padding: 10px 20px;
+      font-size: 0.88rem;
+      text-align: center;
+      line-height: 1.6;
+    }
+    #session-banner strong { font-size: 1rem; }
+    #session-banner code {
+      background: rgba(255,255,255,0.2);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+
     /* ── 헤더 ── */
     header {
       background: #1e3a5f;
@@ -185,6 +203,12 @@
 </head>
 <body>
 
+<!-- 세션 만료 알림 배너 -->
+<div id="session-banner">
+  <strong>포털 세션이 만료되었습니다</strong><br>
+  관리자가 서버에서 <code>python scripts/manual_login.py</code> 를 실행해 재로그인을 완료하면 자동으로 복구됩니다.
+</div>
+
 <header>
   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
@@ -276,6 +300,9 @@
     if (data.type === 'result') {
       appendResult(data);
     } else if (data.type === 'error') {
+      if (data.session_expired) {
+        showSessionExpiredBanner();
+      }
       appendMsg('error', `오류: ${data.message}`);
     }
 
@@ -326,6 +353,33 @@
     chatArea.appendChild(el);
     scrollBottom();
   }
+
+  function showSessionExpiredBanner() {
+    document.getElementById('session-banner').style.display = 'block';
+    // 입력도 잠금
+    snInput.disabled = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = '세션 만료';
+  }
+
+  function hideSessionExpiredBanner() {
+    document.getElementById('session-banner').style.display = 'none';
+    snInput.disabled = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = '조회';
+  }
+
+  // 주기적으로 세션 상태 체크 (60초마다)
+  async function checkSessionStatus() {
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      if (data.session && data.session.status === 'active') {
+        hideSessionExpiredBanner();
+      }
+    } catch (e) { /* 무시 */ }
+  }
+  setInterval(checkSessionStatus, 60_000);
 
   function removeTyping() {
     // 별도 타이핑 인디케이터가 있다면 제거

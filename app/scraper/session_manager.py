@@ -1,126 +1,128 @@
 """
-Session Manager - 로그인 세션을 한 번만 수행하고 재사용
+Session Manager - 로그인 세션 관리
 
-핵심 전략:
-  1. 최초 실행 시 실제 브라우저로 로그인 → storage_state(쿠키+localStorage) 파일 저장
-  2. 이후 모든 브라우저 컨텍스트는 저장된 storage_state 로드 → 로그인 불필요
-  3. 세션 만료(401/redirect) 감지 시 자동 재로그인 후 storage_state 갱신
+지문인증(MFA) 대응 전략:
+  - 자동 로그인 불가 → 수동 로그인 스크립트(scripts/manual_login.py)로 최초 1회 세션 저장
+  - 이후 모든 브라우저 컨텍스트가 storage_state(쿠키+localStorage) 재사용
+  - 세션 만료 감지 시 → SessionExpiredNotice 발생 → 챗봇 UI에 알림 표시
+
+세션 만료 감지:
+  - 브라우저가 포털 접속 시 로그인 페이지로 리디렉트 → 만료 판정
+  - 관리자가 scripts/manual_login.py 재실행으로 복구
 """
 
-import asyncio
 import json
 import logging
-from pathlib import Path
 from datetime import datetime
-
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from pathlib import Path
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+SESSION_META_FILE = settings.SESSION_FILE.parent / "session_meta.json"
+
+
+class SessionExpiredNotice(Exception):
+    """
+    세션이 만료되어 수동 재로그인이 필요함을 알리는 예외.
+    MFA(지문인증)가 있으므로 자동 재로그인 불가.
+    """
+    pass
 
 
 class SessionManager:
     """포털 로그인 세션을 관리합니다."""
 
     def __init__(self):
-        self._lock = asyncio.Lock()
         self._session_file: Path = settings.SESSION_FILE
         self._session_file.parent.mkdir(parents=True, exist_ok=True)
-        self._playwright = None
-        self._browser: Browser | None = None
-        self._logged_in = False
+        self._expired = False  # 만료 상태 캐시
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public API
     # ─────────────────────────────────────────────────────────────────────────
 
-    async def ensure_session(self) -> None:
-        """세션이 유효한지 확인하고, 없으면 로그인을 수행합니다."""
-        async with self._lock:
-            if self._session_file.exists() and self._logged_in:
-                logger.debug("세션 파일 존재 - 재사용")
-                return
-            await self._login()
+    def get_storage_state_path(self) -> str:
+        """
+        저장된 storage_state 파일 경로를 반환합니다.
+        세션 파일이 없으면 수동 로그인을 안내하는 예외를 발생시킵니다.
+        """
+        if self._expired:
+            raise SessionExpiredNotice(self._expired_message())
 
-    async def get_storage_state(self) -> str:
-        """저장된 storage_state 파일 경로를 반환합니다."""
-        await self.ensure_session()
+        if not self._session_file.exists():
+            raise SessionExpiredNotice(
+                "세션 파일이 없습니다. 먼저 수동 로그인을 완료해 주세요.\n"
+                "  → 터미널에서: python scripts/manual_login.py"
+            )
+
         return str(self._session_file)
 
-    async def invalidate_session(self) -> None:
-        """세션을 무효화하고 재로그인을 강제합니다."""
-        async with self._lock:
-            self._logged_in = False
-            if self._session_file.exists():
-                self._session_file.unlink()
-            logger.info("세션 무효화됨 - 다음 요청 시 재로그인")
+    def mark_expired(self) -> None:
+        """세션 만료를 표시합니다 (자동 재로그인 없음 - MFA 때문)."""
+        self._expired = True
+        logger.warning("세션 만료 감지 - 수동 재로그인 필요 (python scripts/manual_login.py)")
+
+    def mark_refreshed(self) -> None:
+        """수동 로그인 완료 후 만료 상태를 해제합니다 (/api/session/reset 호출 시)."""
+        self._expired = False
+        logger.info("세션 복구 완료")
+
+    def invalidate(self) -> None:
+        """세션 파일을 삭제하고 만료 상태로 전환합니다."""
+        if self._session_file.exists():
+            self._session_file.unlink()
+        if SESSION_META_FILE.exists():
+            SESSION_META_FILE.unlink()
+        self._expired = True
+        logger.info("세션 무효화 완료")
+
+    def is_expired(self) -> bool:
+        return self._expired or not self._session_file.exists()
+
+    def session_info(self) -> dict:
+        """세션 상태 정보를 반환합니다 (API status용)."""
+        if not self._session_file.exists():
+            return {
+                "status": "no_session",
+                "saved_at": None,
+                "message": "세션 없음 - python scripts/manual_login.py 실행 필요",
+            }
+
+        meta = {}
+        if SESSION_META_FILE.exists():
+            try:
+                meta = json.loads(SESSION_META_FILE.read_text())
+            except Exception:
+                pass
+
+        return {
+            "status": "expired" if self._expired else "active",
+            "saved_at": meta.get("saved_at"),
+            "portal_url": meta.get("portal_url"),
+            "message": (
+                "세션 만료 - python scripts/manual_login.py 실행 필요"
+                if self._expired
+                else "세션 정상"
+            ),
+        }
 
     async def close(self) -> None:
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+        pass  # 별도 cleanup 불필요
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Private
+    # Internal
     # ─────────────────────────────────────────────────────────────────────────
 
-    async def _login(self) -> None:
-        """포털에 로그인하고 storage_state를 파일로 저장합니다."""
-        logger.info("포털 로그인 시작...")
-
-        if self._playwright is None:
-            self._playwright = await async_playwright().start()
-
-        # 로그인 전용 브라우저 (일회성)
-        browser = await self._playwright.chromium.launch(
-            headless=settings.BROWSER_HEADLESS
+    @staticmethod
+    def _expired_message() -> str:
+        return (
+            "포털 세션이 만료되었습니다.\n\n"
+            "지문인증이 필요하므로 아래 명령어로 수동 재로그인 후 서비스를 재개해 주세요:\n"
+            "  python scripts/manual_login.py\n\n"
+            "재로그인 후 챗봇 화면을 새로고침하면 자동으로 복구됩니다."
         )
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        try:
-            await page.goto(settings.PORTAL_LOGIN_URL, wait_until="networkidle")
-            await self._fill_login_form(page)
-            await self._verify_login(page)
-
-            # 세션 저장
-            await context.storage_state(path=str(self._session_file))
-            self._logged_in = True
-
-            logger.info(
-                f"로그인 성공 - 세션 저장: {self._session_file} "
-                f"({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
-            )
-        except Exception as e:
-            logger.error(f"로그인 실패: {e}")
-            raise
-        finally:
-            await context.close()
-            await browser.close()
-
-    async def _fill_login_form(self, page: Page) -> None:
-        """로그인 폼을 채우고 제출합니다. 실제 포털 HTML에 맞게 수정하세요."""
-        # ──── 실제 포털의 input selector로 교체 필요 ────────────────────────
-        await page.fill('input[name="username"]', settings.PORTAL_USERNAME)
-        await page.fill('input[name="password"]', settings.PORTAL_PASSWORD)
-        await page.click('button[type="submit"]')
-        # 로그인 완료 대기 (포털 메인 페이지 로드)
-        await page.wait_for_url(
-            f"{settings.PORTAL_URL}/**",
-            timeout=30_000,
-        )
-
-    async def _verify_login(self, page: Page) -> None:
-        """로그인 성공 여부를 확인합니다."""
-        url = page.url
-        if "login" in url.lower() or "error" in url.lower():
-            raise RuntimeError(
-                f"로그인 후에도 로그인 페이지에 머물러 있습니다: {url}\n"
-                "USERNAME/PASSWORD를 확인하세요."
-            )
-        logger.debug(f"로그인 확인 완료 - 현재 URL: {url}")
 
 
 # 싱글턴 인스턴스

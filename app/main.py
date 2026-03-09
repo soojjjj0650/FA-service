@@ -22,6 +22,7 @@ from pydantic import BaseModel, field_validator
 from app.config import settings
 from app.scraper.browser_pool import browser_pool
 from app.scraper.query_runner import query_runner
+from app.scraper.session_manager import session_manager
 from app.processor.data_processor import data_processor
 from app.agent.agent_client import agent_client
 
@@ -103,6 +104,7 @@ async def query_sn(request: SNQueryRequest):
         return JSONResponse({
             "sn": request.sn,
             "success": query_result.success,
+            "session_expired": query_result.session_expired,
             "result": ai_response,
             "device": {
                 "model": processed.device.model,
@@ -121,20 +123,28 @@ async def query_sn(request: SNQueryRequest):
 
 @app.get("/api/status")
 async def status():
-    """브라우저 풀 상태를 반환합니다."""
+    """브라우저 풀 및 세션 상태를 반환합니다."""
+    sess = session_manager.session_info()
     return {
         "active_browsers": browser_pool.active_count,
         "max_browsers": browser_pool.max_size,
         "available_slots": browser_pool.max_size - browser_pool.active_count,
+        "session": sess,
     }
 
 
 @app.post("/api/session/reset")
 async def reset_session():
-    """포털 세션을 초기화합니다 (세션 만료 시 수동 리셋)."""
-    from app.scraper.session_manager import session_manager
-    await session_manager.invalidate_session()
-    return {"message": "세션이 초기화되었습니다. 다음 요청 시 재로그인합니다."}
+    """
+    수동 재로그인 후 세션 복구를 알립니다.
+    scripts/manual_login.py 실행 완료 후 이 API를 호출하세요.
+    """
+    session_manager.mark_refreshed()
+    info = session_manager.session_info()
+    return {
+        "message": "세션 복구 완료. 정상적으로 조회가 가능합니다.",
+        "session": info,
+    }
 
 
 # ─── WebSocket 엔드포인트 ─────────────────────────────────────────────────────
@@ -193,7 +203,11 @@ async def _handle_query(websocket: WebSocket, sn: str):
         query_result = await query_runner.run(sn, progress_callback=progress)
 
         if not query_result.success:
-            await _send(websocket, "error", f"데이터 조회 실패: {query_result.error}")
+            await websocket.send_json({
+                "type": "error",
+                "message": query_result.error or "데이터 조회 실패",
+                "session_expired": query_result.session_expired,
+            })
             return
 
         # 2. 데이터 가공

@@ -18,7 +18,7 @@ from playwright.async_api import BrowserContext, Page, TimeoutError as Playwrigh
 
 from app.config import settings
 from app.scraper.browser_pool import browser_pool
-from app.scraper.session_manager import session_manager
+from app.scraper.session_manager import session_manager, SessionExpiredNotice
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ class QueryResult:
     columns: list[str] = field(default_factory=list)
     error: str | None = None
     raw_html: str | None = None
+    session_expired: bool = False  # MFA 재로그인 필요 여부
 
     @property
     def row_count(self) -> int:
@@ -81,23 +82,19 @@ class QueryRunner:
             if progress_callback:
                 await progress_callback(msg)
 
-        retry_count = 0
-        max_retries = 2
-
-        while retry_count <= max_retries:
-            try:
-                async with browser_pool.acquire() as context:
-                    result = await self._execute_query(context, sn, notify)
-                    return result
-            except SessionExpiredError:
-                await notify("세션 만료 - 재로그인 중...")
-                await session_manager.invalidate_session()
-                retry_count += 1
-            except Exception as e:
-                logger.error(f"쿼리 실패 [{sn}]: {e}")
-                return QueryResult(sn=sn, success=False, error=str(e))
-
-        return QueryResult(sn=sn, success=False, error="재시도 초과 - 세션 복구 실패")
+        try:
+            async with browser_pool.acquire() as context:
+                result = await self._execute_query(context, sn, notify)
+                return result
+        except SessionExpiredNotice as e:
+            # MFA 때문에 자동 재로그인 불가 → 오류 메시지 그대로 반환
+            msg = str(e)
+            await notify(f"세션 만료 - 수동 재로그인 필요")
+            logger.warning(f"세션 만료로 쿼리 중단 [{sn}]")
+            return QueryResult(sn=sn, success=False, error=msg, session_expired=True)
+        except Exception as e:
+            logger.error(f"쿼리 실패 [{sn}]: {e}")
+            return QueryResult(sn=sn, success=False, error=str(e))
 
     # ─────────────────────────────────────────────────────────────────────────
     # Internal
@@ -121,7 +118,11 @@ class QueryRunner:
 
             # 세션 만료 확인 (로그인 페이지로 리디렉트되는 경우)
             if "login" in page.url.lower():
-                raise SessionExpiredError("세션 만료 - 로그인 페이지로 리디렉트됨")
+                session_manager.mark_expired()
+                raise SessionExpiredNotice(
+                    "포털 세션이 만료되었습니다.\n"
+                    "지문인증 재로그인이 필요합니다: python scripts/manual_login.py"
+                )
 
             await notify("SQL 쿼리 입력 중...")
             sql = self.SQL_TEMPLATE.format(sn=sn.strip())
@@ -224,10 +225,6 @@ class QueryRunner:
             columns=columns,
             raw_html=raw_html,
         )
-
-
-class SessionExpiredError(Exception):
-    pass
 
 
 # 싱글턴 인스턴스

@@ -16,7 +16,7 @@ from typing import AsyncIterator
 from playwright.async_api import async_playwright, Browser, BrowserContext, Playwright
 
 from app.config import settings
-from app.scraper.session_manager import session_manager
+from app.scraper.session_manager import session_manager, SessionExpiredNotice
 
 logger = logging.getLogger(__name__)
 
@@ -92,10 +92,10 @@ class BrowserPool:
         try:
             yield context
         except Exception as e:
-            # 세션 만료 감지
+            # 세션 만료 감지 (MFA로 인해 자동 재로그인 불가 → mark_expired만 표시)
             if self._is_session_expired(e):
-                logger.warning("세션 만료 감지 - 재로그인 시도")
-                await session_manager.invalidate_session()
+                logger.warning("세션 만료 감지 - 수동 재로그인 필요 (MFA)")
+                session_manager.mark_expired()
             raise
         finally:
             await context.close()
@@ -115,8 +115,8 @@ class BrowserPool:
         if self._browser is None:
             await self.startup()
 
-        # 세션 파일 확보 (없으면 로그인 수행)
-        storage_state_path = await session_manager.get_storage_state()
+        # 세션 파일 확보 (없으면 SessionExpiredNotice 발생)
+        storage_state_path = session_manager.get_storage_state_path()
 
         context = await self._browser.new_context(
             storage_state=storage_state_path,
