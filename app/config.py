@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     QUERY_TIMEOUT_SECONDS: int = 1200        # 쿼리 타임아웃 (20분, 여유 있게)
     SESSION_REUSE: bool = True               # 세션 재사용 여부
 
-    # ─── 내부 AI Agent ───────────────────────────────────────────────────────
-    AI_AGENT_URL: str = "https://internal-ai-agent.company.com/api/analyze"
-    AI_AGENT_API_KEY: str = ""
-    AI_AGENT_TIMEOUT: int = 120
+    # ─── Anthropic Claude API ────────────────────────────────────────────────
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-opus-4-6"
+    ANTHROPIC_MAX_TOKENS: int = 4096
 
     # ─── FastAPI 서버 ────────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"
