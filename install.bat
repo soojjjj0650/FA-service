@@ -9,6 +9,29 @@ echo.
 
 cd /d "%~dp0"
 
+echo [0/3] Python 버전 확인 중...
+python --version
+if errorlevel 1 (
+    echo.
+    echo [오류] Python을 찾을 수 없습니다.
+    echo        https://www.python.org 에서 Python 3.10 이상을 설치하세요.
+    pause
+    exit /b 1
+)
+
+:: Python 버전이 3.10 이상인지 확인
+python -c "import sys; code=0 if sys.version_info>=(3,10) else 1; exit(code)"
+if errorlevel 1 (
+    echo.
+    echo [오류] Python 3.10 이상이 필요합니다.
+    python --version
+    echo        https://www.python.org 에서 최신 Python을 설치하세요.
+    pause
+    exit /b 1
+)
+echo        OK - 버전 요구사항 충족
+echo.
+
 echo [1/3] Python 패키지 설치 중...
 pip install -r requirements.txt
 if errorlevel 1 (
