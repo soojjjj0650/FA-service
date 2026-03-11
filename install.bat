@@ -9,23 +9,35 @@ echo.
 
 cd /d "%~dp0"
 
-echo [0/3] Python 버전 확인 중...
-python --version
-if errorlevel 1 (
-    echo.
-    echo [오류] Python을 찾을 수 없습니다.
-    echo        https://www.python.org 에서 Python 3.10 이상을 설치하세요.
-    pause
-    exit /b 1
+:: Python 명령어 결정 (py 런처 우선, 없으면 python)
+echo [0/3] Python 확인 중...
+set PYTHON_CMD=
+py --version >nul 2>&1
+if not errorlevel 1 (
+    set PYTHON_CMD=py
+    goto :check_version
+)
+python --version >nul 2>&1
+if not errorlevel 1 (
+    set PYTHON_CMD=python
+    goto :check_version
 )
 
-:: Python 버전이 3.10 이상인지 확인
-python -c "import sys; code=0 if sys.version_info>=(3,10) else 1; exit(code)"
+echo.
+echo [오류] Python을 찾을 수 없습니다.
+echo        python.org 에서 Python 3.10 이상을 설치하세요.
+echo        설치 시 "Add Python to PATH" 를 반드시 체크하세요.
+pause
+exit /b 1
+
+:check_version
+%PYTHON_CMD% --version
+%PYTHON_CMD% -c "import sys; exit(0 if sys.version_info>=(3,10) else 1)"
 if errorlevel 1 (
     echo.
     echo [오류] Python 3.10 이상이 필요합니다.
-    python --version
-    echo        https://www.python.org 에서 최신 Python을 설치하세요.
+    %PYTHON_CMD% --version
+    echo        python.org 에서 최신 Python 3.12 를 설치하세요.
     pause
     exit /b 1
 )
@@ -33,17 +45,17 @@ echo        OK - 버전 요구사항 충족
 echo.
 
 echo [1/3] Python 패키지 설치 중...
-pip install -r requirements.txt
+%PYTHON_CMD% -m pip install -r requirements.txt
 if errorlevel 1 (
     echo.
-    echo [오류] pip install 실패. Python이 설치되어 있는지 확인하세요.
+    echo [오류] pip install 실패.
     pause
     exit /b 1
 )
 
 echo.
 echo [2/3] Playwright 브라우저 설치 중...
-playwright install chromium
+%PYTHON_CMD% -m playwright install chromium
 if errorlevel 1 (
     echo.
     echo [오류] playwright install 실패.
