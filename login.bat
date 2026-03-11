@@ -8,6 +8,7 @@ echo ============================================================
 echo.
 
 cd /d "%~dp0"
+set PYTHONPATH=%~dp0
 python scripts/manual_login.py
 
 echo.

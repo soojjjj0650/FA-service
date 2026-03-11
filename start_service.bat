@@ -13,6 +13,7 @@ echo   서버를 중지하려면 이 창에서 Ctrl+C 를 누르세요.
 echo.
 
 cd /d "%~dp0"
+set PYTHONPATH=%~dp0
 
 :: 브라우저 자동 열기 (2초 후)
 start "" /b cmd /c "timeout /t 2 > nul && start http://localhost:8000/batch"
