@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     EDGE_EXECUTABLE_PATH: str = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 
     # ─── CSV 다운로드 경로 ────────────────────────────────────────────────────
-    CSV_DOWNLOAD_PATH: str = r"C:\Users\sujin06.bae\Desktop\FA_Serivce_data"
+    CSV_DOWNLOAD_PATH: str = r"C:\Users\sujin06.bae\Desktop\FA_Service_data"
 
     # ─── 세션 저장 경로 ──────────────────────────────────────────────────────
     SESSION_FILE: Path = BASE_DIR / "data" / "sessions" / "portal_session.json"
