@@ -1,16 +1,16 @@
-# ── Web Framework ────────────────────────────────────────────────────────────
+# Web Framework
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 python-multipart==0.0.12
 websockets==13.1
 
-# ── 설정 관리 ────────────────────────────────────────────────────────────────
+# Settings
 pydantic==2.10.3
 pydantic-settings==2.6.1
 python-dotenv==1.0.1
 
-# ── 웹 스크래핑 (Playwright) ─────────────────────────────────────────────────
+# Web Scraping (Playwright)
 playwright==1.49.0
 
-# ── HTTP 클라이언트 (AI Agent 통신) ─────────────────────────────────────────
+# HTTP Client
 httpx==0.28.1
