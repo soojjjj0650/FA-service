@@ -8,21 +8,27 @@ BASE_DIR = Path(__file__).parent.parent
 
 
 class Settings(BaseSettings):
-    # ─── 내부 SQL 포털 (웹 스크래핑 대상) ───────────────────────────────────
-    PORTAL_URL: str = "https://internal-portal.company.com"
-    PORTAL_LOGIN_URL: str = "https://internal-portal.company.com/login"
-    PORTAL_QUERY_URL: str = "https://internal-portal.company.com/sql-query"
+    # ─── Superset SQL Lab (웹 스크래핑 대상) ────────────────────────────────
+    PORTAL_URL: str = "https://superset-kr.bigdata.samsung.com/superset/sqllab"
+    PORTAL_LOGIN_URL: str = "https://superset-kr.bigdata.samsung.com/superset/sqllab"
+    PORTAL_QUERY_URL: str = "https://superset-kr.bigdata.samsung.com/superset/sqllab"
 
-    PORTAL_USERNAME: str = ""
-    PORTAL_PASSWORD: str = ""
+    PORTAL_USERNAME: str = "sujin06.bae"
+    PORTAL_PASSWORD: str = "tnwls06!"
+
+    # ─── Edge 브라우저 경로 (Windows) ────────────────────────────────────────
+    EDGE_EXECUTABLE_PATH: str = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+
+    # ─── CSV 다운로드 경로 ────────────────────────────────────────────────────
+    CSV_DOWNLOAD_PATH: str = r"C:\Users\sujin06.bae\Desktop\FA_Serivce_data"
 
     # ─── 세션 저장 경로 ──────────────────────────────────────────────────────
     SESSION_FILE: Path = BASE_DIR / "data" / "sessions" / "portal_session.json"
 
     # ─── 브라우저 풀 설정 ────────────────────────────────────────────────────
-    MAX_CONCURRENT_BROWSERS: int = 5          # 동시 실행 브라우저 최대 수
-    BROWSER_HEADLESS: bool = True             # CI/서버 환경에서는 True
-    QUERY_TIMEOUT_SECONDS: int = 1200        # 쿼리 타임아웃 (20분, 여유 있게)
+    MAX_CONCURRENT_BROWSERS: int = 5          # 동시 실행 브라우저 최대 수 (SN 최대 5개)
+    BROWSER_HEADLESS: bool = False            # Edge는 headless=False 권장
+    QUERY_TIMEOUT_SECONDS: int = 3600        # 쿼리 타임아웃 (최대 1시간)
     SESSION_REUSE: bool = True               # 세션 재사용 여부
 
     # ─── 내부 AI Agent ───────────────────────────────────────────────────────

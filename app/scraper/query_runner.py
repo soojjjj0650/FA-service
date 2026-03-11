@@ -1,18 +1,18 @@
 """
-Query Runner - SN을 받아 웹 스크래핑으로 SQL 쿼리를 실행하고 결과를 반환
+Query Runner - Superset SQL Lab 자동화
 
 흐름:
   1. BrowserPool에서 컨텍스트 획득
-  2. 포털 SQL 쿼리 페이지로 이동
-  3. SN 기반 SQL 쿼리 입력 & 실행
-  4. 결과 테이블 파싱 (5~15분 소요 → 비동기 대기)
-  5. 구조화된 데이터 반환
+  2. Superset SQL Lab 접속 (세션 재사용)
+  3. SN 기반 SQL 쿼리 자동 입력 (Ace Editor)
+  4. Run 버튼 클릭 → 결과 대기 (최대 1시간)
+  5. Download to CSV 클릭 → 지정 폴더에 저장
 """
 
-import asyncio
 import logging
+import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Awaitable
 
 from playwright.async_api import BrowserContext, Page, TimeoutError as PlaywrightTimeout
 
@@ -22,16 +22,18 @@ from app.scraper.session_manager import session_manager, SessionExpiredNotice
 
 logger = logging.getLogger(__name__)
 
+ProgressCallback = Callable[[str], Awaitable[None]]
+
 
 @dataclass
 class QueryResult:
     sn: str
     success: bool
+    csv_path: str | None = None
     rows: list[dict[str, Any]] = field(default_factory=list)
     columns: list[str] = field(default_factory=list)
     error: str | None = None
-    raw_html: str | None = None
-    session_expired: bool = False  # MFA 재로그인 필요 여부
+    session_expired: bool = False
 
     @property
     def row_count(self) -> int:
@@ -39,37 +41,30 @@ class QueryResult:
 
 
 class QueryRunner:
-    """SN을 입력으로 받아 웹 포털에서 SQL 쿼리를 실행합니다."""
+    """SN을 받아 Superset SQL Lab에서 쿼리를 실행하고 CSV를 다운로드합니다."""
 
-    # ─── SN 기반 SQL 쿼리 템플릿 (실제 쿼리로 교체 필요) ─────────────────────
-    SQL_TEMPLATE = """
-        SELECT
-            d.serial_number,
-            d.device_model,
-            d.manufacture_date,
-            d.firmware_version,
-            d.status,
-            c.customer_name,
-            c.contract_start,
-            c.contract_end,
-            s.last_service_date,
-            s.service_type,
-            s.engineer_name,
-            s.service_note
-        FROM devices d
-        LEFT JOIN customers c ON d.customer_id = c.id
-        LEFT JOIN service_history s ON d.id = s.device_id
-        WHERE d.serial_number = '{sn}'
-        ORDER BY s.last_service_date DESC
-    """
+    SUPERSET_URL = settings.PORTAL_URL
+    DOWNLOAD_DIR = settings.CSV_DOWNLOAD_PATH
+
+    # ─── SQL 쿼리 템플릿 ─────────────────────────────────────────────────────
+    SQL_TEMPLATE = """\
+with Data_SN as (
+    SELECT srl_num as SN, rand_id as un
+    FROM bigdata-dqa-data.dqa_public_data.tw_term_agree_dvc_bas
+    WHERE srl_num like '{sn}'
+)
+SELECT yymmddcrt as Date, SUBSTR(generation_timestamp,12,8) AS Time, feature,custom_value
+FROM `bigdata-dqa-data.mobile_udc`.to_udc_modem INNER JOIN Data_SN USING (un)
+WHERE p_yymmddval between DATE_SUB(current_date(), INTERVAL 14 DAY) and current_date()
+ORDER by Date,Time"""
 
     async def run(
         self,
         sn: str,
-        progress_callback=None,
+        progress_callback: ProgressCallback | None = None,
     ) -> QueryResult:
         """
-        주어진 SN에 대해 SQL 쿼리를 실행하고 결과를 반환합니다.
+        SN에 대해 SQL 쿼리를 실행하고 CSV를 다운로드합니다.
 
         Args:
             sn: 단말기 시리얼 넘버
@@ -84,12 +79,10 @@ class QueryRunner:
 
         try:
             async with browser_pool.acquire() as context:
-                result = await self._execute_query(context, sn, notify)
-                return result
+                return await self._execute_query(context, sn, notify)
         except SessionExpiredNotice as e:
-            # MFA 때문에 자동 재로그인 불가 → 오류 메시지 그대로 반환
             msg = str(e)
-            await notify(f"세션 만료 - 수동 재로그인 필요")
+            await notify("세션 만료 - 수동 재로그인 필요 (python scripts/manual_login.py)")
             logger.warning(f"세션 만료로 쿼리 중단 [{sn}]")
             return QueryResult(sn=sn, success=False, error=msg, session_expired=True)
         except Exception as e:
@@ -104,127 +97,131 @@ class QueryRunner:
         self,
         context: BrowserContext,
         sn: str,
-        notify,
+        notify: ProgressCallback,
     ) -> QueryResult:
         page = await context.new_page()
 
         try:
-            await notify("포털 접속 중...")
-            await page.goto(
-                settings.PORTAL_QUERY_URL,
-                wait_until="networkidle",
-                timeout=30_000,
-            )
+            # 1. SQL Lab 접속
+            await notify("Superset SQL Lab 접속 중...")
+            await page.goto(self.SUPERSET_URL, wait_until="networkidle", timeout=30_000)
 
-            # 세션 만료 확인 (로그인 페이지로 리디렉트되는 경우)
-            if "login" in page.url.lower():
+            # 세션 만료 확인 (로그인 페이지로 리디렉트)
+            if "login" in page.url.lower() or "userNameInput" in await page.content():
                 session_manager.mark_expired()
                 raise SessionExpiredNotice(
-                    "포털 세션이 만료되었습니다.\n"
-                    "지문인증 재로그인이 필요합니다: python scripts/manual_login.py"
+                    "Superset 세션이 만료되었습니다.\n"
+                    "재로그인: python scripts/manual_login.py"
                 )
 
-            await notify("SQL 쿼리 입력 중...")
+            # 2. SQL 쿼리 입력
+            await notify(f"SQL 쿼리 입력 중... (SN: {sn})")
             sql = self.SQL_TEMPLATE.format(sn=sn.strip())
             await self._input_query(page, sql)
 
-            await notify(f"쿼리 실행 중... (SN: {sn}) - 최대 {settings.QUERY_TIMEOUT_SECONDS // 60}분 소요")
-            await self._submit_and_wait(page)
+            # 3. Run 버튼 클릭 + 완료 대기
+            await notify(
+                f"쿼리 실행 중... (SN: {sn}) - 최대 {settings.QUERY_TIMEOUT_SECONDS // 60}분 소요"
+            )
+            await self._run_and_wait(page)
 
-            await notify("결과 파싱 중...")
-            result = await self._parse_result(page, sn)
+            # 4. CSV 다운로드
+            await notify("CSV 다운로드 중...")
+            csv_path = await self._download_csv(context, page, sn)
 
-            await notify(f"완료 - {result.row_count}건 조회")
-            return result
+            await notify(f"완료 - 저장: {csv_path}")
+            return QueryResult(sn=sn, success=True, csv_path=csv_path)
 
         finally:
             await page.close()
 
     async def _input_query(self, page: Page, sql: str) -> None:
-        """
-        SQL 입력 영역에 쿼리를 입력합니다.
-        ─── 실제 포털 HTML selector로 교체 필요 ────────────────────────────────
-        """
-        # CodeMirror / textarea / Monaco Editor 등 포털 에디터 유형에 따라 선택
-        editor_selector = 'textarea#sql-editor, .CodeMirror textarea, #query-input'
+        """Ace Editor에 SQL을 입력합니다. JS API → 마우스+키보드 → textarea 순으로 시도."""
 
-        await page.wait_for_selector(editor_selector, timeout=15_000)
-
-        # 기존 내용 지우기
-        await page.click(editor_selector)
-        await page.keyboard.press("Control+A")
-        await page.keyboard.press("Delete")
-
-        # SQL 입력
-        await page.fill(editor_selector, sql)
-
-    async def _submit_and_wait(self, page: Page) -> None:
-        """
-        쿼리를 실행하고 결과가 나올 때까지 대기합니다.
-        ─── 실제 포털 버튼/결과 selector로 교체 필요 ──────────────────────────
-        """
-        # 실행 버튼 클릭
-        await page.click('button#run-query, button[data-action="execute"], #btn-execute')
-
-        # 로딩 스피너가 사라질 때까지 대기 (쿼리 실행 완료)
+        # 방법 1: Ace Editor JavaScript API
         try:
-            # 로딩 시작 대기
+            await page.wait_for_selector("#ace-editor", timeout=10_000)
+            escaped = sql.replace("\\", "\\\\").replace("`", "\\`")
+            await page.evaluate(f"""
+                var editor = ace.edit('ace-editor');
+                editor.setValue(`{escaped}`, 1);
+                editor.clearSelection();
+            """)
+            logger.debug("Ace Editor: JS API로 쿼리 입력 완료")
+            return
+        except Exception as e:
+            logger.debug(f"Ace Editor JS API 실패, 폴백 시도: {e}")
+
+        # 방법 2: 마우스 클릭 후 Ctrl+A → 타이핑
+        try:
+            editor_el = await page.query_selector(".ace_editor")
+            if editor_el:
+                bbox = await editor_el.bounding_box()
+                await page.mouse.click(bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2)
+                await page.keyboard.press("Control+a")
+                await page.keyboard.type(sql)
+                logger.debug("Ace Editor: 마우스+키보드로 쿼리 입력 완료")
+                return
+        except Exception as e:
+            logger.debug(f"Ace Editor 마우스 입력 실패: {e}")
+
+        # 방법 3: textarea 직접 조작
+        for sel in [".ace_text-input", "textarea.ace_text-input", ".ace_editor textarea"]:
+            try:
+                await page.wait_for_selector(sel, timeout=5_000)
+                await page.click(sel)
+                await page.keyboard.press("Control+a")
+                await page.keyboard.type(sql)
+                logger.debug(f"Ace Editor: textarea({sel})로 쿼리 입력 완료")
+                return
+            except Exception:
+                continue
+
+        raise RuntimeError("SQL 입력 실패: Ace Editor를 찾을 수 없습니다.")
+
+    async def _run_and_wait(self, page: Page) -> None:
+        """Run 버튼 클릭 후 쿼리 완료까지 대기합니다 (최대 1시간)."""
+        timeout_ms = settings.QUERY_TIMEOUT_SECONDS * 1000
+
+        # Run 버튼 클릭
+        await page.wait_for_selector('button:has-text("Run")', timeout=10_000)
+        await page.click('button:has-text("Run")')
+
+        # 실행 시작 대기 (스피너 등장)
+        try:
             await page.wait_for_selector(
-                '.loading-spinner, #query-loading, [data-state="loading"]',
+                '.ant-spin, .loading, [class*="loading"]',
                 state="visible",
-                timeout=10_000,
+                timeout=15_000,
             )
         except PlaywrightTimeout:
-            pass  # 로딩 인디케이터가 없는 포털도 있음
+            pass  # 일부 환경에서 즉시 완료될 수 있음
 
-        # 결과 나올 때까지 대기 (최대 QUERY_TIMEOUT_SECONDS)
+        # 완료 대기: "Download to CSV" 버튼 등장
         await page.wait_for_selector(
-            '.result-table, #query-results table, .data-grid',
+            'button:has-text("Download to CSV")',
             state="visible",
-            timeout=settings.QUERY_TIMEOUT_SECONDS * 1000,
+            timeout=timeout_ms,
         )
 
-        # 추가 렌더링 대기
-        await page.wait_for_load_state("networkidle", timeout=30_000)
+        # 에러 메시지 확인
+        error_el = await page.query_selector('[class*="QueryTable--error"], [class*="error-message"]')
+        if error_el:
+            error_text = await error_el.inner_text()
+            raise RuntimeError(f"쿼리 실행 오류: {error_text.strip()}")
 
-    async def _parse_result(self, page: Page, sn: str) -> QueryResult:
-        """
-        결과 테이블을 파싱하여 구조화된 데이터로 변환합니다.
-        ─── 실제 포털 결과 테이블 구조에 맞게 수정 필요 ───────────────────────
-        """
-        raw_html = await page.inner_html(
-            '.result-table, #query-results, .data-grid',
-        )
+    async def _download_csv(self, context: BrowserContext, page: Page, sn: str) -> str:
+        """Download to CSV 버튼 클릭 후 파일을 지정 경로에 저장합니다."""
+        os.makedirs(self.DOWNLOAD_DIR, exist_ok=True)
+        save_path = os.path.join(self.DOWNLOAD_DIR, f"{sn}_inputdata.csv")
 
-        # 컬럼 헤더 추출
-        columns = await page.eval_on_selector_all(
-            '.result-table thead th, #query-results th',
-            'els => els.map(el => el.innerText.trim())',
-        )
+        async with page.expect_download(timeout=60_000) as dl_info:
+            await page.click('button:has-text("Download to CSV")')
+        download = await dl_info.value
+        await download.save_as(save_path)
 
-        # 행 데이터 추출
-        rows_data = await page.eval_on_selector_all(
-            '.result-table tbody tr, #query-results tbody tr',
-            '''rows => rows.map(row =>
-                Array.from(row.querySelectorAll("td"))
-                    .map(td => td.innerText.trim())
-            )''',
-        )
-
-        rows = []
-        for row_values in rows_data:
-            if columns and len(row_values) == len(columns):
-                rows.append(dict(zip(columns, row_values)))
-            else:
-                rows.append({f"col_{i}": v for i, v in enumerate(row_values)})
-
-        return QueryResult(
-            sn=sn,
-            success=True,
-            rows=rows,
-            columns=columns,
-            raw_html=raw_html,
-        )
+        logger.info(f"CSV 저장 완료: {save_path}")
+        return save_path
 
 
 # 싱글턴 인스턴스

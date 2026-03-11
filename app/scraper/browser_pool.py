@@ -6,10 +6,13 @@ Browser Pool - 최대 N개의 브라우저를 동시에 관리
   - 각 브라우저 컨텍스트는 동일한 storage_state(로그인 세션)를 재사용
   - 컨텍스트별로 독립된 쿠키/탭 공간 → 서로 간섭 없음
   - 세션 만료 감지 시 SessionManager에 재로그인 요청
+  - Edge 브라우저 지원 (Windows: EDGE_EXECUTABLE_PATH)
+  - CSV 다운로드를 위한 accept_downloads=True 컨텍스트 지원
 """
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -44,7 +47,8 @@ class BrowserPool:
         async with self._init_lock:
             if self._playwright is None:
                 self._playwright = await async_playwright().start()
-                self._browser = await self._playwright.chromium.launch(
+
+                launch_kwargs = dict(
                     headless=settings.BROWSER_HEADLESS,
                     args=[
                         "--disable-blink-features=AutomationControlled",
@@ -52,6 +56,13 @@ class BrowserPool:
                         "--disable-dev-shm-usage",
                     ],
                 )
+                # Edge 브라우저 경로가 존재하면 사용 (Windows)
+                edge_path = settings.EDGE_EXECUTABLE_PATH
+                if edge_path and os.path.exists(edge_path):
+                    launch_kwargs["executable_path"] = edge_path
+                    logger.info(f"Edge 브라우저 사용: {edge_path}")
+
+                self._browser = await self._playwright.chromium.launch(**launch_kwargs)
                 logger.info(
                     f"브라우저 풀 초기화 완료 "
                     f"(최대 동시 실행: {self._max_size}개)"
@@ -110,7 +121,7 @@ class BrowserPool:
     # Internal
     # ─────────────────────────────────────────────────────────────────────────
 
-    async def _create_context(self) -> BrowserContext:
+    async def _create_context(self, accept_downloads: bool = True) -> BrowserContext:
         """저장된 세션(storage_state)을 로드한 새 브라우저 컨텍스트를 생성합니다."""
         if self._browser is None:
             await self.startup()
@@ -121,11 +132,11 @@ class BrowserPool:
         context = await self._browser.new_context(
             storage_state=storage_state_path,
             viewport={"width": 1920, "height": 1080},
-            # 봇 감지 우회
+            accept_downloads=accept_downloads,
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/121.0.0.0 Safari/537.36"
+                "Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0"
             ),
         )
         return context

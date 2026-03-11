@@ -2,19 +2,24 @@
 FA Chatbot Service - FastAPI 메인 애플리케이션
 
 엔드포인트:
-  GET  /                    → 챗봇 UI (HTML)
-  POST /api/query           → SN 조회 (REST, 동기 응답)
-  WS   /ws/chat             → SN 조회 (WebSocket, 실시간 진행 상태)
-  GET  /api/status          → 브라우저 풀 상태 확인
-  POST /api/session/reset   → 세션 수동 초기화
+  GET  /                          → 챗봇 UI (HTML)
+  GET  /batch                     → 배치 쿼리 UI (HTML, 최대 5개 SN 동시 실행)
+  POST /api/query                 → SN 조회 (REST, 동기 응답)
+  POST /api/batch-query           → 최대 5개 SN 동시 쿼리 + CSV 다운로드 (비동기 Job)
+  GET  /api/batch-status/{job_id} → 배치 Job 진행 상태 폴링
+  WS   /ws/chat                   → SN 조회 (WebSocket, 실시간 진행 상태)
+  GET  /api/status                → 브라우저 풀 상태 확인
+  POST /api/session/reset         → 세션 수동 초기화
 """
 
 import asyncio
 import logging
 import re
+import uuid
 from pathlib import Path
+from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -41,6 +46,10 @@ app = FastAPI(
 )
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+
+# ─── 배치 Job 저장소 (메모리) ─────────────────────────────────────────────────
+# job_id → {"status": str, "sns": list, "results": list, "progress": dict}
+_batch_jobs: dict[str, dict] = {}
 
 
 # ─── 수명 주기 이벤트 ─────────────────────────────────────────────────────────
@@ -69,10 +78,28 @@ class SNQueryRequest(BaseModel):
             raise ValueError("SN을 입력해 주세요.")
         if len(v) > 50:
             raise ValueError("SN이 너무 깁니다 (최대 50자).")
-        # 영문, 숫자, 하이픈만 허용
         if not re.match(r'^[A-Z0-9\-]+$', v):
             raise ValueError("SN은 영문, 숫자, 하이픈(-)만 사용 가능합니다.")
         return v
+
+
+class BatchSNRequest(BaseModel):
+    sns: list[str]
+
+    @field_validator("sns")
+    @classmethod
+    def validate_sns(cls, v: list[str]) -> list[str]:
+        cleaned = [sn.strip().upper() for sn in v if sn.strip()]
+        if not cleaned:
+            raise ValueError("SN을 최소 1개 입력해 주세요.")
+        if len(cleaned) > 5:
+            raise ValueError("SN은 최대 5개까지 입력 가능합니다.")
+        for sn in cleaned:
+            if len(sn) > 50:
+                raise ValueError(f"SN이 너무 깁니다: {sn}")
+            if not re.match(r'^[A-Z0-9\-]+$', sn):
+                raise ValueError(f"SN은 영문, 숫자, 하이픈(-)만 사용 가능합니다: {sn}")
+        return cleaned
 
 
 # ─── REST 엔드포인트 ──────────────────────────────────────────────────────────
@@ -83,6 +110,15 @@ async def root():
     if html_file.exists():
         return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>FA Chatbot</h1><p>frontend/index.html을 확인하세요.</p>")
+
+
+@app.get("/batch", response_class=HTMLResponse)
+async def batch_ui():
+    """배치 쿼리 UI (최대 5개 SN 동시 실행)를 반환합니다."""
+    html_file = FRONTEND_DIR / "batch.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Batch Query</h1><p>frontend/batch.html을 확인하세요.</p>")
 
 
 @app.post("/api/query")
@@ -119,6 +155,77 @@ async def query_sn(request: SNQueryRequest):
     except Exception as e:
         logger.error(f"쿼리 처리 오류 - SN: {request.sn}: {e}")
         raise HTTPException(status_code=500, detail="서버 오류가 발생했습니다.")
+
+
+@app.post("/api/batch-query")
+async def batch_query(request: BatchSNRequest, background_tasks: BackgroundTasks):
+    """
+    최대 5개의 SN에 대해 Superset SQL 쿼리를 동시에 실행하고 CSV를 다운로드합니다.
+
+    즉시 job_id를 반환하며, 진행 상태는 GET /api/batch-status/{job_id}로 폴링하세요.
+    각 SN의 CSV는 설정된 다운로드 경로에 {SN}_inputdata.csv 로 저장됩니다.
+    """
+    job_id = str(uuid.uuid4())
+    _batch_jobs[job_id] = {
+        "status": "pending",
+        "sns": request.sns,
+        "progress": {sn: "대기 중" for sn in request.sns},
+        "results": [],
+        "download_dir": settings.CSV_DOWNLOAD_PATH,
+    }
+
+    background_tasks.add_task(_run_batch_job, job_id, request.sns)
+
+    return {
+        "job_id": job_id,
+        "sns": request.sns,
+        "message": f"{len(request.sns)}개 SN 쿼리 시작. /api/batch-status/{job_id} 로 진행 상태 확인.",
+    }
+
+
+@app.get("/api/batch-status/{job_id}")
+async def batch_status(job_id: str):
+    """배치 Job의 현재 진행 상태를 반환합니다."""
+    job = _batch_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job을 찾을 수 없습니다.")
+    return job
+
+
+async def _run_batch_job(job_id: str, sns: list[str]) -> None:
+    """백그라운드에서 모든 SN 쿼리를 동시에 실행합니다."""
+    job = _batch_jobs[job_id]
+    job["status"] = "running"
+
+    async def run_one(sn: str):
+        async def on_progress(msg: str):
+            job["progress"][sn] = msg
+            logger.info(f"[Batch {job_id}] [{sn}] {msg}")
+
+        result = await query_runner.run(sn, progress_callback=on_progress)
+        return {
+            "sn": sn,
+            "success": result.success,
+            "csv_path": result.csv_path,
+            "error": result.error,
+            "session_expired": result.session_expired,
+        }
+
+    try:
+        tasks = [run_one(sn) for sn in sns]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        job["results"] = [
+            r if isinstance(r, dict) else {"sn": sns[i], "success": False, "error": str(r)}
+            for i, r in enumerate(results)
+        ]
+        job["status"] = "completed"
+        logger.info(f"[Batch {job_id}] 완료 - {len(job['results'])}건")
+
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
+        logger.error(f"[Batch {job_id}] 배치 실행 오류: {e}")
 
 
 @app.get("/api/status")
