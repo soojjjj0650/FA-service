@@ -8,7 +8,7 @@ echo ============================================================
 echo.
 
 cd /d "%~dp0"
-py -3.12 scripts/manual_login.py
+"C:\Users\sujin06.bae\AppData\Local\Programs\Python\Python312\python.exe" scripts/manual_login.py
 
 if errorlevel 1 (
     echo.
@@ -24,7 +24,7 @@ echo 서버를 중지하려면 Ctrl+C 를 누르세요.
 echo.
 
 set "PYTHONPATH=%~dp0"
-py -3.12 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+"C:\Users\sujin06.bae\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 echo.
 echo 서버가 종료되었습니다.
