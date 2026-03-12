@@ -117,19 +117,31 @@ async def manual_login():
         # ─── 3단계: 생체인증 완료 대기 ──────────────────────────────────────
         print()
         print("3단계: 핸드폰에서 생체인증(지문/Face ID)을 완료해 주세요...")
-        print("       SQL Lab 진입 대기 중 (최대 90초)...")
+        print("       로그인 완료 대기 중 (최대 90초)...")
         print()
 
+        # Bio 인증 후 로그인 페이지가 사라질 때까지 대기 (어떤 페이지든 상관없음)
         try:
-            await page.wait_for_url("**/sqllab**", timeout=90_000)
-            print("       → SQL Lab 진입 확인!")
+            await page.wait_for_function(
+                "() => !window.location.href.includes('login') && "
+                "!document.querySelector('#userNameInput')",
+                timeout=90_000,
+            )
+            print(f"       → 로그인 완료! (현재: {page.url})")
         except PlaywrightTimeout:
-            current_url = page.url
-            if "sqllab" not in current_url:
-                print(f"       [경고] 90초 내 SQL Lab 미진입 (현재: {current_url})")
-                await asyncio.get_event_loop().run_in_executor(
-                    None, input, "       수동으로 SQL Lab 진입 후 Enter를 눌러 주세요: "
-                )
+            print(f"       [경고] 90초 내 로그인 미완료 (현재: {page.url})")
+            print("              핸드폰 생체인증을 완료 후 Enter를 눌러 주세요...")
+            await asyncio.get_event_loop().run_in_executor(None, input, "       Enter: ")
+
+        # 로그인 성공 후 SQL Lab으로 직접 이동
+        print()
+        print("       SQL Lab으로 이동 중...")
+        await page.goto(SUPERSET_URL, wait_until="domcontentloaded", timeout=30_000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15_000)
+        except PlaywrightTimeout:
+            pass
+        print(f"       → SQL Lab 진입 완료! (현재: {page.url})")
 
         # ─── 세션 저장 ───────────────────────────────────────────────────────
         await context.storage_state(path=str(SESSION_FILE))
