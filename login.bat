@@ -11,5 +11,21 @@ cd /d "%~dp0"
 set PYTHONPATH=%~dp0
 python scripts/manual_login.py
 
+if errorlevel 1 (
+    echo.
+    echo [오류] 로그인 실패. 다시 시도해 주세요.
+    pause
+    exit /b 1
+)
+
 echo.
+echo 로그인 완료! FA Service 서버를 시작합니다...
+echo 브라우저에서 http://localhost:8000 으로 접속하세요.
+echo 서버를 중지하려면 Ctrl+C 를 누르세요.
+echo.
+
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+echo.
+echo 서버가 종료되었습니다.
 pause

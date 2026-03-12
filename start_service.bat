@@ -15,9 +15,6 @@ echo.
 cd /d "%~dp0"
 set PYTHONPATH=%~dp0
 
-:: 브라우저 자동 열기 (2초 후)
-start "" /b cmd /c "timeout /t 2 > nul && start http://localhost:8000/batch"
-
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 echo.
