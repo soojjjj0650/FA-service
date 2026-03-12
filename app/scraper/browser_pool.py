@@ -129,17 +129,36 @@ class BrowserPool:
         # 세션 파일 확보 (없으면 SessionExpiredNotice 발생)
         storage_state_path = session_manager.get_storage_state_path()
 
-        context = await self._browser.new_context(
-            storage_state=storage_state_path,
-            viewport={"width": 1920, "height": 1080},
-            accept_downloads=accept_downloads,
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0"
-            ),
-        )
-        return context
+        try:
+            context = await self._browser.new_context(
+                storage_state=storage_state_path,
+                viewport={"width": 1920, "height": 1080},
+                accept_downloads=accept_downloads,
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0"
+                ),
+            )
+            return context
+        except Exception as e:
+            err = str(e).lower()
+            if "connection closed" in err or "target closed" in err or "browser has been closed" in err:
+                logger.warning("브라우저 연결 끊김 감지 - 재시작 중...")
+                self._browser = None
+                self._playwright = None
+                await self.startup()
+                return await self._browser.new_context(
+                    storage_state=storage_state_path,
+                    viewport={"width": 1920, "height": 1080},
+                    accept_downloads=accept_downloads,
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0"
+                    ),
+                )
+            raise
 
     @staticmethod
     def _is_session_expired(error: Exception) -> bool:
