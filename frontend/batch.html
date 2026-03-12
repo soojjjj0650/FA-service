@@ -284,7 +284,8 @@
         return;
       }
 
-      document.getElementById('btnRun').disabled = true;
+      const btn = document.getElementById('btnRun');
+      btn.disabled = true;
 
       try {
         const res = await fetch('/api/batch-query', {
@@ -296,24 +297,22 @@
 
         if (!res.ok) {
           alert('오류: ' + (data.detail || '요청 실패'));
-          document.getElementById('btnRun').disabled = false;
           return;
         }
 
-        // 입력창 비우기 + 버튼 즉시 재활성화
+        // 입력창 비우기 + 진행 블록 추가
         for (let i = 0; i < MAX_SN; i++) {
           document.getElementById(`sn${i}`).value = '';
         }
-        document.getElementById('btnRun').disabled = false;
-        document.getElementById('sn0').focus();
-
-        // 진행 블록 추가
         addJobBlock(data.job_id, sns);
         startPolling(data.job_id);
+        document.getElementById('sn0').focus();
 
       } catch (e) {
         alert('서버 연결 오류: ' + e.message);
-        document.getElementById('btnRun').disabled = false;
+      } finally {
+        // 성공/실패 무관하게 버튼 항상 재활성화
+        btn.disabled = false;
       }
     }
 

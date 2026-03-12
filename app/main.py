@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -159,7 +159,7 @@ async def query_sn(request: SNQueryRequest):
 
 
 @app.post("/api/batch-query")
-async def batch_query(request: BatchSNRequest, background_tasks: BackgroundTasks):
+async def batch_query(request: BatchSNRequest):
     """
     최대 5개의 SN에 대해 Superset SQL 쿼리를 동시에 실행하고 CSV를 다운로드합니다.
 
@@ -175,7 +175,8 @@ async def batch_query(request: BatchSNRequest, background_tasks: BackgroundTasks
         "download_dir": settings.CSV_DOWNLOAD_PATH,
     }
 
-    background_tasks.add_task(_run_batch_job, job_id, request.sns)
+    # asyncio.create_task: 현재 이벤트 루프에 즉시 등록 → request handler가 바로 반환
+    asyncio.create_task(_run_batch_job(job_id, request.sns))
 
     return {
         "job_id": job_id,
