@@ -401,13 +401,12 @@
   function sendQuery() {
     const sn = snInput.value.trim().toUpperCase();
     if (!sn) { snInput.focus(); return; }
-    if (isQuerying) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       appendMsg('error', '서버에 연결되지 않았습니다. 잠시 후 다시 시도해 주세요.');
       return;
     }
 
-    appendMsg('user', `SN: ${sn}`);
+    appendMsg('user', isQuerying ? `SN: ${sn} (대기 중...)` : `SN: ${sn}`);
     snInput.value = '';
     setQuerying(true);
     showProgress('서버에 요청 전송 중...');
@@ -417,9 +416,8 @@
 
   function setQuerying(state) {
     isQuerying = state;
-    snInput.disabled = state;
-    sendBtn.disabled = state;
-    sendBtn.textContent = state ? '조회 중...' : '조회';
+    // 입력창/버튼은 항상 활성 상태 유지 (추가 SN 입력 허용)
+    sendBtn.textContent = state ? '조회 중' : '조회';
   }
 
   sendBtn.addEventListener('click', sendQuery);

@@ -271,6 +271,16 @@ async def websocket_chat(websocket: WebSocket):
     await websocket.accept()
     logger.info(f"WebSocket 연결: {websocket.client}")
 
+    # 동시 전송 시 메시지 순서 보장용 락
+    ws_lock = asyncio.Lock()
+
+    async def send_safe(msg_type: str, message: str, **extra):
+        try:
+            async with ws_lock:
+                await websocket.send_json({"type": msg_type, "message": message, **extra})
+        except Exception:
+            pass
+
     try:
         while True:
             # 클라이언트 메시지 수신
@@ -279,14 +289,15 @@ async def websocket_chat(websocket: WebSocket):
 
             # 입력 유효성 검사
             if not sn_raw:
-                await _send(websocket, "error", "SN을 입력해 주세요.")
+                await send_safe("error", "SN을 입력해 주세요.")
                 continue
 
             if not re.match(r'^[A-Z0-9\-]+$', sn_raw):
-                await _send(websocket, "error", "SN은 영문, 숫자, 하이픈(-)만 사용 가능합니다.")
+                await send_safe("error", "SN은 영문, 숫자, 하이픈(-)만 사용 가능합니다.")
                 continue
 
-            await _handle_query(websocket, sn_raw)
+            # 각 SN 쿼리를 독립 Task로 실행 → 동시에 여러 SN 처리 가능
+            asyncio.create_task(_handle_query_safe(websocket, ws_lock, sn_raw))
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket 연결 종료: {websocket.client}")
@@ -298,11 +309,26 @@ async def websocket_chat(websocket: WebSocket):
             pass
 
 
-async def _handle_query(websocket: WebSocket, sn: str):
+async def _handle_query_safe(websocket: WebSocket, ws_lock: asyncio.Lock, sn: str):
+    """ws_lock을 이용해 안전하게 전송하는 래퍼."""
+    async def send_locked(msg_type: str, message: str, **extra):
+        try:
+            async with ws_lock:
+                await websocket.send_json({"type": msg_type, "message": message, **extra})
+        except Exception:
+            pass
+
+    await _handle_query(websocket, sn, send_fn=send_locked)
+
+
+async def _handle_query(websocket: WebSocket, sn: str, send_fn=None):
     """단일 SN 조회 처리 (진행 상태 실시간 전송)"""
+    if send_fn is None:
+        async def send_fn(msg_type: str, message: str, **extra):
+            await _send(websocket, msg_type, message)
 
     async def progress(msg: str):
-        await _send(websocket, "progress", msg)
+        await send_fn("progress", msg)
 
     try:
         await progress(f"SN [{sn}] 조회 시작...")
@@ -312,11 +338,8 @@ async def _handle_query(websocket: WebSocket, sn: str):
         query_result = await query_runner.run(sn, progress_callback=progress)
 
         if not query_result.success:
-            await websocket.send_json({
-                "type": "error",
-                "message": query_result.error or "데이터 조회 실패",
-                "session_expired": query_result.session_expired,
-            })
+            await send_fn("error", query_result.error or "데이터 조회 실패",
+                          session_expired=query_result.session_expired)
             return
 
         # 2. 데이터 가공
@@ -324,7 +347,7 @@ async def _handle_query(websocket: WebSocket, sn: str):
         processed = data_processor.process(query_result)
 
         if processed.error and not processed.summary_text:
-            await _send(websocket, "error", processed.error)
+            await send_fn("error", processed.error)
             return
 
         # 3. AI Agent 분석
@@ -332,25 +355,22 @@ async def _handle_query(websocket: WebSocket, sn: str):
         ai_response = await agent_client.analyze(processed)
 
         # 4. 최종 결과 전송
-        await websocket.send_json({
-            "type": "result",
-            "message": ai_response,
-            "data": {
-                "sn": sn,
-                "model": processed.device.model,
-                "status": processed.device.status,
-                "customer_name": processed.device.customer_name,
-                "contract_active": processed.device.contract_active,
-                "service_history_count": len(processed.device.service_history),
-                "summary": processed.summary_text,
-            },
-        })
+        await send_fn("result", ai_response,
+                      data={
+                          "sn": sn,
+                          "model": processed.device.model,
+                          "status": processed.device.status,
+                          "customer_name": processed.device.customer_name,
+                          "contract_active": processed.device.contract_active,
+                          "service_history_count": len(processed.device.service_history),
+                          "summary": processed.summary_text,
+                      })
 
     except asyncio.CancelledError:
-        await _send(websocket, "error", "요청이 취소되었습니다.")
+        await send_fn("error", "요청이 취소되었습니다.")
     except Exception as e:
         logger.error(f"쿼리 처리 오류 [{sn}]: {e}")
-        await _send(websocket, "error", f"처리 중 오류가 발생했습니다: {str(e)}")
+        await send_fn("error", f"처리 중 오류가 발생했습니다: {str(e)}")
 
 
 async def _send(websocket: WebSocket, msg_type: str, message: str):
