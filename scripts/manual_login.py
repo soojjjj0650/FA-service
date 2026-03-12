@@ -123,7 +123,10 @@ async def manual_login():
         # 지문인증 완료 후 Superset이 원래 요청 URL(/sqllab)로 리다이렉트하는 것을 대기
         # (MFA 대기 페이지가 아닌 실제 인증 완료를 정확히 감지)
         try:
-            await page.wait_for_url("**/sqllab**", timeout=120_000)
+            await page.wait_for_function(
+                "() => window.location.href.includes('sqllab')",
+                timeout=120_000,
+            )
             print(f"       → SQL Lab 진입 확인! (현재: {page.url})")
         except PlaywrightTimeout:
             print(f"       [경고] 120초 내 SQL Lab 미진입 (현재: {page.url})")
