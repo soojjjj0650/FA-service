@@ -128,7 +128,17 @@ ORDER by Date,Time"""
             await notify(
                 f"쿼리 실행 중... (SN: {sn}) - 최대 {settings.QUERY_TIMEOUT_SECONDS // 60}분 소요"
             )
-            await self._run_and_wait(page)
+            has_data = await self._run_and_wait(page)
+
+            # 데이터 없음
+            if not has_data:
+                await notify(f"조회 완료 - SN [{sn}] 데이터 없음")
+                return QueryResult(
+                    sn=sn,
+                    success=True,
+                    csv_path=None,
+                    error="해당 SN의 조회 결과가 없습니다.",
+                )
 
             # 4. CSV 다운로드
             await notify("CSV 다운로드 중...")
@@ -244,8 +254,14 @@ ORDER by Date,Time"""
 
         raise RuntimeError("SQL 입력 실패: Ace Editor를 찾을 수 없습니다.")
 
-    async def _run_and_wait(self, page: Page) -> None:
-        """Run 버튼 클릭 후 쿼리 완료까지 대기합니다 (최대 1시간)."""
+    async def _run_and_wait(self, page: Page) -> bool:
+        """Run 버튼 클릭 후 쿼리 완료까지 대기합니다 (최대 1시간).
+
+        Returns:
+            True  - 데이터 있음 (CSV 다운로드 가능)
+            False - 데이터 없음 (The query returned no data)
+        """
+        import asyncio
         timeout_ms = settings.QUERY_TIMEOUT_SECONDS * 1000
 
         # Run 버튼 클릭
@@ -262,18 +278,43 @@ ORDER by Date,Time"""
         except PlaywrightTimeout:
             pass  # 일부 환경에서 즉시 완료될 수 있음
 
-        # 완료 대기: "Download to CSV" 버튼 등장
-        await page.wait_for_selector(
-            'button:has-text("Download to CSV")',
-            state="visible",
-            timeout=timeout_ms,
+        # 완료 대기: "Download to CSV" 또는 "no data" 메시지 중 먼저 등장하는 것 감지
+        download_sel = 'button:has-text("Download to CSV")'
+        no_data_sel = '.ant-alert-message'
+
+        async def wait_download():
+            await page.wait_for_selector(download_sel, state="visible", timeout=timeout_ms)
+            return "download"
+
+        async def wait_no_data():
+            while True:
+                el = await page.query_selector(no_data_sel)
+                if el:
+                    text = await el.inner_text()
+                    if "no data" in text.lower():
+                        return "no_data"
+                await asyncio.sleep(1)
+
+        done, pending = await asyncio.wait(
+            [asyncio.create_task(wait_download()), asyncio.create_task(wait_no_data())],
+            return_when=asyncio.FIRST_COMPLETED,
         )
+        for task in pending:
+            task.cancel()
+
+        result = done.pop().result()
+
+        if result == "no_data":
+            logger.info("쿼리 결과 없음 (The query returned no data)")
+            return False
 
         # 에러 메시지 확인
         error_el = await page.query_selector('[class*="QueryTable--error"], [class*="error-message"]')
         if error_el:
             error_text = await error_el.inner_text()
             raise RuntimeError(f"쿼리 실행 오류: {error_text.strip()}")
+
+        return True
 
     async def _download_csv(self, context: BrowserContext, page: Page, sn: str) -> str:
         """Download to CSV 버튼 클릭 후 파일을 지정 경로에 저장합니다."""
