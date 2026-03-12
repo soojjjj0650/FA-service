@@ -85,17 +85,6 @@
       color: #bbb;
     }
 
-    .sn-status {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      background: #e8e8f0;
-    }
-    .sn-status.running  { background: #f0a500; animation: pulse 1s infinite; }
-    .sn-status.success  { background: #28a745; }
-    .sn-status.error    { background: #dc3545; }
-
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50%       { opacity: 0.4; }
@@ -144,8 +133,26 @@
     .progress-rows {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 14px;
     }
+
+    /* ── Job Block ── */
+    .job-block {
+      border: 1px solid #dde1ea;
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: #fafbff;
+    }
+
+    .job-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 0.8rem;
+    }
+    .job-time  { color: #aaa; }
+    .job-sns   { color: #4f73e3; font-weight: 600; font-size: 0.82rem; }
 
     .progress-item {
       display: flex;
@@ -237,7 +244,6 @@
     <div class="progress-section" id="progressSection">
       <h2>진행 상태</h2>
       <div class="progress-rows" id="progressRows"></div>
-      <div class="final-status" id="finalStatus"></div>
     </div>
   </div>
 
@@ -245,8 +251,8 @@
 
   <script>
     const MAX_SN = 5;
-    let pollTimer = null;
-    let currentJobId = null;
+    // jobId → intervalId (여러 job 동시 폴링)
+    const activePolls = {};
 
     // ── SN 입력 필드 생성 ─────────────────────────────────────────────────────
     function buildInputs() {
@@ -260,7 +266,6 @@
                  placeholder="시리얼 넘버 입력"
                  oninput="this.value=this.value.toUpperCase()"
                  ${i === 0 ? 'autofocus' : ''} />
-          <span class="sn-status" id="dot${i}"></span>
         `;
         container.appendChild(row);
       }
@@ -279,12 +284,7 @@
         return;
       }
 
-      // UI 초기화
-      resetProgress(sns);
       document.getElementById('btnRun').disabled = true;
-      document.getElementById('sessionBanner').classList.remove('visible');
-      document.getElementById('progressSection').classList.add('visible');
-      document.getElementById('finalStatus').className = 'final-status';
 
       try {
         const res = await fetch('/api/batch-query', {
@@ -295,84 +295,118 @@
         const data = await res.json();
 
         if (!res.ok) {
-          showError(data.detail || '요청 실패');
+          alert('오류: ' + (data.detail || '요청 실패'));
           document.getElementById('btnRun').disabled = false;
           return;
         }
 
-        currentJobId = data.job_id;
-        pollStatus();
+        // 입력창 비우기 + 버튼 즉시 재활성화
+        for (let i = 0; i < MAX_SN; i++) {
+          document.getElementById(`sn${i}`).value = '';
+        }
+        document.getElementById('btnRun').disabled = false;
+        document.getElementById('sn0').focus();
+
+        // 진행 블록 추가
+        addJobBlock(data.job_id, sns);
+        startPolling(data.job_id);
 
       } catch (e) {
-        showError('서버 연결 오류: ' + e.message);
+        alert('서버 연결 오류: ' + e.message);
         document.getElementById('btnRun').disabled = false;
       }
     }
 
-    // ── 상태 폴링 (2초 간격) ──────────────────────────────────────────────────
-    function pollStatus() {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(async () => {
+    // ── Job 진행 블록 추가 ─────────────────────────────────────────────────────
+    function addJobBlock(jobId, sns) {
+      const section = document.getElementById('progressSection');
+      section.classList.add('visible');
+
+      const block = document.createElement('div');
+      block.className = 'job-block';
+      block.id = `job_${jobId}`;
+
+      const time = new Date().toLocaleTimeString('ko-KR');
+      block.innerHTML = `
+        <div class="job-header">
+          <span class="job-time">${time} 실행</span>
+          <span class="job-sns">${sns.map(escHtml).join(', ')}</span>
+        </div>
+        <div class="progress-rows" id="rows_${jobId}"></div>
+        <div class="final-status" id="final_${jobId}"></div>
+      `;
+
+      // 최신 job을 맨 위에 추가
+      const rows = document.getElementById('progressRows');
+      rows.insertBefore(block, rows.firstChild);
+
+      // 각 SN 행 추가
+      const rowsEl = document.getElementById(`rows_${jobId}`);
+      sns.forEach(sn => {
+        const item = document.createElement('div');
+        item.className = 'progress-item';
+        item.innerHTML = `
+          <div class="pi-dot running" id="pidot_${jobId}_${sn}"></div>
+          <div class="pi-body">
+            <div class="pi-sn">${escHtml(sn)}</div>
+            <div class="pi-msg" id="pimsg_${jobId}_${sn}">대기 중...</div>
+            <div class="pi-file" id="pifile_${jobId}_${sn}"></div>
+          </div>
+        `;
+        rowsEl.appendChild(item);
+      });
+    }
+
+    // ── 상태 폴링 ──────────────────────────────────────────────────────────────
+    function startPolling(jobId) {
+      const timer = setInterval(async () => {
         try {
-          const res = await fetch(`/api/batch-status/${currentJobId}`);
-          if (!res.ok) return;
+          const res = await fetch(`/api/batch-status/${jobId}`);
+          if (!res.ok) {
+            // 서버 재시작 등으로 job이 사라진 경우
+            clearInterval(activePolls[jobId]);
+            delete activePolls[jobId];
+            const final = document.getElementById(`final_${jobId}`);
+            if (final) {
+              final.className = 'final-status error';
+              final.textContent = '서버에서 Job 정보를 찾을 수 없습니다. (서버 재시작 여부 확인)';
+            }
+            return;
+          }
           const job = await res.json();
-          updateProgress(job);
+          updateJobProgress(jobId, job);
 
           if (job.status === 'completed' || job.status === 'error') {
-            clearInterval(pollTimer);
-            document.getElementById('btnRun').disabled = false;
-            showFinal(job);
+            clearInterval(activePolls[jobId]);
+            delete activePolls[jobId];
+            showJobFinal(jobId, job);
           }
         } catch (e) {
           console.error('폴링 오류:', e);
         }
       }, 2000);
-    }
-
-    // ── 진행 UI 초기화 ─────────────────────────────────────────────────────────
-    function resetProgress(sns) {
-      const rows = document.getElementById('progressRows');
-      rows.innerHTML = '';
-      sns.forEach(sn => {
-        const item = document.createElement('div');
-        item.className = 'progress-item';
-        item.id = `pi_${sn}`;
-        item.innerHTML = `
-          <div class="pi-dot running" id="pidot_${sn}"></div>
-          <div class="pi-body">
-            <div class="pi-sn">${escHtml(sn)}</div>
-            <div class="pi-msg" id="pimsg_${sn}">대기 중...</div>
-            <div class="pi-file" id="pifile_${sn}"></div>
-          </div>
-        `;
-        rows.appendChild(item);
-      });
-
-      // 입력 안 한 SN 상태 초기화
-      for (let i = 0; i < MAX_SN; i++) {
-        document.getElementById(`dot${i}`).className = 'sn-status';
-      }
+      activePolls[jobId] = timer;
     }
 
     // ── 진행 상태 업데이트 ────────────────────────────────────────────────────
-    function updateProgress(job) {
-      if (!job.progress) return;
-      Object.entries(job.progress).forEach(([sn, msg]) => {
-        const el = document.getElementById(`pimsg_${sn}`);
-        if (el) el.textContent = msg;
-      });
+    function updateJobProgress(jobId, job) {
+      if (job.progress) {
+        Object.entries(job.progress).forEach(([sn, msg]) => {
+          const el = document.getElementById(`pimsg_${jobId}_${sn}`);
+          if (el) el.textContent = msg;
+        });
+      }
 
       if (job.results) {
         job.results.forEach(r => {
-          const dot = document.getElementById(`pidot_${r.sn}`);
-          const file = document.getElementById(`pifile_${r.sn}`);
-          const msg  = document.getElementById(`pimsg_${r.sn}`);
+          const dot  = document.getElementById(`pidot_${jobId}_${r.sn}`);
+          const file = document.getElementById(`pifile_${jobId}_${r.sn}`);
+          const msg  = document.getElementById(`pimsg_${jobId}_${r.sn}`);
           if (!dot) return;
           if (r.success) {
             dot.className = 'pi-dot success';
-            if (file && r.csv_path) file.textContent = '저장: ' + r.csv_path;
             if (msg) msg.textContent = '완료';
+            if (file && r.csv_path) file.textContent = '저장: ' + r.csv_path;
           } else {
             dot.className = 'pi-dot error';
             if (msg) msg.textContent = r.error || '실패';
@@ -385,23 +419,18 @@
     }
 
     // ── 최종 결과 표시 ────────────────────────────────────────────────────────
-    function showFinal(job) {
-      const el = document.getElementById('finalStatus');
+    function showJobFinal(jobId, job) {
+      const el = document.getElementById(`final_${jobId}`);
+      if (!el) return;
       if (job.status === 'completed') {
         const ok  = job.results.filter(r => r.success).length;
         const err = job.results.filter(r => !r.success).length;
         el.className = 'final-status completed';
-        el.textContent = `완료: 성공 ${ok}건 / 실패 ${err}건. CSV 파일을 확인하세요.`;
+        el.textContent = `완료: 성공 ${ok}건 / 실패 ${err}건`;
       } else {
         el.className = 'final-status error';
-        el.textContent = '배치 처리 오류: ' + (job.error || '알 수 없는 오류');
+        el.textContent = '배치 오류: ' + (job.error || '알 수 없는 오류');
       }
-    }
-
-    function showError(msg) {
-      const el = document.getElementById('finalStatus');
-      el.className = 'final-status error';
-      el.textContent = msg;
     }
 
     // ── 세션 복구 ─────────────────────────────────────────────────────────────
