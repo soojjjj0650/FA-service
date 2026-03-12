@@ -10,6 +10,7 @@ FA Chatbot Service - FastAPI 메인 애플리케이션
   WS   /ws/chat                   → SN 조회 (WebSocket, 실시간 진행 상태)
   GET  /api/status                → 브라우저 풀 상태 확인
   POST /api/session/reset         → 세션 수동 초기화
+  POST /webhook                   → 챗봇 Builder Adaptive Card 제출 수신 (SN 조회)
 """
 
 import asyncio
@@ -353,3 +354,114 @@ async def _handle_query(websocket: WebSocket, sn: str):
 
 async def _send(websocket: WebSocket, msg_type: str, message: str):
     await websocket.send_json({"type": msg_type, "message": message})
+
+
+# ─── Webhook 엔드포인트 (챗봇 Builder Adaptive Card) ──────────────────────────
+class WebhookRequest(BaseModel):
+    """챗봇 Builder에서 Adaptive Card Action.Submit 시 전달되는 데이터"""
+    action: Optional[str] = None
+    sn_value: Optional[str] = None
+
+
+@app.post("/webhook")
+async def webhook_handler(request: WebhookRequest):
+    """
+    챗봇 Builder Adaptive Card 제출 수신 엔드포인트.
+
+    Adaptive Card에서 Action.Submit 클릭 시 아래 형식으로 데이터가 전달됩니다:
+      { "action": "search_sn", "sn_value": "SN-12345" }
+
+    조회 결과를 Adaptive Card JSON으로 반환합니다.
+    """
+    # SN 값 추출 및 검증
+    sn_raw = (request.sn_value or "").strip().upper()
+
+    if not sn_raw:
+        return _webhook_error_card("SN을 입력해 주세요.")
+
+    if len(sn_raw) > 50:
+        return _webhook_error_card("SN이 너무 깁니다 (최대 50자).")
+
+    if not re.match(r'^[A-Z0-9\-]+$', sn_raw):
+        return _webhook_error_card("SN은 영문, 숫자, 하이픈(-)만 사용 가능합니다.")
+
+    logger.info(f"[Webhook] SN 조회 요청: {sn_raw}")
+
+    try:
+        # 1. 웹 스크래핑으로 SQL 쿼리 실행
+        query_result = await query_runner.run(sn_raw)
+
+        if not query_result.success:
+            if query_result.session_expired:
+                return _webhook_error_card(
+                    "세션이 만료되었습니다. 관리자에게 재로그인을 요청해 주세요."
+                )
+            return _webhook_error_card(query_result.error or "데이터 조회에 실패했습니다.")
+
+        # 2. 데이터 가공
+        processed = data_processor.process(query_result)
+
+        if processed.error and not processed.summary_text:
+            return _webhook_error_card(processed.error)
+
+        # 3. AI Agent 분석
+        ai_response = await agent_client.analyze(processed)
+
+        # 4. 결과 Adaptive Card 반환
+        d = processed.device
+        contract_text = "활성" if d.contract_active else "만료"
+        service_count = len(d.service_history)
+
+        return JSONResponse({
+            "type": "AdaptiveCard",
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "version": "1.3",
+            "body": [
+                {
+                    "type": "TextBlock",
+                    "text": f"SN 조회 결과: {sn_raw}",
+                    "size": "Medium",
+                    "weight": "Bolder"
+                },
+                {
+                    "type": "FactSet",
+                    "facts": [
+                        {"title": "모델", "value": d.model or "-"},
+                        {"title": "상태", "value": d.status or "-"},
+                        {"title": "고객명", "value": d.customer_name or "-"},
+                        {"title": "계약 상태", "value": contract_text},
+                        {"title": "서비스 이력", "value": f"{service_count}건"},
+                    ]
+                },
+                {
+                    "type": "TextBlock",
+                    "text": ai_response,
+                    "wrap": True,
+                    "spacing": "Medium"
+                }
+            ]
+        })
+
+    except Exception as e:
+        logger.error(f"[Webhook] 처리 오류 - SN: {sn_raw}: {e}")
+        return _webhook_error_card("서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+
+
+def _webhook_error_card(message: str) -> JSONResponse:
+    """오류 메시지를 Adaptive Card 형식으로 반환합니다."""
+    return JSONResponse(
+        status_code=200,  # 챗봇 Builder는 200 응답을 기대합니다
+        content={
+            "type": "AdaptiveCard",
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "version": "1.3",
+            "body": [
+                {
+                    "type": "TextBlock",
+                    "text": f"오류: {message}",
+                    "color": "Attention",
+                    "wrap": True
+                }
+            ]
+        }
+    )
