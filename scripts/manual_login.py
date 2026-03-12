@@ -78,11 +78,11 @@ async def manual_login():
 
         # ─── 1단계: Superset 접속 + ID/PW 자동 입력 ────────────────────────
         print("1단계: Superset 접속 중...")
-        await page.goto(SUPERSET_URL, wait_until="domcontentloaded", timeout=30_000)
+        await page.goto(SUPERSET_URL, wait_until="domcontentloaded", timeout=60_000)
 
         print("1단계: ID / PW 자동 입력 중...")
         try:
-            await page.wait_for_selector("#userNameInput", timeout=15_000)
+            await page.wait_for_selector("#userNameInput", timeout=30_000)
             await page.fill("#userNameInput", USERNAME)
             await page.fill("#passwordInput", PASSWORD)
             await page.keyboard.press("Enter")
@@ -117,30 +117,20 @@ async def manual_login():
         # ─── 3단계: 생체인증 완료 대기 ──────────────────────────────────────
         print()
         print("3단계: 핸드폰에서 생체인증(지문/Face ID)을 완료해 주세요...")
-        print("       로그인 완료 대기 중 (최대 90초)...")
+        print("       SQL Lab 진입 대기 중 (최대 120초)...")
         print()
 
-        # Bio 인증 후 로그인 페이지가 사라질 때까지 대기 (어떤 페이지든 상관없음)
+        # 지문인증 완료 후 Superset이 원래 요청 URL(/sqllab)로 리다이렉트하는 것을 대기
+        # (MFA 대기 페이지가 아닌 실제 인증 완료를 정확히 감지)
         try:
-            await page.wait_for_function(
-                "() => !window.location.href.includes('login') && "
-                "!document.querySelector('#userNameInput')",
-                timeout=90_000,
-            )
-            print(f"       → 로그인 완료! (현재: {page.url})")
+            await page.wait_for_url("**/sqllab**", timeout=120_000)
+            print(f"       → SQL Lab 진입 확인! (현재: {page.url})")
         except PlaywrightTimeout:
-            print(f"       [경고] 90초 내 로그인 미완료 (현재: {page.url})")
+            print(f"       [경고] 120초 내 SQL Lab 미진입 (현재: {page.url})")
             print("              핸드폰 생체인증을 완료 후 Enter를 눌러 주세요...")
             await asyncio.get_event_loop().run_in_executor(None, input, "       Enter: ")
+            await page.goto(SUPERSET_URL, wait_until="domcontentloaded", timeout=30_000)
 
-        # 로그인 성공 후 SQL Lab으로 직접 이동
-        print()
-        print("       SQL Lab으로 이동 중...")
-        await page.goto(SUPERSET_URL, wait_until="domcontentloaded", timeout=30_000)
-        try:
-            await page.wait_for_load_state("networkidle", timeout=15_000)
-        except PlaywrightTimeout:
-            pass
         print(f"       → SQL Lab 진입 완료! (현재: {page.url})")
 
         # ─── 세션 저장 ───────────────────────────────────────────────────────
