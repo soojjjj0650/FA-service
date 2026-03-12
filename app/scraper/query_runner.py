@@ -104,7 +104,12 @@ ORDER by Date,Time"""
         try:
             # 1. SQL Lab 접속
             await notify("Superset SQL Lab 접속 중...")
-            await page.goto(self.SUPERSET_URL, wait_until="networkidle", timeout=30_000)
+            await page.goto(self.SUPERSET_URL, wait_until="domcontentloaded", timeout=30_000)
+            # 페이지 동적 요소 로드 추가 대기
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15_000)
+            except PlaywrightTimeout:
+                pass  # networkidle 타임아웃은 무시하고 계속 진행
 
             # 세션 만료 확인 (로그인 페이지로 리디렉트)
             if "login" in page.url.lower() or "userNameInput" in await page.content():
@@ -135,43 +140,103 @@ ORDER by Date,Time"""
         finally:
             await page.close()
 
+    async def _wait_for_sqllab_ready(self, page: Page) -> None:
+        """SQL Lab 페이지가 완전히 로드될 때까지 대기합니다."""
+
+        # SQL Lab 핵심 UI 요소가 나타날 때까지 최대 30초 대기
+        ace_selectors = [
+            ".ace_editor",
+            ".ace_content",
+            "#ace-editor",
+            ".ace_text-input",
+        ]
+        for sel in ace_selectors:
+            try:
+                await page.wait_for_selector(sel, state="visible", timeout=30_000)
+                logger.debug(f"SQL Lab 준비 완료 (감지: {sel})")
+                return
+            except PlaywrightTimeout:
+                continue
+
+        # 못 찾으면 추가 3초 대기 후 계속 진행
+        import asyncio
+        logger.warning("Ace Editor 미감지 - 3초 추가 대기 후 입력 시도")
+        await asyncio.sleep(3)
+
     async def _input_query(self, page: Page, sql: str) -> None:
         """Ace Editor에 SQL을 입력합니다. JS API → 마우스+키보드 → textarea 순으로 시도."""
 
-        # 방법 1: Ace Editor JavaScript API
+        # SQL Lab이 완전히 로드될 때까지 먼저 대기
+        await self._wait_for_sqllab_ready(page)
+
+        escaped = sql.replace("\\", "\\\\").replace("`", "\\`")
+
+        # 방법 1: Ace Editor JavaScript API (전역 ace 객체 사용)
         try:
-            await page.wait_for_selector("#ace-editor", timeout=10_000)
-            escaped = sql.replace("\\", "\\\\").replace("`", "\\`")
+            result = await page.evaluate(f"""
+                (() => {{
+                    try {{
+                        // ace 전역 객체로 에디터 찾기
+                        if (typeof ace !== 'undefined') {{
+                            var editors = document.querySelectorAll('.ace_editor');
+                            if (editors.length > 0) {{
+                                var editor = ace.edit(editors[0]);
+                                editor.setValue(`{escaped}`, 1);
+                                editor.clearSelection();
+                                editor.focus();
+                                return 'ok';
+                            }}
+                        }}
+                        return 'no_ace';
+                    }} catch(e) {{
+                        return 'error:' + e.message;
+                    }}
+                }})()
+            """)
+            if result == "ok":
+                logger.debug("Ace Editor: JS API로 쿼리 입력 완료")
+                return
+            logger.debug(f"Ace Editor JS API 결과: {result}")
+        except Exception as e:
+            logger.debug(f"Ace Editor JS API 실패: {e}")
+
+        # 방법 2: #ace-editor ID로 시도
+        try:
+            await page.wait_for_selector("#ace-editor", timeout=5_000)
             await page.evaluate(f"""
                 var editor = ace.edit('ace-editor');
                 editor.setValue(`{escaped}`, 1);
                 editor.clearSelection();
             """)
-            logger.debug("Ace Editor: JS API로 쿼리 입력 완료")
+            logger.debug("Ace Editor: #ace-editor ID로 입력 완료")
             return
         except Exception as e:
-            logger.debug(f"Ace Editor JS API 실패, 폴백 시도: {e}")
+            logger.debug(f"Ace Editor #ace-editor 실패: {e}")
 
-        # 방법 2: 마우스 클릭 후 Ctrl+A → 타이핑
+        # 방법 3: 마우스 클릭 후 전체선택 → 타이핑
         try:
             editor_el = await page.query_selector(".ace_editor")
             if editor_el:
                 bbox = await editor_el.bounding_box()
-                await page.mouse.click(bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2)
-                await page.keyboard.press("Control+a")
-                await page.keyboard.type(sql)
-                logger.debug("Ace Editor: 마우스+키보드로 쿼리 입력 완료")
-                return
+                if bbox:
+                    await page.mouse.click(
+                        bbox["x"] + bbox["width"] / 2,
+                        bbox["y"] + bbox["height"] / 2,
+                    )
+                    await page.keyboard.press("Control+a")
+                    await page.keyboard.type(sql, delay=5)
+                    logger.debug("Ace Editor: 마우스+키보드로 쿼리 입력 완료")
+                    return
         except Exception as e:
             logger.debug(f"Ace Editor 마우스 입력 실패: {e}")
 
-        # 방법 3: textarea 직접 조작
+        # 방법 4: textarea 직접 조작
         for sel in [".ace_text-input", "textarea.ace_text-input", ".ace_editor textarea"]:
             try:
                 await page.wait_for_selector(sel, timeout=5_000)
                 await page.click(sel)
                 await page.keyboard.press("Control+a")
-                await page.keyboard.type(sql)
+                await page.keyboard.type(sql, delay=5)
                 logger.debug(f"Ace Editor: textarea({sel})로 쿼리 입력 완료")
                 return
             except Exception:
