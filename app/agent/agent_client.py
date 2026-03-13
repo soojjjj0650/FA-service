@@ -76,13 +76,20 @@ class AgentClient:
             return result
 
         except httpx.TimeoutException:
-            logger.error(f"AI Agent 타임아웃 - SN: {processed.sn}")
+            logger.error(f"AI Agent 타임아웃 ({settings.AI_AGENT_TIMEOUT}초) - SN: {processed.sn}")
             return self._fallback_response(processed)
         except httpx.HTTPStatusError as e:
-            logger.error(f"AI Agent HTTP 오류: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                f"AI Agent HTTP 오류: {e.response.status_code}\n"
+                f"URL: {settings.AI_AGENT_URL}\n"
+                f"응답 body: {e.response.text[:500]}"
+            )
+            return self._fallback_response(processed)
+        except httpx.ConnectError as e:
+            logger.error(f"AI Agent 연결 실패 (네트워크/방화벽 확인 필요): {e}")
             return self._fallback_response(processed)
         except Exception as e:
-            logger.error(f"AI Agent 통신 오류: {e}")
+            logger.error(f"AI Agent 통신 오류 [{type(e).__name__}]: {e}", exc_info=True)
             return self._fallback_response(processed)
 
     @staticmethod
