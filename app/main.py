@@ -344,16 +344,22 @@ async def _handle_query(websocket: WebSocket, sn: str, send_fn=None):
             return
 
         # 2. 데이터 가공
-        await progress("데이터 가공 중...")
+        await progress(f"CSV 데이터 가공 중... (파일: {query_result.csv_path})")
         processed = data_processor.process(query_result)
 
         if processed.error and not processed.summary_text:
             await send_fn("error", processed.error)
             return
 
+        feature_summary = ", ".join(
+            f"{f}:{len(t.rows)}건" for f, t in processed.feature_tables.items()
+        ) or "데이터 없음"
+        await progress(f"데이터 가공 완료 — {feature_summary}")
+
         # 3. AI Agent 분석
-        await progress("AI 분석 중...")
+        await progress(f"AI Agent 분석 요청 중... (최대 {settings.AI_AGENT_TIMEOUT}초 소요)")
         ai_response = await agent_client.analyze(processed)
+        await progress("AI 분석 완료. 결과 전송 중...")
 
         # 4. 최종 결과 전송
         await send_fn("result", ai_response,
