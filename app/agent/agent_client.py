@@ -17,8 +17,12 @@ API 스펙:
 """
 
 import logging
+import warnings
 
 import httpx
+
+# 사내 SSL 인증서로 인한 InsecureRequestWarning 억제
+warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 from app.config import settings
 from app.processor.data_processor import ProcessedData
@@ -36,6 +40,7 @@ class AgentClient:
                 "Content-Type": "application/json",
                 "x-api-key": settings.AI_AGENT_API_KEY,
             },
+            verify=False,  # 사내 SSL 인증서 검증 비활성화
         )
 
     async def analyze(self, processed: ProcessedData) -> str:
@@ -128,9 +133,9 @@ class AgentClient:
             os.makedirs(save_dir, exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(prompt)
-            logger.info(f"AI 입력값 저장: {path}")
+            logger.info(f"AI 입력값 저장 완료: {path}")
         except Exception as e:
-            logger.warning(f"AI 입력값 저장 실패: {e}")
+            logger.error(f"AI 입력값 저장 실패 [{type(e).__name__}]: {e}\n저장 경로: {path}", exc_info=True)
 
     async def close(self):
         await self._client.aclose()
