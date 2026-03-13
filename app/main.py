@@ -298,6 +298,7 @@ async def websocket_chat(websocket: WebSocket):
 
             # 각 SN 쿼리를 독립 Task로 실행 → 동시에 여러 SN 처리 가능
             asyncio.create_task(_handle_query_safe(websocket, ws_lock, sn_raw))
+            await asyncio.sleep(0)  # 이벤트 루프 제어권 즉시 양보 → Task 즉시 시작
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket 연결 종료: {websocket.client}")
