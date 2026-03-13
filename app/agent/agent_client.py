@@ -8,7 +8,7 @@ API 스펙:
     {
       "input_type": "chat",
       "output_type": "chat",
-      "componet_inputs": {
+      "component_inputs": {
         "<input_key>": { "input_value": "<text>" }
       }
     }
@@ -51,7 +51,7 @@ class AgentClient:
         payload = {
             "input_type": "chat",
             "output_type": "chat",
-            "componet_inputs": {
+            "component_inputs": {
                 settings.AI_AGENT_INPUT_KEY: {
                     "input_value": processed.ai_prompt,
                 }
