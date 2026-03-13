@@ -359,11 +359,7 @@ async def _handle_query(websocket: WebSocket, sn: str, send_fn=None):
         await send_fn("result", ai_response,
                       data={
                           "sn": sn,
-                          "model": processed.device.model,
-                          "status": processed.device.status,
-                          "customer_name": processed.device.customer_name,
-                          "contract_active": processed.device.contract_active,
-                          "service_history_count": len(processed.device.service_history),
+                          "html_tables": processed.html_tables,
                           "summary": processed.summary_text,
                       })
 

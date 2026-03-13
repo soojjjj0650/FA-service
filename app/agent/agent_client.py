@@ -1,8 +1,9 @@
 """
-AI Agent Client - 가공된 데이터를 내부 AI Agent로 전송하고 응답을 수신
+AI Agent Client - 텍스트 프롬프트를 내부 AI Agent로 전송하고 응답 수신
 
-내부 AI Agent가 REST API를 제공한다고 가정합니다.
-Agent가 다른 프로토콜(gRPC, WebSocket 등)을 사용한다면 이 파일을 수정하세요.
+내부 AI Agent는 text 형식만 수신 가능.
+요청: POST {AI_AGENT_URL}  body: {"text": "<prompt>"}
+응답: {"result": "<분석 텍스트>"}  (또는 "answer" / "text" 키)
 """
 
 import logging
@@ -29,13 +30,10 @@ class AgentClient:
 
     async def analyze(self, processed: ProcessedData) -> str:
         """
-        가공된 단말기 데이터를 AI Agent에 전송하고 분석 결과를 반환합니다.
-
-        Args:
-            processed: DataProcessor가 생성한 ProcessedData
+        AI Agent에 텍스트 프롬프트를 전송하고 분석 결과를 반환합니다.
 
         Returns:
-            AI Agent의 분석 텍스트
+            AI Agent 분석 텍스트
         """
         if processed.error and not processed.summary_text:
             return f"데이터 조회 중 오류가 발생했습니다: {processed.error}"
@@ -43,30 +41,16 @@ class AgentClient:
         if not processed.ai_prompt:
             return processed.summary_text or "조회된 데이터가 없습니다."
 
-        payload = {
-            "sn": processed.sn,
-            "prompt": processed.ai_prompt,
-            "context": {
-                "device_model": processed.device.model,
-                "status": processed.device.status,
-                "customer_name": processed.device.customer_name,
-                "contract_active": processed.device.contract_active,
-                "service_history_count": len(processed.device.service_history),
-            },
-        }
+        # 내부 AI Agent는 text 형식만 수신
+        payload = {"text": processed.ai_prompt}
 
         try:
             logger.info(f"AI Agent 요청 전송 - SN: {processed.sn}")
-            response = await self._client.post(
-                settings.AI_AGENT_URL,
-                json=payload,
-            )
+            response = await self._client.post(settings.AI_AGENT_URL, json=payload)
             response.raise_for_status()
             data = response.json()
 
-            # Agent 응답 형식에 따라 키 이름을 조정하세요
             result = data.get("result") or data.get("answer") or data.get("text") or ""
-
             if not result:
                 logger.warning(f"AI Agent 응답이 비어 있습니다: {data}")
                 return self._fallback_response(processed)
@@ -86,10 +70,10 @@ class AgentClient:
 
     @staticmethod
     def _fallback_response(processed: ProcessedData) -> str:
-        """AI Agent 연결 실패 시 DB 조회 결과만으로 응답합니다."""
+        """AI Agent 연결 실패 시 수집 데이터 요약만 반환합니다."""
         return (
             f"[AI 분석 서비스 연결 실패]\n\n"
-            f"아래는 데이터베이스 조회 결과입니다:\n\n"
+            f"아래는 수집된 네트워크 이벤트 데이터 요약입니다:\n\n"
             f"{processed.summary_text}"
         )
 

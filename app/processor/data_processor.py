@@ -1,16 +1,19 @@
 """
-Data Processor - SQL 쿼리 결과를 AI Agent에 보내기 적합한 형태로 가공
+Data Processor - CSV feature 데이터를 가공
 
-처리 내용:
-  - 빈 값 정리
-  - 날짜 포맷 통일
-  - 단말기 정보 요약 구조 생성
-  - AI Agent 프롬프트 생성
+처리 흐름:
+  1. QueryResult.csv_path 에서 CSV 읽기 (Date / Time / feature / custom_value)
+  2. feature 별로 그룹화
+  3. custom_value JSON 파싱 → feature 매핑 컬럼 추출
+  4. AI Agent 전송용 텍스트 + 챗봇 표시용 HTML 테이블 생성
 """
 
+import csv
+import json
 import logging
+import re
+from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
 from app.scraper.query_runner import QueryResult
@@ -18,207 +21,261 @@ from app.scraper.query_runner import QueryResult
 logger = logging.getLogger(__name__)
 
 
+# ─── feature별 컬럼 매핑 (표시명 → custom_value JSON 키) ─────────────────────
+# __date__ / __time__ 은 CSV 행의 Date / Time 컬럼을 직접 사용
+FEATURE_COLUMNS: dict[str, OrderedDict] = {
+    "MUTE": OrderedDict([
+        ("Date",  "__date__"),
+        ("Time",  "__time__"),
+        ("PLMN",  "PLMN"),
+        ("ACT",   "ACT_"),
+        ("TAC",   "TAC_"),
+        ("LAC",   "LAC_"),
+        ("PCI",   "PhID"),
+        ("DLCh",  "DLCh"),
+        ("Band",  "Band"),
+        ("UBMT",  "UBMT"),
+        ("RSMT",  "RSMT"),
+        ("RNMT",  "RNMT"),
+        ("DBMT",  "DBMT"),
+        ("ECNT",  "ECNT"),
+        ("RSRP",  "RSRP"),
+        ("RSCP",  "RSCP"),
+        ("SINR",  "SINR"),
+        ("BLER",  "BLER"),
+    ]),
+    # 추후 추가: DROP, ATTS, CEND, SCGF, ATTF, ATTI, SIMD, RLFI, NSVC, CRSH 등
+}
+
+
+# ─── 데이터 클래스 ────────────────────────────────────────────────────────────
+
 @dataclass
-class DeviceInfo:
-    """단말기 핵심 정보"""
-    sn: str
-    model: str = ""
-    manufacture_date: str = ""
-    firmware_version: str = ""
-    status: str = ""
+class FeatureTable:
+    feature: str
+    columns: list[str]
+    rows: list[list[str]]
 
-    # 고객 정보
-    customer_name: str = ""
-    contract_start: str = ""
-    contract_end: str = ""
-    contract_active: bool = False
+    def to_text(self) -> str:
+        """AI Agent 전송용 plain-text 테이블"""
+        if not self.rows:
+            return f"[{self.feature}] 데이터 없음"
+        header = " | ".join(self.columns)
+        sep = "-" * max(len(header), 20)
+        data_lines = [" | ".join(str(v) for v in row) for row in self.rows]
+        return "\n".join([f"[{self.feature}] {len(self.rows)}건", header, sep] + data_lines)
 
-    # 서비스 이력 (최근 순)
-    service_history: list[dict[str, str]] = field(default_factory=list)
-
-    # 원본 행 수
-    raw_row_count: int = 0
+    def to_html(self) -> str:
+        """챗봇 표시용 HTML 테이블"""
+        if not self.rows:
+            return (
+                f'<div class="feat-table-wrap">'
+                f'<div class="feat-label">{self.feature}</div>'
+                f'<p class="no-data">데이터 없음</p></div>'
+            )
+        th = "".join(f"<th>{c}</th>" for c in self.columns)
+        tbody = "".join(
+            "<tr>" + "".join(f"<td>{v}</td>" for v in row) + "</tr>"
+            for row in self.rows
+        )
+        return (
+            f'<div class="feat-table-wrap">'
+            f'<div class="feat-label">{self.feature}'
+            f' <span class="feat-count">({len(self.rows)}건)</span></div>'
+            f'<div class="tbl-scroll"><table>'
+            f'<thead><tr>{th}</tr></thead>'
+            f'<tbody>{tbody}</tbody>'
+            f'</table></div></div>'
+        )
 
 
 @dataclass
 class ProcessedData:
     sn: str
-    device: DeviceInfo
-    summary_text: str          # AI Agent에 보낼 요약 텍스트
-    ai_prompt: str             # AI Agent 프롬프트
+    summary_text: str       # AI Agent 전송 텍스트
+    ai_prompt: str          # AI Agent 최종 프롬프트
+    feature_tables: dict[str, FeatureTable] = field(default_factory=dict)
+    html_tables: str = ""   # 챗봇 HTML 렌더링용
     error: str | None = None
 
+    # main.py 기존 코드 호환 (processed.device.*)
+    @property
+    def device(self):
+        return _CompatDevice(self.sn)
+
+
+class _CompatDevice:
+    """main.py의 processed.device.* 접근 호환용 더미"""
+    def __init__(self, sn: str):
+        self.sn = sn
+        self.model = ""
+        self.status = ""
+        self.customer_name = ""
+        self.contract_active = False
+        self.service_history: list = []
+
+
+# ─── 메인 프로세서 ────────────────────────────────────────────────────────────
 
 class DataProcessor:
-    """SQL 쿼리 결과를 가공합니다."""
-
-    # 컬럼명 매핑 (포털 컬럼명 → 내부 필드명)
-    # 실제 포털 컬럼명에 맞게 수정하세요
-    COLUMN_MAP = {
-        "serial_number": "sn",
-        "device_model": "model",
-        "manufacture_date": "manufacture_date",
-        "firmware_version": "firmware_version",
-        "status": "status",
-        "customer_name": "customer_name",
-        "contract_start": "contract_start",
-        "contract_end": "contract_end",
-        "last_service_date": "last_service_date",
-        "service_type": "service_type",
-        "engineer_name": "engineer_name",
-        "service_note": "service_note",
-    }
+    """CSV 데이터를 feature별 테이블로 가공합니다."""
 
     def process(self, query_result: QueryResult) -> ProcessedData:
-        """QueryResult를 ProcessedData로 변환합니다."""
-
         if not query_result.success:
-            device = DeviceInfo(sn=query_result.sn)
             return ProcessedData(
                 sn=query_result.sn,
-                device=device,
                 summary_text="",
                 ai_prompt="",
                 error=query_result.error,
             )
 
-        if not query_result.rows:
-            device = DeviceInfo(sn=query_result.sn)
+        # rows 가 비어 있으면 csv_path 에서 직접 읽기
+        rows: list[dict] = list(query_result.rows)
+        if not rows and query_result.csv_path:
+            rows = self._read_csv(query_result.csv_path)
+
+        if not rows:
             return ProcessedData(
                 sn=query_result.sn,
-                device=device,
-                summary_text=f"SN '{query_result.sn}'에 해당하는 기기를 찾을 수 없습니다.",
+                summary_text=f"SN '{query_result.sn}'의 조회 결과가 없습니다.",
                 ai_prompt="",
                 error="데이터 없음",
             )
 
-        device = self._extract_device_info(query_result)
-        summary = self._build_summary(device)
-        prompt = self._build_ai_prompt(device, summary)
+        feature_tables = self._build_feature_tables(rows)
+        summary = self._build_summary(query_result.sn, rows, feature_tables)
+        prompt = self._build_ai_prompt(query_result.sn, summary)
+        html_tables = "".join(t.to_html() for t in feature_tables.values())
 
         logger.info(
             f"데이터 가공 완료 - SN: {query_result.sn}, "
-            f"서비스 이력: {len(device.service_history)}건"
+            f"features: {list(feature_tables.keys())}, 총 {len(rows)}건"
         )
 
         return ProcessedData(
             sn=query_result.sn,
-            device=device,
             summary_text=summary,
             ai_prompt=prompt,
+            feature_tables=feature_tables,
+            html_tables=html_tables,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Internal
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _extract_device_info(self, result: QueryResult) -> DeviceInfo:
-        first = result.rows[0]
+    def _build_feature_tables(self, rows: list[dict]) -> dict[str, FeatureTable]:
+        """feature별로 그룹화하고 FeatureTable 목록을 반환합니다."""
+        grouped: dict[str, list[dict]] = {}
+        for row in rows:
+            feat = str(row.get("feature", "")).strip().upper()
+            if feat:
+                grouped.setdefault(feat, []).append(row)
 
-        device = DeviceInfo(
-            sn=result.sn,
-            model=self._get(first, "device_model"),
-            manufacture_date=self._format_date(self._get(first, "manufacture_date")),
-            firmware_version=self._get(first, "firmware_version"),
-            status=self._get(first, "status"),
-            customer_name=self._get(first, "customer_name"),
-            contract_start=self._format_date(self._get(first, "contract_start")),
-            contract_end=self._format_date(self._get(first, "contract_end")),
-            raw_row_count=result.row_count,
-        )
-
-        # 계약 활성 여부 판단
-        device.contract_active = self._is_contract_active(device.contract_end)
-
-        # 서비스 이력 추출 (중복 제거)
-        seen = set()
-        for row in result.rows:
-            svc_date = self._get(row, "last_service_date")
-            svc_type = self._get(row, "service_type")
-            key = (svc_date, svc_type)
-            if key in seen or (not svc_date and not svc_type):
-                continue
-            seen.add(key)
-            device.service_history.append({
-                "date": self._format_date(svc_date),
-                "type": svc_type,
-                "engineer": self._get(row, "engineer_name"),
-                "note": self._get(row, "service_note"),
-            })
-
-        return device
-
-    def _build_summary(self, device: DeviceInfo) -> str:
-        """AI Agent에 전달할 요약 텍스트를 생성합니다."""
-        lines = [
-            f"=== 단말기 정보 ===",
-            f"SN: {device.sn}",
-            f"모델: {device.model or '정보 없음'}",
-            f"제조일: {device.manufacture_date or '정보 없음'}",
-            f"펌웨어: {device.firmware_version or '정보 없음'}",
-            f"상태: {device.status or '정보 없음'}",
-            "",
-            f"=== 고객/계약 정보 ===",
-            f"고객명: {device.customer_name or '정보 없음'}",
-            f"계약기간: {device.contract_start} ~ {device.contract_end}",
-            f"계약 상태: {'활성' if device.contract_active else '만료/없음'}",
-            "",
-            f"=== 서비스 이력 ({len(device.service_history)}건) ===",
-        ]
-
-        if device.service_history:
-            for i, svc in enumerate(device.service_history[:10], 1):  # 최근 10건
-                lines.append(
-                    f"{i}. [{svc['date']}] {svc['type']} - "
-                    f"담당: {svc['engineer']} / {svc['note']}"
+        tables: dict[str, FeatureTable] = {}
+        for feat, feat_rows in grouped.items():
+            col_map = FEATURE_COLUMNS.get(feat)
+            if col_map:
+                table_rows = []
+                for row in feat_rows:
+                    cv = self._parse_custom_value(str(row.get("custom_value", "") or ""))
+                    tr = []
+                    for col_name, json_key in col_map.items():
+                        if json_key == "__date__":
+                            tr.append(str(row.get("Date", "") or ""))
+                        elif json_key == "__time__":
+                            tr.append(str(row.get("Time", "") or ""))
+                        else:
+                            tr.append(cv.get(json_key, ""))
+                    table_rows.append(tr)
+                tables[feat] = FeatureTable(
+                    feature=feat,
+                    columns=list(col_map.keys()),
+                    rows=table_rows,
                 )
-        else:
-            lines.append("서비스 이력 없음")
+            else:
+                # 매핑 미정의 feature: Date / Time / custom_value 축약 표시
+                table_rows = [
+                    [
+                        str(r.get("Date", "")),
+                        str(r.get("Time", "")),
+                        str(r.get("custom_value", ""))[:120],
+                    ]
+                    for r in feat_rows
+                ]
+                tables[feat] = FeatureTable(
+                    feature=feat,
+                    columns=["Date", "Time", "custom_value (축약)"],
+                    rows=table_rows,
+                )
+
+        return tables
+
+    def _build_summary(
+        self,
+        sn: str,
+        rows: list[dict],
+        feature_tables: dict[str, FeatureTable],
+    ) -> str:
+        """AI Agent 전송용 텍스트 요약을 생성합니다."""
+        dates = [str(r.get("Date", "")) for r in rows if r.get("Date")]
+        date_range = f"{min(dates)} ~ {max(dates)}" if dates else "날짜 없음"
+
+        lines = [
+            f"=== SN: {sn} 네트워크 이벤트 데이터 ===",
+            f"기간: {date_range}, 총 {len(rows)}건",
+            "",
+        ]
+        for table in feature_tables.values():
+            lines.append(table.to_text())
+            lines.append("")
 
         return "\n".join(lines)
 
-    def _build_ai_prompt(self, device: DeviceInfo, summary: str) -> str:
-        """AI Agent에 보낼 분석 요청 프롬프트를 생성합니다."""
+    def _build_ai_prompt(self, sn: str, summary: str) -> str:
         return (
-            f"다음은 FA가 조회한 단말기(SN: {device.sn})의 정보입니다.\n\n"
+            f"다음은 단말기(SN: {sn})에서 수집된 네트워크 이벤트 데이터입니다.\n\n"
             f"{summary}\n\n"
-            f"위 정보를 바탕으로 다음을 분석해 주세요:\n"
-            f"1. 단말기의 현재 상태 요약\n"
-            f"2. 계약 및 보증 상태 안내\n"
-            f"3. 서비스 이력 요약 및 반복 문제 여부\n"
-            f"4. FA에게 전달할 주요 권고사항\n"
-            f"\n한국어로 FA가 이해하기 쉽게 간결하게 답변해 주세요."
+            f"위 데이터를 분석하여 한국어로 간결하게 답변해 주세요:\n"
+            f"1. 주요 이벤트 발생 현황 요약\n"
+            f"2. MUTE/DROP 발생 지역 (PLMN, TAC, PCI 기준)\n"
+            f"3. NW 품질 이슈 여부 (RSRP, SINR, BLER 기준)\n"
+            f"4. FA 권고 조치사항\n"
         )
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Utilities
-    # ─────────────────────────────────────────────────────────────────────────
-
     @staticmethod
-    def _get(row: dict[str, Any], key: str) -> str:
-        val = row.get(key, "") or ""
-        return str(val).strip()
-
-    @staticmethod
-    def _format_date(date_str: str) -> str:
-        if not date_str:
-            return ""
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y"):
-            try:
-                return datetime.strptime(date_str, fmt).strftime("%Y-%m-%d")
-            except ValueError:
-                continue
-        return date_str
-
-    @staticmethod
-    def _is_contract_active(contract_end: str) -> bool:
-        if not contract_end:
-            return False
+    def _read_csv(csv_path: str) -> list[dict]:
+        """CSV 파일을 읽어 dict 리스트로 반환합니다."""
         try:
-            end_date = datetime.strptime(contract_end, "%Y-%m-%d")
-            return end_date >= datetime.now()
-        except ValueError:
-            return False
+            rows = []
+            with open(csv_path, encoding="utf-8-sig", newline="") as f:
+                for row in csv.DictReader(f):
+                    rows.append(dict(row))
+            logger.info(f"CSV 읽기 완료: {csv_path} ({len(rows)}행)")
+            return rows
+        except Exception as e:
+            logger.error(f"CSV 읽기 실패 [{csv_path}]: {e}")
+            return []
+
+    @staticmethod
+    def _parse_custom_value(raw: str) -> dict:
+        """custom_value JSON 문자열을 dict로 파싱합니다."""
+        raw = raw.strip()
+        if not raw or raw in ("nan", "None", "null"):
+            return {}
+        # 표준 JSON 시도
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+        # 작은따옴표 → 큰따옴표 변환
+        try:
+            return json.loads(raw.replace("'", '"'))
+        except json.JSONDecodeError:
+            pass
+        # 정규식 fallback
+        pairs = re.findall(r'"([^"]+)"\s*:\s*"([^"]*)"', raw)
+        return dict(pairs)
 
 
 # 싱글턴 인스턴스
