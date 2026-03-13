@@ -58,6 +58,9 @@ class AgentClient:
             },
         }
 
+        # AI Agent 입력값을 파일로 저장 (확인용)
+        self._save_input_log(processed.sn, processed.ai_prompt)
+
         try:
             logger.info(f"AI Agent 요청 전송 - SN: {processed.sn}")
             response = await self._client.post(settings.AI_AGENT_URL, json=payload)
@@ -107,6 +110,20 @@ class AgentClient:
             "아래는 수집된 네트워크 이벤트 데이터 요약입니다:\n\n"
             f"{processed.summary_text}"
         )
+
+    @staticmethod
+    def _save_input_log(sn: str, prompt: str) -> None:
+        """AI Agent에 전송하는 입력값을 텍스트 파일로 저장합니다."""
+        import os
+        save_dir = settings.CSV_DOWNLOAD_PATH
+        path = os.path.join(save_dir, f"{sn}_ai_input.txt")
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(prompt)
+            logger.info(f"AI 입력값 저장: {path}")
+        except Exception as e:
+            logger.warning(f"AI 입력값 저장 실패: {e}")
 
     async def close(self):
         await self._client.aclose()
