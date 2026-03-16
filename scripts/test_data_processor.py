@@ -104,18 +104,17 @@ def main():
     print()
 
     # ── DataProcessor 실행 ──────────────────────────────────────────────────
-    # QueryResult mock
+    # QueryResult mock (클래스 바디 스코핑 충돌 방지 위해 단순 객체 사용)
     class _FakeResult:
         success = True
-        sn = os.path.basename(csv_path).replace(".csv", "")
         rows: list = []
         error = None
-        csv_path = None
+        sn = ""
+        csv_path = ""
 
+    base = os.path.basename(csv_path).replace(".csv", "")
     fake = _FakeResult()
     fake.csv_path = csv_path
-    # sn: 파일명에서 추출 (첫 번째 '_' 이전 부분)
-    base = os.path.basename(csv_path).replace(".csv", "")
     fake.sn = base.split("_")[0] if "_" in base else base
 
     dp = DataProcessor()
