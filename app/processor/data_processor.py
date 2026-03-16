@@ -335,28 +335,19 @@ class DataProcessor:
         rows: list[dict],
         feature_tables: dict[str, FeatureTable],
     ) -> str:
-        """AI Agent 전송용 텍스트 요약을 생성합니다."""
-        dates = [str(r.get("Date", "")) for r in rows if r.get("Date")]
-        date_range = f"{min(dates)} ~ {max(dates)}" if dates else "날짜 없음"
-
-        lines = [
-            f"=== SN: {sn} 네트워크 이벤트 데이터 ===",
-            f"기간: {date_range}, 총 {len(rows)}건",
-            "",
-        ]
-        for table in feature_tables.values():
-            lines.append(table.to_text())
-            lines.append("")
-
-        return "\n".join(lines)
+        """AI Agent 전송용 텍스트 요약을 생성합니다. (MUTE 표만 포함)"""
+        mute = feature_tables.get("MUTE")
+        if not mute:
+            return f"SN '{sn}' - MUTE 데이터 없음"
+        return mute.to_text()
 
     def _build_ai_prompt(self, sn: str, summary: str) -> str:
         return (
-            f"다음은 단말기(SN: {sn})에서 수집된 네트워크 이벤트 데이터입니다.\n\n"
+            f"다음은 단말기(SN: {sn})의 MUTE 이벤트 집계 데이터입니다.\n\n"
             f"{summary}\n\n"
             f"위 데이터를 분석하여 한국어로 간결하게 답변해 주세요:\n"
-            f"1. 주요 이벤트 발생 현황 요약\n"
-            f"2. MUTE/DROP 발생 지역 (PLMN, TAC, PCI 기준)\n"
+            f"1. 주요 MUTE 발생 현황 요약\n"
+            f"2. MUTE 발생 지역 (PLMN, TAC, PCI 기준)\n"
             f"3. NW 품질 이슈 여부 (RSRP, SINR, BLER 기준)\n"
             f"4. FA 권고 조치사항\n"
         )
