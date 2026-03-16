@@ -61,7 +61,7 @@ HEX_COLUMNS: set[str] = {"TAC", "LAC"}
 # sort_by  : 집계 후 내림차순 정렬 기준 컬럼
 FEATURE_AGGREGATION: dict[str, dict] = {
     "MUTE": {
-        "group_by": ["PLMN", "ACT", "TAC", "LAC", "PCI", "DLCh"],
+        "group_by": ["PLMN", "ACT", "TAC", "LAC", "PCI", "DLCh", "Band"],
         "sum":      ["UBMT", "RSMT", "RNMT", "DBMT", "ECNT"],
         "avg":      ["RSRP", "RSCP", "SINR", "BLER"],
         "first":    ["Band"],
