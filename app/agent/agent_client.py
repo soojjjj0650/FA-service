@@ -34,23 +34,16 @@ _MAX_RETRIES = 3
 _RETRY_DELAYS = [2, 4, 8]  # 지수 백오프 (초)
 
 
+_TIMEOUT = httpx.Timeout(connect=10.0, read=settings.AI_AGENT_TIMEOUT, write=30.0, pool=10.0)
+_HEADERS = {
+    "Content-Type": "application/json",
+    "x-api-key": settings.AI_AGENT_API_KEY,
+    "Connection": "close",  # 커넥션 재사용 안 함 (stale connection 방지)
+}
+
+
 class AgentClient:
     """삼성 내부 AI Agent와 통신하는 클라이언트입니다."""
-
-    def __init__(self):
-        self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(
-                connect=10.0,
-                read=settings.AI_AGENT_TIMEOUT,
-                write=30.0,
-                pool=10.0,
-            ),
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": settings.AI_AGENT_API_KEY,
-            },
-            verify=False,  # 사내 SSL 인증서 검증 비활성화
-        )
 
     async def analyze(self, processed: ProcessedData) -> str:
         """
@@ -78,7 +71,13 @@ class AgentClient:
         for attempt in range(_MAX_RETRIES):
             try:
                 logger.info(f"AI Agent 요청 전송 - SN: {processed.sn} (시도 {attempt + 1}/{_MAX_RETRIES})")
-                response = await self._client.post(settings.AI_AGENT_URL, json=payload)
+                # 매 요청마다 새 클라이언트 생성 (stale connection 문제 방지)
+                async with httpx.AsyncClient(
+                    timeout=_TIMEOUT,
+                    headers=_HEADERS,
+                    verify=False,
+                ) as client:
+                    response = await client.post(settings.AI_AGENT_URL, json=payload)
                 response.raise_for_status()
                 data = response.json()
 
@@ -156,7 +155,7 @@ class AgentClient:
             logger.error(f"AI 입력값 저장 실패 [{type(e).__name__}]: {e}\n저장 경로: {path}", exc_info=True)
 
     async def close(self):
-        await self._client.aclose()
+        pass  # 클라이언트를 per-request로 생성하므로 별도 close 불필요
 
 
 # 싱글턴 인스턴스
