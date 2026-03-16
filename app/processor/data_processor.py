@@ -48,6 +48,21 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
 }
 
 
+# ─── feature별 집계 규칙 ──────────────────────────────────────────────────────
+# group_by : 동일 조합으로 묶을 표시명 컬럼 목록
+# sum      : 합계를 낼 컬럼
+# avg      : 평균을 낼 컬럼 (소수점 1자리)
+# first    : 그룹 내 첫 번째 값을 그대로 사용할 컬럼
+FEATURE_AGGREGATION: dict[str, dict] = {
+    "MUTE": {
+        "group_by": ["PLMN", "ACT", "TAC", "LAC", "PCI", "DLCh"],
+        "sum":      ["UBMT", "RSMT", "RNMT", "DBMT", "ECNT"],
+        "avg":      ["RSRP", "RSCP", "SINR", "BLER"],
+        "first":    ["Band"],
+    },
+}
+
+
 # ─── 데이터 클래스 ────────────────────────────────────────────────────────────
 
 @dataclass
@@ -188,10 +203,13 @@ class DataProcessor:
                         else:
                             tr.append(cv.get(json_key, ""))
                     table_rows.append(tr)
+
+                columns = list(col_map.keys())
+                agg_rows = self._aggregate_rows(feat, columns, table_rows)
                 tables[feat] = FeatureTable(
                     feature=feat,
-                    columns=list(col_map.keys()),
-                    rows=table_rows,
+                    columns=columns,
+                    rows=agg_rows,
                 )
             else:
                 # 매핑 미정의 feature: Date / Time / custom_value 축약 표시
@@ -210,6 +228,73 @@ class DataProcessor:
                 )
 
         return tables
+
+    def _aggregate_rows(
+        self,
+        feat: str,
+        columns: list[str],
+        rows: list[list[str]],
+    ) -> list[list[str]]:
+        """FEATURE_AGGREGATION 규칙에 따라 행을 그룹화·집계합니다.
+        집계 규칙이 없는 feature는 원본 rows를 그대로 반환합니다."""
+        agg_cfg = FEATURE_AGGREGATION.get(feat)
+        if not agg_cfg or not rows:
+            return rows
+
+        col_idx = {c: i for i, c in enumerate(columns)}
+        group_by_cols = [c for c in agg_cfg["group_by"] if c in col_idx]
+        sum_cols  = [c for c in agg_cfg.get("sum",  []) if c in col_idx]
+        avg_cols  = [c for c in agg_cfg.get("avg",  []) if c in col_idx]
+
+        if not group_by_cols:
+            return rows
+
+        # 그룹 키 → 해당 rows 묶기
+        groups: dict[tuple, list[list[str]]] = {}
+        for row in rows:
+            key = tuple(row[col_idx[c]] for c in group_by_cols)
+            groups.setdefault(key, []).append(row)
+
+        result = []
+        for group_rows in groups.values():
+            merged = list(group_rows[0])  # 기준행 (Date·Time·first 값 유지)
+
+            # Date: min ~ max 범위
+            if "Date" in col_idx:
+                dates = [r[col_idx["Date"]] for r in group_rows if r[col_idx["Date"]]]
+                if dates:
+                    mn, mx = min(dates), max(dates)
+                    merged[col_idx["Date"]] = f"{mn}~{mx}" if mn != mx else mn
+
+            # 합계 컬럼
+            for col in sum_cols:
+                total = 0
+                for r in group_rows:
+                    try:
+                        total += int(float(r[col_idx[col]] or 0))
+                    except (ValueError, TypeError):
+                        pass
+                merged[col_idx[col]] = str(total)
+
+            # 평균 컬럼 (소수점 1자리)
+            for col in avg_cols:
+                vals = []
+                for r in group_rows:
+                    try:
+                        v = r[col_idx[col]]
+                        if v:
+                            vals.append(float(v))
+                    except (ValueError, TypeError):
+                        pass
+                merged[col_idx[col]] = f"{sum(vals)/len(vals):.1f}" if vals else ""
+
+            result.append(merged)
+
+        logger.debug(
+            f"[{feat}] 집계 완료: 원본 {len(rows)}건 → 집계 {len(result)}건 "
+            f"(group_by={group_by_cols})"
+        )
+        return result
 
     def _build_summary(
         self,
