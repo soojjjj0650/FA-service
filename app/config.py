@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     # ─── 내부 AI Agent ───────────────────────────────────────────────────────
     AI_AGENT_URL: str = "https://agent.sec.samsung.net/api/v1/run/f0bb8a7f-69c0-4343-8251-1483286bbb22?stream=false"
-    AI_AGENT_API_KEY: str = "sk-TnJNXgqSMH9ikmNk5a1N99JfkKy4CXQPDYqY_EWx8"
+    AI_AGENT_API_KEY: str = "sk-TnJNxPXgqSMH9ikmNk5alN99JfkKy4CXQPDYqY_EWx8"
     AI_AGENT_INPUT_KEY: str = "TextInput-n8kcD"   # body의 component input key
     AI_AGENT_TIMEOUT: int = 120
 
