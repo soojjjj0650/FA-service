@@ -16,6 +16,7 @@ API 스펙:
     { "outputs": [ { "outputs": [ { "results": { "message": { "text": "..." } } } ] } ] }
 """
 
+import asyncio
 import logging
 import warnings
 
@@ -29,13 +30,21 @@ from app.processor.data_processor import ProcessedData
 
 logger = logging.getLogger(__name__)
 
+_MAX_RETRIES = 3
+_RETRY_DELAYS = [2, 4, 8]  # 지수 백오프 (초)
+
 
 class AgentClient:
     """삼성 내부 AI Agent와 통신하는 클라이언트입니다."""
 
     def __init__(self):
         self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(settings.AI_AGENT_TIMEOUT),
+            timeout=httpx.Timeout(
+                connect=10.0,
+                read=settings.AI_AGENT_TIMEOUT,
+                write=30.0,
+                pool=10.0,
+            ),
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": settings.AI_AGENT_API_KEY,
@@ -66,36 +75,45 @@ class AgentClient:
         # AI Agent 입력값을 파일로 저장 (확인용)
         self._save_input_log(processed.sn, processed.ai_prompt)
 
-        try:
-            logger.info(f"AI Agent 요청 전송 - SN: {processed.sn}")
-            response = await self._client.post(settings.AI_AGENT_URL, json=payload)
-            response.raise_for_status()
-            data = response.json()
+        for attempt in range(_MAX_RETRIES):
+            try:
+                logger.info(f"AI Agent 요청 전송 - SN: {processed.sn} (시도 {attempt + 1}/{_MAX_RETRIES})")
+                response = await self._client.post(settings.AI_AGENT_URL, json=payload)
+                response.raise_for_status()
+                data = response.json()
 
-            result = self._extract_text(data)
-            if not result:
-                logger.warning(f"AI Agent 응답에서 텍스트 추출 실패: {data}")
+                result = self._extract_text(data)
+                if not result:
+                    logger.warning(f"AI Agent 응답에서 텍스트 추출 실패: {data}")
+                    return self._fallback_response(processed)
+
+                logger.info(f"AI Agent 응답 수신 완료 - SN: {processed.sn}")
+                return result
+
+            except httpx.TimeoutException as e:
+                logger.warning(f"AI Agent 타임아웃 ({settings.AI_AGENT_TIMEOUT}초) - SN: {processed.sn}, 시도 {attempt + 1}")
+            except httpx.ReadError as e:
+                logger.warning(f"AI Agent ReadError (응답 수신 중 연결 끊김) - SN: {processed.sn}, 시도 {attempt + 1}: {e}")
+            except httpx.ConnectError as e:
+                logger.warning(f"AI Agent 연결 실패 (네트워크/방화벽 확인 필요) - 시도 {attempt + 1}: {e}")
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"AI Agent HTTP 오류: {e.response.status_code}\n"
+                    f"URL: {settings.AI_AGENT_URL}\n"
+                    f"응답 body: {e.response.text[:500]}"
+                )
+                return self._fallback_response(processed)  # HTTP 오류는 재시도 없이 반환
+            except Exception as e:
+                logger.error(f"AI Agent 통신 오류 [{type(e).__name__}]: {e}", exc_info=True)
                 return self._fallback_response(processed)
 
-            logger.info(f"AI Agent 응답 수신 완료 - SN: {processed.sn}")
-            return result
+            if attempt < _MAX_RETRIES - 1:
+                delay = _RETRY_DELAYS[attempt]
+                logger.info(f"AI Agent 재시도 대기 {delay}초...")
+                await asyncio.sleep(delay)
 
-        except httpx.TimeoutException:
-            logger.error(f"AI Agent 타임아웃 ({settings.AI_AGENT_TIMEOUT}초) - SN: {processed.sn}")
-            return self._fallback_response(processed)
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                f"AI Agent HTTP 오류: {e.response.status_code}\n"
-                f"URL: {settings.AI_AGENT_URL}\n"
-                f"응답 body: {e.response.text[:500]}"
-            )
-            return self._fallback_response(processed)
-        except httpx.ConnectError as e:
-            logger.error(f"AI Agent 연결 실패 (네트워크/방화벽 확인 필요): {e}")
-            return self._fallback_response(processed)
-        except Exception as e:
-            logger.error(f"AI Agent 통신 오류 [{type(e).__name__}]: {e}", exc_info=True)
-            return self._fallback_response(processed)
+        logger.error(f"AI Agent 최대 재시도 횟수({_MAX_RETRIES}) 초과 - SN: {processed.sn}")
+        return self._fallback_response(processed)
 
     @staticmethod
     def _extract_text(data: dict) -> str:
