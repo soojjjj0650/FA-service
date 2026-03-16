@@ -48,18 +48,25 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
 }
 
 
+# ─── 16진수 → 10진수 변환이 필요한 컬럼 (표시명 기준, 전 feature 공통) ────────
+HEX_COLUMNS: set[str] = {"TAC", "LAC"}
+
+
 # ─── feature별 집계 규칙 ──────────────────────────────────────────────────────
 # group_by : 동일 조합으로 묶을 표시명 컬럼 목록
 # sum      : 합계를 낼 컬럼
 # avg      : 평균을 낼 컬럼 (소수점 1자리)
 # first    : 그룹 내 첫 번째 값을 그대로 사용할 컬럼
+# drop     : 집계 후 제거할 컬럼
+# sort_by  : 집계 후 내림차순 정렬 기준 컬럼
 FEATURE_AGGREGATION: dict[str, dict] = {
     "MUTE": {
         "group_by": ["PLMN", "ACT", "TAC", "LAC", "PCI", "DLCh"],
         "sum":      ["UBMT", "RSMT", "RNMT", "DBMT", "ECNT"],
         "avg":      ["RSRP", "RSCP", "SINR", "BLER"],
         "first":    ["Band"],
-        "drop":     ["Date", "Time"],   # 집계 후 제거할 컬럼
+        "drop":     ["Date", "Time"],
+        "sort_by":  "ECNT",
     },
 }
 
@@ -131,6 +138,14 @@ class _CompatDevice:
         self.service_history: list = []
 
 
+def _safe_float(v: str) -> float:
+    """정렬용 숫자 변환 헬퍼. 변환 불가 시 -inf 반환."""
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return float("-inf")
+
+
 # ─── 메인 프로세서 ────────────────────────────────────────────────────────────
 
 class DataProcessor:
@@ -198,11 +213,14 @@ class DataProcessor:
                     tr = []
                     for col_name, json_key in col_map.items():
                         if json_key == "__date__":
-                            tr.append(str(row.get("Date", "") or ""))
+                            val = str(row.get("Date", "") or "")
                         elif json_key == "__time__":
-                            tr.append(str(row.get("Time", "") or ""))
+                            val = str(row.get("Time", "") or "")
                         else:
-                            tr.append(cv.get(json_key, ""))
+                            val = cv.get(json_key, "")
+                            if col_name in HEX_COLUMNS:
+                                val = self._hex_to_dec(val)
+                        tr.append(val)
                     table_rows.append(tr)
 
                 columns = list(col_map.keys())
@@ -214,6 +232,12 @@ class DataProcessor:
                     keep_idx = [i for i, c in enumerate(columns) if c not in drop_cols]
                     columns  = [columns[i] for i in keep_idx]
                     agg_rows = [[row[i] for i in keep_idx] for row in agg_rows]
+
+                # 내림차순 정렬
+                sort_col = FEATURE_AGGREGATION.get(feat, {}).get("sort_by")
+                if sort_col and sort_col in columns:
+                    si = columns.index(sort_col)
+                    agg_rows.sort(key=lambda r: _safe_float(r[si]), reverse=True)
 
                 tables[feat] = FeatureTable(
                     feature=feat,
@@ -336,6 +360,17 @@ class DataProcessor:
             f"3. NW 품질 이슈 여부 (RSRP, SINR, BLER 기준)\n"
             f"4. FA 권고 조치사항\n"
         )
+
+    @staticmethod
+    def _hex_to_dec(val: str) -> str:
+        """16진수 문자열을 10진수 문자열로 변환합니다. 변환 불가 시 원본 반환."""
+        v = val.strip()
+        if not v:
+            return v
+        try:
+            return str(int(v, 16))
+        except ValueError:
+            return v
 
     @staticmethod
     def _read_csv(csv_path: str) -> list[dict]:
