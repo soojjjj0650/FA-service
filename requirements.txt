@@ -13,4 +13,4 @@ python-dotenv==1.0.1
 playwright==1.49.0
 
 # HTTP Client
-httpx==0.28.1
+requests==2.32.3

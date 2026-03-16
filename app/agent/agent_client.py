@@ -20,9 +20,11 @@ import asyncio
 import logging
 import warnings
 
-import httpx
+import requests
+import urllib3
 
 # 사내 SSL 인증서로 인한 InsecureRequestWarning 억제
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 from app.config import settings
@@ -34,12 +36,20 @@ _MAX_RETRIES = 3
 _RETRY_DELAYS = [2, 4, 8]  # 지수 백오프 (초)
 
 
-_TIMEOUT = httpx.Timeout(connect=10.0, read=settings.AI_AGENT_TIMEOUT, write=30.0, pool=10.0)
-_HEADERS = {
-    "Content-Type": "application/json",
-    "x-api-key": settings.AI_AGENT_API_KEY,
-    "Connection": "close",  # 커넥션 재사용 안 함 (stale connection 방지)
-}
+def _post_to_agent(payload: dict) -> dict:
+    """동기 requests로 AI Agent에 POST 요청합니다. (Windows 시스템 프록시 자동 사용)"""
+    response = requests.post(
+        settings.AI_AGENT_URL,
+        json=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": settings.AI_AGENT_API_KEY,
+        },
+        verify=False,       # 사내 SSL 인증서 검증 비활성화
+        timeout=(10, settings.AI_AGENT_TIMEOUT),  # (connect, read)
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 class AgentClient:
@@ -71,15 +81,8 @@ class AgentClient:
         for attempt in range(_MAX_RETRIES):
             try:
                 logger.info(f"AI Agent 요청 전송 - SN: {processed.sn} (시도 {attempt + 1}/{_MAX_RETRIES})")
-                # 매 요청마다 새 클라이언트 생성 (stale connection 문제 방지)
-                async with httpx.AsyncClient(
-                    timeout=_TIMEOUT,
-                    headers=_HEADERS,
-                    verify=False,
-                ) as client:
-                    response = await client.post(settings.AI_AGENT_URL, json=payload)
-                response.raise_for_status()
-                data = response.json()
+                # asyncio.to_thread로 동기 requests 호출 (Windows 시스템 프록시 자동 적용)
+                data = await asyncio.to_thread(_post_to_agent, payload)
 
                 result = self._extract_text(data)
                 if not result:
@@ -89,13 +92,11 @@ class AgentClient:
                 logger.info(f"AI Agent 응답 수신 완료 - SN: {processed.sn}")
                 return result
 
-            except httpx.TimeoutException as e:
+            except requests.exceptions.Timeout:
                 logger.warning(f"AI Agent 타임아웃 ({settings.AI_AGENT_TIMEOUT}초) - SN: {processed.sn}, 시도 {attempt + 1}")
-            except httpx.ReadError as e:
-                logger.warning(f"AI Agent ReadError (응답 수신 중 연결 끊김) - SN: {processed.sn}, 시도 {attempt + 1}: {e}")
-            except httpx.ConnectError as e:
-                logger.warning(f"AI Agent 연결 실패 (네트워크/방화벽 확인 필요) - 시도 {attempt + 1}: {e}")
-            except httpx.HTTPStatusError as e:
+            except requests.exceptions.ConnectionError as e:
+                logger.warning(f"AI Agent 연결 실패 - SN: {processed.sn}, 시도 {attempt + 1}: {e}")
+            except requests.exceptions.HTTPError as e:
                 logger.error(
                     f"AI Agent HTTP 오류: {e.response.status_code}\n"
                     f"URL: {settings.AI_AGENT_URL}\n"
@@ -155,7 +156,7 @@ class AgentClient:
             logger.error(f"AI 입력값 저장 실패 [{type(e).__name__}]: {e}\n저장 경로: {path}", exc_info=True)
 
     async def close(self):
-        pass  # 클라이언트를 per-request로 생성하므로 별도 close 불필요
+        pass
 
 
 # 싱글턴 인스턴스
