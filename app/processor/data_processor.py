@@ -59,6 +59,7 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "sum":      ["UBMT", "RSMT", "RNMT", "DBMT", "ECNT"],
         "avg":      ["RSRP", "RSCP", "SINR", "BLER"],
         "first":    ["Band"],
+        "drop":     ["Date", "Time"],   # 집계 후 제거할 컬럼
     },
 }
 
@@ -206,6 +207,14 @@ class DataProcessor:
 
                 columns = list(col_map.keys())
                 agg_rows = self._aggregate_rows(feat, columns, table_rows)
+
+                # drop 컬럼 제거
+                drop_cols = set(FEATURE_AGGREGATION.get(feat, {}).get("drop", []))
+                if drop_cols:
+                    keep_idx = [i for i, c in enumerate(columns) if c not in drop_cols]
+                    columns  = [columns[i] for i in keep_idx]
+                    agg_rows = [[row[i] for i in keep_idx] for row in agg_rows]
+
                 tables[feat] = FeatureTable(
                     feature=feat,
                     columns=columns,
