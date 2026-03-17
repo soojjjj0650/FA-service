@@ -39,6 +39,7 @@ class Settings(BaseSettings):
 
     # ─── 회사 챗봇 웹훅 (FA 분석 완료 시 결과 push) ──────────────────────────
     CHATBOT_WEBHOOK_URL: str = "https://botbuilder.samsung.net/webhook/fa.service"
+    CHATBOT_WEBHOOK_KEY: str = "12345"
 
     # ─── FastAPI 서버 ────────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"

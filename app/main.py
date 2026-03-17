@@ -184,8 +184,11 @@ async def _run_and_push(sn: str) -> None:
 async def _push_to_chatbot(text: str) -> None:
     """회사 챗봇 웹훅 URL로 결과 텍스트를 POST합니다."""
     try:
+        payload = {"text": text}
+        if settings.CHATBOT_WEBHOOK_KEY:
+            payload["key"] = settings.CHATBOT_WEBHOOK_KEY
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(settings.CHATBOT_WEBHOOK_URL, json={"text": text})
+            resp = await client.post(settings.CHATBOT_WEBHOOK_URL, json=payload)
             resp.raise_for_status()
     except Exception as e:
         logger.error(f"[Push] 챗봇 웹훅 호출 실패: {e}")
