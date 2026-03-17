@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     AI_AGENT_INPUT_KEY: str = "TextInput-n8kcD"   # body의 component input key
     AI_AGENT_TIMEOUT: int = 120
 
+    # ─── 회사 챗봇 웹훅 (FA 분석 완료 시 결과 push) ──────────────────────────
+    CHATBOT_WEBHOOK_URL: str = ""   # 챗봇 Builder에서 발급받은 웹훅 URL
+
     # ─── FastAPI 서버 ────────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"
     PORT: int = 8000
