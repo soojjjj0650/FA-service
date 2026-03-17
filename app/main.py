@@ -52,6 +52,10 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 # job_id → {"status": str, "sns": list, "results": list, "progress": dict}
 _batch_jobs: dict[str, dict] = {}
 
+# ─── 챗봇 Job 저장소 (메모리) ─────────────────────────────────────────────────
+# job_id → {"status": str, "sn": str, "ai_response": str, "feature_summary": str, "error": str}
+_chatbot_jobs: dict[str, dict] = {}
+
 
 # ─── 수명 주기 이벤트 ─────────────────────────────────────────────────────────
 @app.on_event("startup")
@@ -380,11 +384,56 @@ async def _send(websocket: WebSocket, msg_type: str, message: str):
     await websocket.send_json({"type": msg_type, "message": message})
 
 
+# ─── 챗봇 전용 백그라운드 파이프라인 ─────────────────────────────────────────
+async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
+    """챗봇 Job: SQL 조회 → 데이터 가공 → AI 분석 전체 파이프라인 실행"""
+    job = _chatbot_jobs[job_id]
+    job["status"] = "running"
+
+    try:
+        # 1. SQL 쿼리 실행
+        query_result = await query_runner.run(sn)
+
+        if not query_result.success:
+            job["status"] = "error"
+            job["error"] = (
+                "세션이 만료되었습니다. 관리자에게 재로그인을 요청해 주세요."
+                if query_result.session_expired
+                else (query_result.error or "데이터 조회 실패")
+            )
+            return
+
+        # 2. 데이터 가공
+        processed = data_processor.process(query_result)
+
+        if processed.error and not processed.summary_text:
+            job["status"] = "error"
+            job["error"] = processed.error
+            return
+
+        # 3. AI 분석
+        ai_response = await agent_client.analyze(processed)
+
+        feature_summary = "  |  ".join(
+            f"{f}: {len(t.rows)}건" for f, t in processed.feature_tables.items()
+        ) or "데이터 없음"
+
+        job["status"] = "done"
+        job["ai_response"] = ai_response
+        job["feature_summary"] = feature_summary
+
+    except Exception as e:
+        logger.error(f"[Chatbot Job {job_id}] 처리 오류: {e}")
+        job["status"] = "error"
+        job["error"] = str(e)
+
+
 # ─── Webhook 엔드포인트 (챗봇 Builder Adaptive Card) ──────────────────────────
 class WebhookRequest(BaseModel):
     """챗봇 Builder에서 Adaptive Card Action.Submit 시 전달되는 데이터"""
     action: Optional[str] = None
     sn_value: Optional[str] = None
+    job_id: Optional[str] = None
 
 
 @app.post("/webhook")
@@ -392,83 +441,222 @@ async def webhook_handler(request: WebhookRequest):
     """
     챗봇 Builder Adaptive Card 제출 수신 엔드포인트.
 
-    Adaptive Card에서 Action.Submit 클릭 시 아래 형식으로 데이터가 전달됩니다:
-      { "action": "search_sn", "sn_value": "SN-12345" }
+    [SN 조회 요청] Action.Submit → {"action": "search_sn", "sn_value": "SN-12345"}
+      → 백그라운드 Job 시작 후 즉시 접수 카드 반환 (60초 timeout 대응)
 
-    조회 결과를 Adaptive Card JSON으로 반환합니다.
+    [결과 확인 요청] Action.Submit → {"action": "check_result", "job_id": "..."}
+      → Job 상태에 따라 결과 카드 또는 처리 중 카드 반환
     """
-    # SN 값 추출 및 검증
+
+    # ── 결과 확인 요청 ─────────────────────────────────────────────────────────
+    if request.action == "check_result":
+        job_id = (request.job_id or "").strip()
+        job = _chatbot_jobs.get(job_id)
+
+        if not job:
+            return _webhook_error_card("조회 결과를 찾을 수 없습니다. SN을 다시 입력해 주세요.")
+
+        sn = job.get("sn", "")
+        status = job.get("status", "unknown")
+
+        if status == "done":
+            return JSONResponse(_build_result_card(sn, job["ai_response"], job["feature_summary"]))
+        elif status == "error":
+            return _webhook_error_card(job.get("error", "처리 중 오류가 발생했습니다."))
+        else:
+            return JSONResponse(_build_status_card(sn, job_id))
+
+    # ── SN 조회 요청 ───────────────────────────────────────────────────────────
     sn_raw = (request.sn_value or "").strip().upper()
 
     if not sn_raw:
         return _webhook_error_card("SN을 입력해 주세요.")
-
     if len(sn_raw) > 50:
         return _webhook_error_card("SN이 너무 깁니다 (최대 50자).")
-
     if not re.match(r'^[A-Z0-9\-]+$', sn_raw):
         return _webhook_error_card("SN은 영문, 숫자, 하이픈(-)만 사용 가능합니다.")
 
     logger.info(f"[Webhook] SN 조회 요청: {sn_raw}")
 
-    try:
-        # 1. 웹 스크래핑으로 SQL 쿼리 실행
-        query_result = await query_runner.run(sn_raw)
+    job_id = str(uuid.uuid4())
+    _chatbot_jobs[job_id] = {"status": "pending", "sn": sn_raw}
+    asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn_raw))
 
-        if not query_result.success:
-            if query_result.session_expired:
-                return _webhook_error_card(
-                    "세션이 만료되었습니다. 관리자에게 재로그인을 요청해 주세요."
-                )
-            return _webhook_error_card(query_result.error or "데이터 조회에 실패했습니다.")
+    return JSONResponse(_build_processing_card(sn_raw, job_id))
 
-        # 2. 데이터 가공
-        processed = data_processor.process(query_result)
 
-        if processed.error and not processed.summary_text:
-            return _webhook_error_card(processed.error)
+# ─── Adaptive Card 빌더 ───────────────────────────────────────────────────────
 
-        # 3. AI Agent 분석
-        ai_response = await agent_client.analyze(processed)
+def _build_processing_card(sn: str, job_id: str) -> dict:
+    """SN 조회 접수 카드 — 즉시 반환, 결과 확인 버튼 포함"""
+    return {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.3",
+        "body": [
+            {
+                "type": "TextBlock",
+                "text": "SN 조회 접수",
+                "size": "Medium",
+                "weight": "Bolder",
+            },
+            {
+                "type": "ColumnSet",
+                "style": "emphasis",
+                "columns": [
+                    {
+                        "type": "Column",
+                        "width": "100px",
+                        "items": [{"type": "TextBlock", "text": "SN", "weight": "Bolder", "wrap": True}],
+                    },
+                    {
+                        "type": "Column",
+                        "width": "stretch",
+                        "items": [{"type": "TextBlock", "text": sn, "wrap": True}],
+                    },
+                ],
+            },
+            {
+                "type": "ColumnSet",
+                "columns": [
+                    {
+                        "type": "Column",
+                        "width": "100px",
+                        "items": [{"type": "TextBlock", "text": "상태", "wrap": True}],
+                    },
+                    {
+                        "type": "Column",
+                        "width": "stretch",
+                        "items": [{"type": "TextBlock", "text": "조회 중", "color": "Warning", "wrap": True}],
+                    },
+                ],
+            },
+            {
+                "type": "TextBlock",
+                "text": "조회가 시작되었습니다. 약 5~15분 소요됩니다.\n완료 후 아래 버튼으로 결과를 확인하세요.",
+                "wrap": True,
+                "isSubtle": True,
+                "spacing": "Medium",
+            },
+        ],
+        "actions": [
+            {
+                "type": "Action.Submit",
+                "title": "결과 확인",
+                "data": {"action": "check_result", "job_id": job_id},
+            }
+        ],
+    }
 
-        # 4. 결과 Adaptive Card 반환
-        d = processed.device
-        contract_text = "활성" if d.contract_active else "만료"
-        service_count = len(d.service_history)
 
-        return JSONResponse({
-            "type": "AdaptiveCard",
-            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-            "version": "1.3",
-            "body": [
-                {
-                    "type": "TextBlock",
-                    "text": f"SN 조회 결과: {sn_raw}",
-                    "size": "Medium",
-                    "weight": "Bolder"
-                },
-                {
-                    "type": "FactSet",
-                    "facts": [
-                        {"title": "모델", "value": d.model or "-"},
-                        {"title": "상태", "value": d.status or "-"},
-                        {"title": "고객명", "value": d.customer_name or "-"},
-                        {"title": "계약 상태", "value": contract_text},
-                        {"title": "서비스 이력", "value": f"{service_count}건"},
-                    ]
-                },
-                {
-                    "type": "TextBlock",
-                    "text": ai_response,
-                    "wrap": True,
-                    "spacing": "Medium"
-                }
-            ]
-        })
+def _build_status_card(sn: str, job_id: str) -> dict:
+    """아직 처리 중일 때 반환하는 카드"""
+    return {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.3",
+        "body": [
+            {
+                "type": "TextBlock",
+                "text": "SN 조회 진행 중",
+                "size": "Medium",
+                "weight": "Bolder",
+            },
+            {
+                "type": "ColumnSet",
+                "style": "emphasis",
+                "columns": [
+                    {
+                        "type": "Column",
+                        "width": "100px",
+                        "items": [{"type": "TextBlock", "text": "SN", "weight": "Bolder", "wrap": True}],
+                    },
+                    {
+                        "type": "Column",
+                        "width": "stretch",
+                        "items": [{"type": "TextBlock", "text": sn, "wrap": True}],
+                    },
+                ],
+            },
+            {
+                "type": "TextBlock",
+                "text": "아직 처리 중입니다. 잠시 후 다시 확인해 주세요.",
+                "wrap": True,
+                "color": "Attention",
+                "spacing": "Medium",
+            },
+        ],
+        "actions": [
+            {
+                "type": "Action.Submit",
+                "title": "다시 확인",
+                "data": {"action": "check_result", "job_id": job_id},
+            }
+        ],
+    }
 
-    except Exception as e:
-        logger.error(f"[Webhook] 처리 오류 - SN: {sn_raw}: {e}")
-        return _webhook_error_card("서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+
+def _build_result_card(sn: str, ai_response: str, feature_summary: str) -> dict:
+    """분석 완료 결과 카드"""
+    MAX_AI_LEN = 800
+    ai_text = ai_response if len(ai_response) <= MAX_AI_LEN else ai_response[:MAX_AI_LEN] + "..."
+
+    return {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.3",
+        "body": [
+            {
+                "type": "TextBlock",
+                "text": f"SN 조회 결과: {sn}",
+                "size": "Medium",
+                "weight": "Bolder",
+            },
+            {
+                "type": "ColumnSet",
+                "style": "emphasis",
+                "columns": [
+                    {
+                        "type": "Column",
+                        "width": "100px",
+                        "items": [{"type": "TextBlock", "text": "SN", "weight": "Bolder", "wrap": True}],
+                    },
+                    {
+                        "type": "Column",
+                        "width": "stretch",
+                        "items": [{"type": "TextBlock", "text": sn, "wrap": True}],
+                    },
+                ],
+            },
+            {
+                "type": "ColumnSet",
+                "columns": [
+                    {
+                        "type": "Column",
+                        "width": "100px",
+                        "items": [{"type": "TextBlock", "text": "분석 데이터", "wrap": True}],
+                    },
+                    {
+                        "type": "Column",
+                        "width": "stretch",
+                        "items": [{"type": "TextBlock", "text": feature_summary, "wrap": True}],
+                    },
+                ],
+            },
+            {
+                "type": "TextBlock",
+                "text": "■ AI 분석 결과",
+                "weight": "Bolder",
+                "spacing": "Large",
+            },
+            {
+                "type": "TextBlock",
+                "text": ai_text,
+                "wrap": True,
+                "spacing": "Small",
+            },
+        ],
+    }
 
 
 def _webhook_error_card(message: str) -> JSONResponse:
@@ -484,8 +672,8 @@ def _webhook_error_card(message: str) -> JSONResponse:
                     "type": "TextBlock",
                     "text": f"오류: {message}",
                     "color": "Attention",
-                    "wrap": True
+                    "wrap": True,
                 }
-            ]
-        }
+            ],
+        },
     )
