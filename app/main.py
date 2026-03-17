@@ -77,8 +77,6 @@ async def shutdown():
 # ─── 요청/응답 스키마 ─────────────────────────────────────────────────────────
 class SNQueryRequest(BaseModel):
     sn: str
-    chatRoomId: Optional[str] = None  # 챗봇에서 호출 시 결과 push용
-
     @field_validator("sn")
     @classmethod
     def validate_sn(cls, v: str) -> str:
@@ -135,53 +133,24 @@ async def query_sn(request: SNQueryRequest):
     """
     SN을 받아 단말기 정보를 조회하고 AI 분석 결과를 반환합니다.
 
-    chatRoomId 포함 시 (챗봇 연동):
+    챗봇에서 호출 시:
       - 즉시 202 접수 응답 반환 (60초 timeout 대응)
       - 백그라운드에서 FA 분석 후 완료 시 회사 챗봇 웹훅으로 결과 push
-
-    chatRoomId 미포함 시:
-      - 동기 처리 후 결과 반환 (WebSocket /ws/chat 권장)
     """
-    # ── 챗봇 연동 모드: 즉시 접수 후 백그라운드 처리 ──────────────────────────
-    if request.chatRoomId:
-        if not settings.CHATBOT_WEBHOOK_URL:
-            raise HTTPException(status_code=503, detail="CHATBOT_WEBHOOK_URL이 설정되지 않았습니다.")
-        asyncio.create_task(_run_and_push(request.sn, request.chatRoomId))
-        return JSONResponse(
-            status_code=202,
-            content={
-                "message": f"SN [{request.sn}] 조회가 접수되었습니다. 완료 후 채팅방으로 결과를 전송합니다.",
-                "sn": request.sn,
-            },
-        )
+    if not settings.CHATBOT_WEBHOOK_URL:
+        raise HTTPException(status_code=503, detail="CHATBOT_WEBHOOK_URL이 설정되지 않았습니다.")
 
-    # ── 직접 호출 모드: 동기 처리 ─────────────────────────────────────────────
-    try:
-        query_result = await query_runner.run(request.sn)
-        processed = data_processor.process(query_result)
-        ai_response = await agent_client.analyze(processed)
-
-        return JSONResponse({
+    asyncio.create_task(_run_and_push(request.sn))
+    return JSONResponse(
+        status_code=202,
+        content={
+            "message": f"SN [{request.sn}] 조회가 접수되었습니다. 완료 후 채팅방으로 결과를 전송합니다.",
             "sn": request.sn,
-            "success": query_result.success,
-            "session_expired": query_result.session_expired,
-            "result": ai_response,
-            "device": {
-                "model": processed.device.model,
-                "status": processed.device.status,
-                "customer_name": processed.device.customer_name,
-                "contract_active": processed.device.contract_active,
-            } if query_result.success else None,
-            "error": query_result.error,
-        })
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"쿼리 처리 오류 - SN: {request.sn}: {e}")
-        raise HTTPException(status_code=500, detail="서버 오류가 발생했습니다.")
+        },
+    )
 
 
-async def _run_and_push(sn: str, chat_room_id: str) -> None:
+async def _run_and_push(sn: str) -> None:
     """FA 분석 전체 파이프라인 실행 후 회사 챗봇 웹훅으로 결과 push."""
     try:
         # 1. SQL 쿼리
@@ -192,38 +161,34 @@ async def _run_and_push(sn: str, chat_room_id: str) -> None:
                 if query_result.session_expired
                 else (query_result.error or "데이터 조회에 실패했습니다.")
             )
-            await _push_to_chatbot(chat_room_id, f"[{sn}] 오류: {msg}")
+            await _push_to_chatbot(f"[{sn}] 오류: {msg}")
             return
 
         # 2. 데이터 가공
         processed = data_processor.process(query_result)
         if processed.error and not processed.summary_text:
-            await _push_to_chatbot(chat_room_id, f"[{sn}] 오류: {processed.error}")
+            await _push_to_chatbot(f"[{sn}] 오류: {processed.error}")
             return
 
         # 3. AI 분석
         ai_response = await agent_client.analyze(processed)
 
-        await _push_to_chatbot(chat_room_id, ai_response)
-        logger.info(f"[Push] [{sn}] 챗봇 웹훅 전송 완료 → chatRoomId={chat_room_id}")
+        await _push_to_chatbot(ai_response)
+        logger.info(f"[Push] [{sn}] 챗봇 웹훅 전송 완료")
 
     except Exception as e:
         logger.error(f"[Push] [{sn}] 파이프라인 오류: {e}")
-        await _push_to_chatbot(chat_room_id, f"[{sn}] 처리 중 오류가 발생했습니다: {e}")
+        await _push_to_chatbot(f"[{sn}] 처리 중 오류가 발생했습니다: {e}")
 
 
-async def _push_to_chatbot(chat_room_id: str, text: str) -> None:
-    """회사 챗봇 웹훅 URL로 결과 텍스트를 POST합니다.
-
-    챗봇 Builder에서 ${body.text} 로 결과를, ${body.chatRoomId} 로 채팅방을 참조합니다.
-    """
-    payload = {"text": text, "chatRoomId": chat_room_id}
+async def _push_to_chatbot(text: str) -> None:
+    """회사 챗봇 웹훅 URL로 결과 텍스트를 POST합니다."""
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(settings.CHATBOT_WEBHOOK_URL, json=payload)
+            resp = await client.post(settings.CHATBOT_WEBHOOK_URL, json={"text": text})
             resp.raise_for_status()
     except Exception as e:
-        logger.error(f"[Push] 챗봇 웹훅 호출 실패 (chatRoomId={chat_room_id}): {e}")
+        logger.error(f"[Push] 챗봇 웹훅 호출 실패: {e}")
 
 
 @app.post("/api/batch-query")
