@@ -16,6 +16,7 @@ FA Chatbot Service - FastAPI 메인 애플리케이션
 import asyncio
 import logging
 import re
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -429,11 +430,28 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
 
 
 # ─── Webhook 엔드포인트 (챗봇 Builder Adaptive Card) ──────────────────────────
+
+# 챗봇 Job TTL: 2시간 후 자동 삭제
+_JOB_TTL_SECONDS = 7200
+
+
 class WebhookRequest(BaseModel):
     """챗봇 Builder에서 Adaptive Card Action.Submit 시 전달되는 데이터"""
     action: Optional[str] = None
     sn_value: Optional[str] = None
     job_id: Optional[str] = None
+    userId: Optional[str] = None
+    chatRoomId: Optional[str] = None
+
+
+def _cleanup_expired_jobs() -> None:
+    """TTL이 지난 챗봇 Job을 메모리에서 삭제합니다."""
+    now = time.time()
+    expired = [jid for jid, j in _chatbot_jobs.items() if now - j.get("created_at", now) > _JOB_TTL_SECONDS]
+    for jid in expired:
+        del _chatbot_jobs[jid]
+    if expired:
+        logger.info(f"[Webhook] 만료된 Job {len(expired)}개 정리 완료")
 
 
 @app.post("/webhook")
@@ -441,12 +459,13 @@ async def webhook_handler(request: WebhookRequest):
     """
     챗봇 Builder Adaptive Card 제출 수신 엔드포인트.
 
-    [SN 조회 요청] Action.Submit → {"action": "search_sn", "sn_value": "SN-12345"}
+    [SN 조회 요청] Action.Submit → {"action": "search_sn", "sn_value": "SN-12345", "userId": "...", "chatRoomId": "..."}
       → 백그라운드 Job 시작 후 즉시 접수 카드 반환 (60초 timeout 대응)
 
-    [결과 확인 요청] Action.Submit → {"action": "check_result", "job_id": "..."}
+    [결과 확인 요청] Action.Submit → {"action": "check_result", "job_id": "...", "userId": "..."}
       → Job 상태에 따라 결과 카드 또는 처리 중 카드 반환
     """
+    _cleanup_expired_jobs()
 
     # ── 결과 확인 요청 ─────────────────────────────────────────────────────────
     if request.action == "check_result":
@@ -455,6 +474,10 @@ async def webhook_handler(request: WebhookRequest):
 
         if not job:
             return _webhook_error_card("조회 결과를 찾을 수 없습니다. SN을 다시 입력해 주세요.")
+
+        # 본인 job인지 확인 (userId가 있는 경우에만 검증)
+        if request.userId and job.get("userId") and job["userId"] != request.userId:
+            return _webhook_error_card("접근 권한이 없습니다.")
 
         sn = job.get("sn", "")
         status = job.get("status", "unknown")
@@ -476,10 +499,16 @@ async def webhook_handler(request: WebhookRequest):
     if not re.match(r'^[A-Z0-9\-]+$', sn_raw):
         return _webhook_error_card("SN은 영문, 숫자, 하이픈(-)만 사용 가능합니다.")
 
-    logger.info(f"[Webhook] SN 조회 요청: {sn_raw}")
+    logger.info(f"[Webhook] SN 조회 요청: {sn_raw} | userId={request.userId} | chatRoomId={request.chatRoomId}")
 
     job_id = str(uuid.uuid4())
-    _chatbot_jobs[job_id] = {"status": "pending", "sn": sn_raw}
+    _chatbot_jobs[job_id] = {
+        "status": "pending",
+        "sn": sn_raw,
+        "userId": request.userId,
+        "chatRoomId": request.chatRoomId,
+        "created_at": time.time(),
+    }
     asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn_raw))
 
     return JSONResponse(_build_processing_card(sn_raw, job_id))
