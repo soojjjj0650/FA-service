@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # ─── FastAPI 서버 ────────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = 80
     LOG_LEVEL: str = "INFO"
 
     class Config:
