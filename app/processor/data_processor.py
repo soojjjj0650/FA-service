@@ -41,7 +41,7 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("ECNT",  "ECNT"),
         ("RSRP",  "RSRP"),
         ("RSCP",  "RSCP"),
-        ("SINR",  "SINR"),
+        ("SINR",  "CINR"),
         ("BLER",  "BLER"),
     ]),
     # 추후 추가: DROP, ATTS, CEND, SCGF, ATTF, ATTI, SIMD, RLFI, NSVC, CRSH 등
