@@ -342,20 +342,21 @@ class DataProcessor:
         dates = [r.get("Date", "").strip() for r in rows if r.get("Date", "").strip()]
         date_range = f"{min(dates)} ~ {max(dates)}" if dates else "알 수 없음"
 
-        # ─ Feature별 원본 행 수 ────────────────────────────────────────────────
+        # ─ Feature별 원본 행 수 (건수 내림차순 Top 7) ─────────────────────────
         feat_dist: dict[str, int] = {}
         for r in rows:
             f = str(r.get("feature", "")).strip().upper()
             if f:
                 feat_dist[f] = feat_dist.get(f, 0) + 1
-        feat_summary = ", ".join(f"{f} {n}건" for f, n in sorted(feat_dist.items()))
+        top_feats = sorted(feat_dist.items(), key=lambda x: x[1], reverse=True)[:7]
+        feat_summary = ", ".join(f"{f} {n}건" for f, n in top_feats)
 
         lines.append(f"[단말기 SN: {sn}]")
         lines.append(f"조회 기간   : {date_range}")
         lines.append(f"Feature 분포: {feat_summary or '없음'}")
         lines.append("")
 
-        # ─ MUTE 상세 요약 ──────────────────────────────────────────────────────
+        # ─ MUTE 주요 발생 지역 ────────────────────────────────────────────────
         mute = feature_tables.get("MUTE")
         if not mute or not mute.rows:
             lines.append("MUTE 데이터 없음")
@@ -366,65 +367,16 @@ class DataProcessor:
         def col_idx(name: str) -> int | None:
             return cols.index(name) if name in cols else None
 
-        ecnt_i = col_idx("ECNT")
-        rsrp_i = col_idx("RSRP")
-        sinr_i = col_idx("SINR")
-        bler_i = col_idx("BLER")
-
-        # 총 ECNT 합계
-        total_ecnt = 0
-        if ecnt_i is not None:
-            for r in mute.rows:
-                try:
-                    total_ecnt += int(float(r[ecnt_i] or 0))
-                except (ValueError, TypeError):
-                    pass
-
-        # NW 품질 평균/최저 계산
-        def _nw_stats(idx: int | None) -> tuple[str, str]:
-            if idx is None:
-                return ("-", "-")
-            vals = []
-            for r in mute.rows:
-                try:
-                    v = r[idx]
-                    if v:
-                        vals.append(float(v))
-                except (ValueError, TypeError):
-                    pass
-            if not vals:
-                return ("-", "-")
-            return f"{sum(vals) / len(vals):.1f}", f"{min(vals):.1f}"
-
-        rsrp_avg, rsrp_min = _nw_stats(rsrp_i)
-        sinr_avg, sinr_min = _nw_stats(sinr_i)
-        bler_avg, _        = _nw_stats(bler_i)
-
-        lines.append("■ MUTE 발생 현황")
-        lines.append(f"  총 MUTE 이벤트 (ECNT 합계) : {total_ecnt}건")
-        lines.append(f"  집계 셀 수                 : {len(mute.rows)}개")
-        lines.append("")
-        lines.append("■ NW 품질 요약")
-        lines.append(f"  RSRP  평균/최저 : {rsrp_avg} / {rsrp_min} dBm  (기준: -105 dBm 이하 취약)")
-        lines.append(f"  SINR  평균/최저 : {sinr_avg} / {sinr_min} dB   (기준: 0 dB 이하 열악)")
-        lines.append(f"  BLER  평균      : {bler_avg} %               (기준: 10% 이상 열악)")
-        lines.append("")
-
-        # MUTE 다발 셀 Top 5 (이미 ECNT 내림차순 정렬됨)
-        top_n = min(5, len(mute.rows))
-        lines.append(f"■ MUTE 다발 셀 TOP {top_n} (ECNT 기준)")
-        display_cols = ["PLMN", "ACT", "TAC", "PCI", "Band", "ECNT", "RSRP", "SINR", "BLER"]
-        display_idx = [(c, col_idx(c)) for c in display_cols if col_idx(c) is not None]
+        # 지역 식별 컬럼 + ECNT 중심으로 표시 (이미 ECNT 내림차순 정렬됨)
+        location_cols = ["PLMN", "ACT", "TAC", "LAC", "PCI", "DLCh", "Band", "ECNT"]
+        display_idx = [(c, col_idx(c)) for c in location_cols if col_idx(c) is not None]
         header = " | ".join(c for c, _ in display_idx)
+
+        lines.append(f"■ MUTE 주요 발생 지역 (ECNT 기준 내림차순, 총 {len(mute.rows)}개 셀)")
         lines.append(header)
         lines.append("-" * max(len(header), 20))
-        for r in mute.rows[:top_n]:
+        for r in mute.rows:
             lines.append(" | ".join(str(r[i]) for _, i in display_idx))
-        lines.append("")
-
-        # 전체 집계 테이블
-        lines.append("■ 전체 집계 데이터 (모든 셀)")
-        lines.append(mute.to_text())
 
         return "\n".join(lines)
 
@@ -433,11 +385,9 @@ class DataProcessor:
             f"다음은 단말기(SN: {sn})의 최근 14일 네트워크 이벤트 데이터 분석 요약입니다.\n\n"
             f"{summary}\n\n"
             f"위 데이터를 바탕으로 FA 엔지니어를 위한 분석 보고서를 한국어로 작성해 주세요:\n\n"
-            f"1. **MUTE 발생 현황 요약** - 주요 수치(총 건수, 셀 수) 중심\n"
-            f"2. **주요 발생 지역** - PLMN, TAC, PCI 기준 상위 셀\n"
-            f"3. **NW 품질 평가** - RSRP/SINR/BLER 수치 기반 이슈 여부 판단\n"
-            f"4. **원인 분석** - 데이터 패턴 기반 추정 원인\n"
-            f"5. **FA 권고 조치사항** - 구체적인 조치 방안\n"
+            f"1. **주요 발생 지역** - ECNT 상위 셀의 PLMN, TAC, PCI 기준 분석\n"
+            f"2. **원인 분석** - 발생 지역 패턴 기반 추정 원인\n"
+            f"3. **FA 권고 조치사항** - 구체적인 조치 방안\n"
         )
 
     @staticmethod
