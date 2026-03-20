@@ -33,7 +33,7 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("LAC",   "LAC_"),
         ("PCI",   "PhID"),
         ("DLCh",  "DLCh"),
-        ("Band",  "Band"),
+        ("Band",  "LBND"),
         ("UBMT",  "UBMT"),
         ("RSMT",  "RSMT"),
         ("RNMT",  "RNMT"),
