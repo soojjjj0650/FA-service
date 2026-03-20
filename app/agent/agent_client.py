@@ -37,13 +37,6 @@ logger = logging.getLogger(__name__)
 _MAX_RETRIES = 3
 _RETRY_DELAYS = [2, 4, 8]  # 지수 백오프 (초)
 
-# FA 분석 지시사항 (prompt-rFpiB template)
-ANALYSIS_PROMPT = (
-    "위 데이터를 바탕으로 FA 엔지니어를 위한 분석 보고서를 한국어로 작성해 주세요:\n\n"
-    "1. **주요 발생 지역** - ECNT 상위 셀의 PLMN, TAC, PCI 기준 분석\n"
-    "2. **원인 분석** - 발생 지역 패턴 기반 추정 원인\n"
-    "3. **FA 권고 조치사항** - 구체적인 조치 방안\n"
-)
 
 
 def _post_to_agent(payload: dict) -> dict:
@@ -82,9 +75,6 @@ class AgentClient:
             "component_inputs": {
                 settings.AI_AGENT_INPUT_KEY: {
                     "input_value": processed.summary_text,   # 실제 데이터
-                },
-                settings.AI_AGENT_PROMPT_KEY: {
-                    "template": ANALYSIS_PROMPT,             # 분석 지시사항
                 },
             },
         }

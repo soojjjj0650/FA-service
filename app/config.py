@@ -35,7 +35,6 @@ class Settings(BaseSettings):
     AI_AGENT_URL: str = "https://agent.sec.samsung.net/api/v1/run/f0bb8a7f-69c0-4343-8251-1483286bbb22?stream=false"
     AI_AGENT_API_KEY: str = "sk-TnJNxPXgqSMH9ikmNk5alN99JfkKy4CXQPDYqY_EWx8"
     AI_AGENT_INPUT_KEY: str = "TextInput-n8kcD"   # 실제 데이터 입력 컴포넌트 key
-    AI_AGENT_PROMPT_KEY: str = "prompt-rFpiB"      # 시스템 프롬프트 컴포넌트 key
     AI_AGENT_TIMEOUT: int = 120
 
     # ─── 회사 챗봇 웹훅 (FA 분석 완료 시 결과 push) ──────────────────────────
