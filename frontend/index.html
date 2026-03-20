@@ -442,6 +442,7 @@
 
   function appendResult(data) {
     const d = data.data || {};
+    console.log('[AI message 원문]', data.message);
     const el = document.createElement('div');
     el.className = 'msg result-card';
 
