@@ -223,7 +223,7 @@
       border-radius: 4px;
       padding: 3px 8px;
       margin: 12px 0 6px;
-      display: inline-block;
+      display: block;
     }
     .ai-analysis-body {
       font-size: 0.88rem;
@@ -457,7 +457,6 @@
     if (data.message) {
       html += `
         <div class="ai-analysis">
-          <div class="ai-analysis-label">&#129302; AI 분석</div>
           <div class="ai-analysis-body">${marked.parse(data.message)}</div>
         </div>`;
     }
