@@ -115,8 +115,7 @@ class FeatureTable:
 @dataclass
 class ProcessedData:
     sn: str
-    summary_text: str       # AI Agent 전송 텍스트
-    ai_prompt: str          # AI Agent 최종 프롬프트
+    summary_text: str       # AI Agent 전송 데이터 텍스트 (TextInput-n8kcD)
     feature_tables: dict[str, FeatureTable] = field(default_factory=dict)
     html_tables: str = ""   # 챗봇 HTML 렌더링용
     error: str | None = None
@@ -156,7 +155,6 @@ class DataProcessor:
             return ProcessedData(
                 sn=query_result.sn,
                 summary_text="",
-                ai_prompt="",
                 error=query_result.error,
             )
 
@@ -169,13 +167,11 @@ class DataProcessor:
             return ProcessedData(
                 sn=query_result.sn,
                 summary_text=f"SN '{query_result.sn}'의 조회 결과가 없습니다.",
-                ai_prompt="",
                 error="데이터 없음",
             )
 
         feature_tables = self._build_feature_tables(rows)
         summary = self._build_summary(query_result.sn, rows, feature_tables)
-        prompt = self._build_ai_prompt(query_result.sn, summary)
         html_tables = "".join(t.to_html() for t in feature_tables.values())
 
         logger.info(
@@ -186,7 +182,6 @@ class DataProcessor:
         return ProcessedData(
             sn=query_result.sn,
             summary_text=summary,
-            ai_prompt=prompt,
             feature_tables=feature_tables,
             html_tables=html_tables,
         )
@@ -379,16 +374,6 @@ class DataProcessor:
             lines.append(" | ".join(str(r[i]) for _, i in display_idx))
 
         return "\n".join(lines)
-
-    def _build_ai_prompt(self, sn: str, summary: str) -> str:
-        return (
-            f"다음은 단말기(SN: {sn})의 최근 14일 네트워크 이벤트 데이터 분석 요약입니다.\n\n"
-            f"{summary}\n\n"
-            f"위 데이터를 바탕으로 FA 엔지니어를 위한 분석 보고서를 한국어로 작성해 주세요:\n\n"
-            f"1. **주요 발생 지역** - ECNT 상위 셀의 PLMN, TAC, PCI 기준 분석\n"
-            f"2. **원인 분석** - 발생 지역 패턴 기반 추정 원인\n"
-            f"3. **FA 권고 조치사항** - 구체적인 조치 방안\n"
-        )
 
     @staticmethod
     def _hex_to_dec(val: str) -> str:
