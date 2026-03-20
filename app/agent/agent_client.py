@@ -125,18 +125,25 @@ class AgentClient:
         """API 응답에서 텍스트를 추출합니다."""
         # 형식: {"outputs": [{"outputs": [{"results": {"message": {"text": "..."}}}]}]}
         try:
-            return data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
+            text = data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
         except (KeyError, IndexError, TypeError):
-            pass
+            text = ""
 
-        # 단순 flat 형식 fallback
-        return (
-            data.get("result")
-            or data.get("answer")
-            or data.get("text")
-            or data.get("output")
-            or ""
-        )
+        if not text:
+            # 단순 flat 형식 fallback
+            text = (
+                data.get("result")
+                or data.get("answer")
+                or data.get("text")
+                or data.get("output")
+                or ""
+            )
+
+        # Langflow가 앞에 붙이는 "Text : " prefix 제거
+        import re
+        text = re.sub(r"^Text\s*:\s*", "", text.lstrip())
+
+        return text
 
     @staticmethod
     def _fallback_response(processed: ProcessedData) -> str:
