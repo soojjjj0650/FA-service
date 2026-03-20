@@ -362,9 +362,8 @@ class DataProcessor:
         def col_idx(name: str) -> int | None:
             return cols.index(name) if name in cols else None
 
-        # 지역 식별 컬럼 + ECNT 중심으로 표시 (이미 ECNT 내림차순 정렬됨)
-        location_cols = ["PLMN", "ACT", "TAC", "LAC", "PCI", "DLCh", "Band", "ECNT"]
-        display_idx = [(c, col_idx(c)) for c in location_cols if col_idx(c) is not None]
+        # 전체 컬럼 표시 (이미 ECNT 내림차순 정렬됨)
+        display_idx = [(c, col_idx(c)) for c in cols if col_idx(c) is not None]
         header = " | ".join(c for c, _ in display_idx)
 
         lines.append(f"■ MUTE 주요 발생 지역 (ECNT 기준 내림차순, 총 {len(mute.rows)}개 셀)")
