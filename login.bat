@@ -20,12 +20,12 @@ if errorlevel 1 (
 
 echo.
 echo Login complete! Starting FA Service server...
-echo Open browser: http://localhost:8000
+echo Open browser: http://localhost:80
 echo Press Ctrl+C to stop the server.
 echo.
 
 set "PYTHONPATH=%~dp0"
-"C:\Users\sujin06.bae\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+"C:\Users\sujin06.bae\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 80
 
 echo.
 echo Server stopped.
