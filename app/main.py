@@ -23,7 +23,8 @@ from typing import Optional
 
 import httpx
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -50,6 +51,23 @@ app = FastAPI(
 )
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+
+
+# ─── 전역 예외 핸들러 ────────────────────────────────────────────────────────
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """422 Pydantic 유효성 오류 — 수신된 body를 로그에 기록합니다."""
+    body = await request.body()
+    logger.error(f"[Webhook] 422 유효성 오류 | path={request.url.path} | body={body.decode(errors='replace')} | errors={exc.errors()}")
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """500 예상치 못한 오류 — 경로·오류를 로그에 기록합니다."""
+    logger.error(f"[Server] 500 내부 오류 | path={request.url.path} | {type(exc).__name__}: {exc}", exc_info=True)
+    return JSONResponse(status_code=500, content={"detail": "내부 서버 오류가 발생했습니다."})
+
 
 # ─── 배치 Job 저장소 (메모리) ─────────────────────────────────────────────────
 # job_id → {"status": str, "sns": list, "results": list, "progress": dict}
@@ -493,6 +511,7 @@ async def webhook_handler(request: WebhookRequest):
     [결과 확인 요청] Action.Submit → {"action": "check_result", "job_id": "...", "userId": "..."}
       → Job 상태에 따라 결과 카드 또는 처리 중 카드 반환
     """
+    logger.info(f"[Webhook] 요청 수신 | action={request.action} | sn_value={request.sn_value} | userId={request.userId} | chatRoomId={request.chatRoomId}")
     _cleanup_expired_jobs()
 
     # ── 결과 확인 요청 ─────────────────────────────────────────────────────────
