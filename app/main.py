@@ -50,6 +50,25 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+# ─── ASGI 레벨 요청 로깅 미들웨어 (라우팅 전에 실행) ─────────────────────────
+@app.middleware("http")
+async def log_every_request(request: Request, call_next):
+    body = await request.body()
+    logger.info(
+        f"[HTTP] 수신 | {request.method} {request.url.path} "
+        f"| content-type={request.headers.get('content-type', '-')} "
+        f"| body={body.decode(errors='replace')[:500]}"
+    )
+    try:
+        response = await call_next(request)
+        logger.info(f"[HTTP] 응답 | {request.method} {request.url.path} → {response.status_code}")
+        return response
+    except Exception as exc:
+        logger.error(f"[HTTP] 미들웨어 예외 | {request.method} {request.url.path} | {type(exc).__name__}: {exc}", exc_info=True)
+        raise
+
+
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 
