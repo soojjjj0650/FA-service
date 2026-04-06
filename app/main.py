@@ -729,74 +729,85 @@ async def webhook_handler(request: Request):
     [결과 확인 요청] Action.Submit → {"action": "check_result", "job_id": "...", "userId": "..."}
       → Job 상태에 따라 결과 카드 또는 처리 중 카드 반환
     """
-    raw_body = await request.body()
-    content_type = request.headers.get("content-type", "")
-    data = _parse_webhook_body(raw_body, content_type)
+    try:
+        raw_body = await request.body()
+        content_type = request.headers.get("content-type", "")
+        raw_text = raw_body.decode("utf-8", errors="replace")
 
-    logger.info(
-        f"[Webhook] 요청 수신 | content-type={content_type} "
-        f"| action={data.get('action')} | sn_value={data.get('sn_value')} "
-        f"| userId={data.get('userId')} | chatRoomId={data.get('chatRoomId')} "
-        f"| raw={raw_body.decode('utf-8', errors='replace')[:300]}"
-    )
+        data = _parse_webhook_body(raw_body, content_type)
 
-    if not data:
-        logger.error(f"[Webhook] body 파싱 실패 | raw={raw_body[:200]}")
-        return _webhook_error_card("요청 형식을 파싱할 수 없습니다.")
+        logger.info(
+            f"[Webhook] 요청 수신 | content-type={content_type} "
+            f"| parsed_action={data.get('action')} | sn_value={data.get('sn_value')} "
+            f"| userId={data.get('userId')} | chatRoomId={data.get('chatRoomId')} "
+            f"| raw={raw_text[:300]}"
+        )
 
-    _cleanup_expired_jobs()
+        if not data:
+            logger.error(f"[Webhook] body 파싱 실패 | raw={raw_text[:300]}")
+            return _webhook_error_card("요청 형식을 파싱할 수 없습니다.")
 
-    action = (data.get("action") or "").strip()
-    user_id = (data.get("userId") or "").strip()
-    # chatRoomId: 챗봇 Builder 템플릿 변수 미치환 케이스 방어
-    chat_room_id_raw = str(data.get("chatRoomId") or "")
-    chat_room_id = chat_room_id_raw if not chat_room_id_raw.startswith("${") else ""
+        _cleanup_expired_jobs()
 
-    # ── 결과 확인 요청 ─────────────────────────────────────────────────────────
-    if action == "check_result":
-        job_id = (data.get("job_id") or "").strip()
-        job = _chatbot_jobs.get(job_id)
+        action = (data.get("action") or "").strip()
+        user_id = (data.get("userId") or "").strip()
+        # chatRoomId: 챗봇 Builder 템플릿 변수 미치환 케이스 방어
+        chat_room_id_raw = str(data.get("chatRoomId") or "")
+        chat_room_id = chat_room_id_raw if not chat_room_id_raw.startswith("${") else ""
 
-        if not job:
-            return _webhook_error_card("조회 결과를 찾을 수 없습니다. SN을 다시 입력해 주세요.")
+        # ── 결과 확인 요청 ──────────────────────────────────────────────────────
+        if action == "check_result":
+            job_id = (data.get("job_id") or "").strip()
+            job = _chatbot_jobs.get(job_id)
 
-        # 본인 job인지 확인 (userId가 있는 경우에만 검증)
-        if user_id and job.get("userId") and job["userId"] != user_id:
-            return _webhook_error_card("접근 권한이 없습니다.")
+            if not job:
+                return _webhook_error_card("조회 결과를 찾을 수 없습니다. SN을 다시 입력해 주세요.")
 
-        sn = job.get("sn", "")
-        status = job.get("status", "unknown")
+            # 본인 job인지 확인 (userId가 있는 경우에만 검증)
+            if user_id and job.get("userId") and job["userId"] != user_id:
+                return _webhook_error_card("접근 권한이 없습니다.")
 
-        if status == "done":
-            return JSONResponse(_build_result_card(sn, job["ai_response"], job["feature_summary"]))
-        elif status == "error":
-            return _webhook_error_card(job.get("error", "처리 중 오류가 발생했습니다."))
-        else:
-            return JSONResponse(_build_status_card(sn, job_id))
+            sn = job.get("sn", "")
+            status = job.get("status", "unknown")
 
-    # ── SN 조회 요청 ───────────────────────────────────────────────────────────
-    sn_raw = (data.get("sn_value") or "").strip().upper()
+            if status == "done":
+                return JSONResponse(_build_result_card(sn, job["ai_response"], job["feature_summary"]))
+            elif status == "error":
+                return _webhook_error_card(job.get("error", "처리 중 오류가 발생했습니다."))
+            else:
+                return JSONResponse(_build_status_card(sn, job_id))
 
-    if not sn_raw:
-        return _webhook_error_card("SN을 입력해 주세요.")
-    if len(sn_raw) > 50:
-        return _webhook_error_card("SN이 너무 깁니다 (최대 50자).")
-    if not re.match(r'^[A-Z0-9\-]+$', sn_raw):
-        return _webhook_error_card(f"SN 형식이 올바르지 않습니다: {sn_raw}")
+        # ── SN 조회 요청 ─────────────────────────────────────────────────────────
+        sn_raw = (data.get("sn_value") or "").strip().upper()
 
-    logger.info(f"[Webhook] SN 조회 시작: {sn_raw} | userId={user_id} | chatRoomId={chat_room_id}")
+        if not sn_raw:
+            return _webhook_error_card("SN을 입력해 주세요.")
+        if len(sn_raw) > 50:
+            return _webhook_error_card("SN이 너무 깁니다 (최대 50자).")
+        if not re.match(r'^[A-Z0-9\-]+$', sn_raw):
+            return _webhook_error_card(f"SN 형식이 올바르지 않습니다: {sn_raw}")
 
-    job_id = str(uuid.uuid4())
-    _chatbot_jobs[job_id] = {
-        "status": "pending",
-        "sn": sn_raw,
-        "userId": user_id or None,
-        "chatRoomId": chat_room_id or None,
-        "created_at": time.time(),
-    }
-    asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn_raw))
+        logger.info(f"[Webhook] SN 조회 시작: {sn_raw} | userId={user_id} | chatRoomId={chat_room_id}")
 
-    return JSONResponse(_build_processing_card(sn_raw, job_id))
+        job_id = str(uuid.uuid4())
+        _chatbot_jobs[job_id] = {
+            "status": "pending",
+            "sn": sn_raw,
+            "userId": user_id or None,
+            "chatRoomId": chat_room_id or None,
+            "created_at": time.time(),
+        }
+        asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn_raw))
+
+        return JSONResponse(_build_processing_card(sn_raw, job_id))
+
+    except Exception as exc:
+        logger.error(
+            f"[Webhook] 처리 중 예외 발생: {type(exc).__name__}: {exc}",
+            exc_info=True,
+        )
+        # 500 대신 Adaptive Card 오류 메시지 반환 (챗봇 Builder가 카드를 기대함)
+        return _webhook_error_card(f"서버 내부 오류가 발생했습니다. 관리자에게 문의하세요. ({type(exc).__name__})")
 
 
 # ─── Adaptive Card 빌더 ───────────────────────────────────────────────────────
