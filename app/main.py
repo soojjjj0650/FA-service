@@ -53,14 +53,14 @@ app = FastAPI(
 )
 
 
-# ─── ASGI 레벨 요청 로깅 미들웨어 (라우팅 전에 실행) ─────────────────────────
+# ─── ASGI 레벨 요청 로깅 미들웨어 ────────────────────────────────────────────
+# ※ body는 미들웨어에서 읽지 않음 (Starlette BaseHTTPMiddleware 스트림 충돌 방지)
+#    body 내용은 각 엔드포인트 핸들러에서 직접 로깅합니다.
 @app.middleware("http")
 async def log_every_request(request: Request, call_next):
-    body = await request.body()
     logger.info(
         f"[HTTP] 수신 | {request.method} {request.url.path} "
-        f"| content-type={request.headers.get('content-type', '-')} "
-        f"| body={body.decode(errors='replace')[:500]}"
+        f"| content-type={request.headers.get('content-type', '-')}"
     )
     try:
         response = await call_next(request)
