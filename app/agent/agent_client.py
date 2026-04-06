@@ -11,7 +11,7 @@ API 스펙:
       "input_value": "MUTE",
       "component_inputs": {
         "TextInput-n8kcD": { "input_value": "<실제 데이터>" },
-        "prompt-rFpiB":    { "template":    "<분석 지시사항>" }
+        "prompt-rFpiB":    { "template":    "<분석 지시사항>" }   ← 선택 사항 (AI_AGENT_PROMPT_KEY 설정 시)
       }
     }
   Response:
@@ -68,15 +68,23 @@ class AgentClient:
         if not processed.summary_text:
             return "조회된 데이터가 없습니다."
 
+        component_inputs: dict = {
+            settings.AI_AGENT_INPUT_KEY: {
+                "input_value": processed.summary_text,   # 실제 데이터
+            },
+        }
+        # 프롬프트 템플릿 컴포넌트가 설정된 경우 추가
+        if settings.AI_AGENT_PROMPT_KEY and settings.AI_AGENT_PROMPT_TEMPLATE:
+            component_inputs[settings.AI_AGENT_PROMPT_KEY] = {
+                "template": settings.AI_AGENT_PROMPT_TEMPLATE,
+            }
+            logger.debug(f"AI Agent 프롬프트 키 전송: {settings.AI_AGENT_PROMPT_KEY}")
+
         payload = {
             "input_type": "chat",
             "output_type": "chat",
             "input_value": "MUTE",
-            "component_inputs": {
-                settings.AI_AGENT_INPUT_KEY: {
-                    "input_value": processed.summary_text,   # 실제 데이터
-                },
-            },
+            "component_inputs": component_inputs,
         }
 
         # AI Agent 입력값을 파일로 저장 (확인용)

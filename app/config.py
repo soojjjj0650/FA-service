@@ -35,10 +35,23 @@ class Settings(BaseSettings):
     AI_AGENT_URL: str = "https://agent.sec.samsung.net/api/v1/run/f0bb8a7f-69c0-4343-8251-1483286bbb22?stream=false"
     AI_AGENT_API_KEY: str = "sk-TnJNxPXgqSMH9ikmNk5alN99JfkKy4CXQPDYqY_EWx8"
     AI_AGENT_INPUT_KEY: str = "TextInput-n8kcD"   # 실제 데이터 입력 컴포넌트 key
+    # 프롬프트 템플릿 컴포넌트 key (비워두면 해당 component_input 미전송)
+    # Langflow flow에서 prompt 컴포넌트의 key 값 입력 (예: "prompt-rFpiB")
+    AI_AGENT_PROMPT_KEY: str = "prompt-rFpiB"
+    # 프롬프트 템플릿 내용 (비워두면 Langflow flow 기본값 사용)
+    AI_AGENT_PROMPT_TEMPLATE: str = ""
     AI_AGENT_TIMEOUT: int = 120
 
     # ─── 회사 챗봇 웹훅 (FA 분석 완료 시 결과 push) ──────────────────────────
     CHATBOT_WEBHOOK_URL: str = "https://botbuilder.samsung.net/webhook/fa.service"
+    # 분석 완료 후 채팅방으로 결과 카드를 push하는 URL (비워두면 push 비활성화)
+    # 삼성 챗봇 Builder 아웃바운드 API URL 입력 필요
+    CHATBOT_PUSH_URL: str = ""
+    CHATBOT_PUSH_API_KEY: str = ""   # push API 인증 키 (필요 시)
+
+    # ─── 개발/테스트 옵션 ────────────────────────────────────────────────────
+    # MOCK_MODE=true 시 Superset 실제 조회 없이 더미 데이터로 파이프라인 테스트
+    MOCK_MODE: bool = False
 
     # ─── FastAPI 서버 ────────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"

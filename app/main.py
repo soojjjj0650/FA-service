@@ -11,6 +11,8 @@ FA Chatbot Service - FastAPI 메인 애플리케이션
   GET  /api/status                → 브라우저 풀 상태 확인
   POST /api/session/reset         → 세션 수동 초기화
   POST /webhook                   → 챗봇 Builder Adaptive Card 제출 수신 (SN 조회)
+  POST /api/test-result           → Mock 결과 카드 즉시 반환 (챗봇 카드 형식 테스트용)
+  GET  /api/jobs                  → 현재 활성 Job 목록 (디버그용)
 """
 
 import asyncio
@@ -221,11 +223,81 @@ async def _run_and_push(sn: str) -> None:
 async def _push_to_chatbot(text: str) -> None:
     """회사 챗봇 웹훅 URL로 결과 텍스트를 POST합니다."""
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, verify=False) as client:
             resp = await client.post(settings.CHATBOT_WEBHOOK_URL, json={"text": text})
             resp.raise_for_status()
     except Exception as e:
         logger.error(f"[Push] 챗봇 웹훅 호출 실패: {e}")
+
+
+async def _push_card_to_chatroom(job: dict) -> None:
+    """
+    FA 분석 완료 후 결과 Adaptive Card를 채팅방으로 직접 push합니다.
+
+    CHATBOT_PUSH_URL이 설정된 경우에만 동작합니다.
+    Samsung chatbot Builder outbound API 형식으로 전송합니다.
+    """
+    if not settings.CHATBOT_PUSH_URL:
+        logger.debug("[Push] CHATBOT_PUSH_URL 미설정 - 자동 push 스킵 (사용자가 '결과 확인' 버튼 사용)")
+        return
+
+    chat_room_id = job.get("chatRoomId")
+    user_id = job.get("userId")
+    sn = job.get("sn", "")
+    status = job.get("status")
+
+    if not chat_room_id and not user_id:
+        logger.warning(f"[Push] chatRoomId/userId 없음 - 자동 push 불가 (SN: {sn})")
+        return
+
+    if status == "done":
+        card = _build_result_card(sn, job["ai_response"], job["feature_summary"])
+    else:
+        error_msg = job.get("error", "처리 중 오류가 발생했습니다.")
+        card = {
+            "type": "AdaptiveCard",
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "version": "1.3",
+            "body": [
+                {
+                    "type": "TextBlock",
+                    "text": f"[{sn}] FA 분석 오류",
+                    "size": "Medium",
+                    "weight": "Bolder",
+                    "color": "Attention",
+                },
+                {
+                    "type": "TextBlock",
+                    "text": error_msg,
+                    "wrap": True,
+                    "color": "Attention",
+                },
+            ],
+        }
+
+    # Samsung chatbot Builder outbound push payload
+    # ※ 실제 API 스펙에 맞게 형식을 조정하세요
+    payload = {
+        "chatRoomId": chat_room_id,
+        "userId": user_id,
+        "card": card,
+    }
+
+    headers = {"Content-Type": "application/json"}
+    if settings.CHATBOT_PUSH_API_KEY:
+        headers["x-api-key"] = settings.CHATBOT_PUSH_API_KEY
+
+    try:
+        async with httpx.AsyncClient(timeout=30, verify=False) as client:
+            resp = await client.post(settings.CHATBOT_PUSH_URL, json=payload, headers=headers)
+            logger.info(
+                f"[Push] 결과 카드 자동 push 완료 | SN={sn} | "
+                f"chatRoomId={chat_room_id} | status={resp.status_code}"
+            )
+            if resp.status_code >= 400:
+                logger.warning(f"[Push] push 응답 오류: {resp.status_code} - {resp.text[:200]}")
+    except Exception as e:
+        logger.error(f"[Push] 결과 카드 push 실패 (SN: {sn}): {e}")
 
 
 @app.post("/api/batch-query")
@@ -323,6 +395,63 @@ async def reset_session():
     return {
         "message": "세션 복구 완료. 정상적으로 조회가 가능합니다.",
         "session": info,
+    }
+
+
+class TestResultRequest(BaseModel):
+    sn: str = "TEST-001"
+    ai_response: Optional[str] = None
+    feature_summary: Optional[str] = None
+
+
+@app.post("/api/test-result")
+async def test_result_card(request: TestResultRequest):
+    """
+    Mock 결과 Adaptive Card를 즉시 반환합니다.
+    실제 Superset 조회 없이 챗봇 카드 형식을 테스트하는 용도입니다.
+
+    챗봇 Builder 설정에서 이 엔드포인트를 호출해 카드 렌더링을 확인하세요.
+    """
+    sn = request.sn.strip().upper() or "TEST-001"
+    ai_text = request.ai_response or (
+        f"[TEST] SN [{sn}] FA 분석 결과\n\n"
+        "■ MUTE 이벤트 주요 발생 지역\n"
+        "- PLMN: 45008 / ACT: LTE / TAC: 12345\n"
+        "  PCI: 100, ECNT: 150건, RSRP: -105.3 dBm, SINR: 2.1 dB\n\n"
+        "- PLMN: 45008 / ACT: LTE / TAC: 23456\n"
+        "  PCI: 200, ECNT: 80건, RSRP: -98.7 dBm, SINR: 5.4 dB\n\n"
+        "■ 종합 의견\n"
+        "특정 셀(PCI 100, TAC 12345)에서 무음 이벤트가 집중 발생하고 있습니다. "
+        "해당 기지국 파라미터 점검 및 핸드오버 설정 검토를 권장합니다."
+    )
+    feat_summary = request.feature_summary or "MUTE: 230건"
+    card = _build_result_card(sn, ai_text, feat_summary)
+    logger.info(f"[TestResult] Mock 결과 카드 반환 - SN: {sn}")
+    return JSONResponse(card)
+
+
+@app.get("/api/jobs")
+async def list_jobs():
+    """
+    현재 메모리에 있는 챗봇 Job 목록을 반환합니다 (디버그용).
+    최근 10개의 Job 상태를 보여줍니다.
+    """
+    jobs_info = []
+    for job_id, job in list(_chatbot_jobs.items())[-10:]:
+        jobs_info.append({
+            "job_id": job_id,
+            "sn": job.get("sn"),
+            "status": job.get("status"),
+            "userId": job.get("userId"),
+            "chatRoomId": job.get("chatRoomId"),
+            "error": job.get("error"),
+            "created_at": job.get("created_at"),
+        })
+    return {
+        "total": len(_chatbot_jobs),
+        "mock_mode": settings.MOCK_MODE,
+        "push_url_set": bool(settings.CHATBOT_PUSH_URL),
+        "jobs": list(reversed(jobs_info)),
     }
 
 
@@ -457,6 +586,25 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
     job["status"] = "running"
 
     try:
+        if settings.MOCK_MODE:
+            # ── MOCK 모드: 실제 Superset 조회 없이 더미 데이터 사용 ──────────────
+            logger.info(f"[Chatbot Job {job_id}] MOCK 모드 실행 - SN: {sn}")
+            await asyncio.sleep(3)  # 조회 시뮬레이션
+            job["status"] = "done"
+            job["ai_response"] = (
+                f"[MOCK] SN [{sn}] 분석 결과\n\n"
+                "■ 주요 지역 분석\n"
+                "- PLMN 45008 / LTE / TAC 12345 지역에서 ECNT 150건 (전체의 60%)\n"
+                "- 해당 지역 평균 RSRP: -105 dBm (약한 신호)\n\n"
+                "■ 종합 의견\n"
+                "단말기 SN 조회 결과 특정 지역 기지국에서 집중적인 무음 이벤트가 발생하고 있습니다. "
+                "해당 셀의 기지국 파라미터 점검이 필요합니다.\n\n"
+                "(이 결과는 MOCK 테스트 데이터입니다)"
+            )
+            job["feature_summary"] = "MUTE: 250건 (Mock)"
+            await _push_card_to_chatroom(job)
+            return
+
         # 1. SQL 쿼리 실행
         query_result = await query_runner.run(sn)
 
@@ -467,6 +615,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
                 if query_result.session_expired
                 else (query_result.error or "데이터 조회 실패")
             )
+            await _push_card_to_chatroom(job)
             return
 
         # 2. 데이터 가공
@@ -475,6 +624,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         if processed.error and not processed.summary_text:
             job["status"] = "error"
             job["error"] = processed.error
+            await _push_card_to_chatroom(job)
             return
 
         # 3. AI 분석
@@ -488,10 +638,14 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         job["ai_response"] = ai_response
         job["feature_summary"] = feature_summary
 
+        # 4. 결과 카드 자동 push (CHATBOT_PUSH_URL 설정 시)
+        await _push_card_to_chatroom(job)
+
     except Exception as e:
         logger.error(f"[Chatbot Job {job_id}] 처리 오류: {e}")
         job["status"] = "error"
         job["error"] = str(e)
+        await _push_card_to_chatroom(job)
 
 
 # ─── Webhook 엔드포인트 (챗봇 Builder Adaptive Card) ──────────────────────────
@@ -508,6 +662,8 @@ class WebhookRequest(BaseModel):
     userId: Optional[str] = None
     chatRoomId: Optional[str] = None
 
+    model_config = {"extra": "allow"}  # 알 수 없는 필드 허용 (챗봇 Builder 버전 대응)
+
 
 def _cleanup_expired_jobs() -> None:
     """TTL이 지난 챗봇 Job을 메모리에서 삭제합니다."""
@@ -519,8 +675,51 @@ def _cleanup_expired_jobs() -> None:
         logger.info(f"[Webhook] 만료된 Job {len(expired)}개 정리 완료")
 
 
+def _parse_webhook_body(raw_body: bytes, content_type: str) -> dict:
+    """
+    챗봇 Builder가 보내는 다양한 body 형식을 파싱합니다.
+
+    지원 형식:
+      - application/json  : JSON 객체 또는 JSON 문자열
+      - application/x-www-form-urlencoded : form 데이터
+      - 기타 : JSON 파싱 시도
+    """
+    import json as _json
+    import urllib.parse as _urlparse
+
+    text = raw_body.decode("utf-8", errors="replace").strip()
+
+    # 1. JSON 객체 직접 파싱
+    if text.startswith("{"):
+        try:
+            return _json.loads(text)
+        except Exception:
+            pass
+
+    # 2. JSON 문자열 이중 인코딩 (body 자체가 "\"{ ... }\"" 형태)
+    if text.startswith('"'):
+        try:
+            inner = _json.loads(text)          # → 문자열
+            return _json.loads(inner)          # → dict
+        except Exception:
+            pass
+
+    # 3. form-urlencoded 형식
+    if "application/x-www-form-urlencoded" in content_type:
+        try:
+            return dict(_urlparse.parse_qsl(text))
+        except Exception:
+            pass
+
+    # 4. 최후 시도: JSON 파싱
+    try:
+        return _json.loads(text)
+    except Exception:
+        return {}
+
+
 @app.post("/webhook")
-async def webhook_handler(request: WebhookRequest):
+async def webhook_handler(request: Request):
     """
     챗봇 Builder Adaptive Card 제출 수신 엔드포인트.
 
@@ -530,19 +729,39 @@ async def webhook_handler(request: WebhookRequest):
     [결과 확인 요청] Action.Submit → {"action": "check_result", "job_id": "...", "userId": "..."}
       → Job 상태에 따라 결과 카드 또는 처리 중 카드 반환
     """
-    logger.info(f"[Webhook] 요청 수신 | action={request.action} | sn_value={request.sn_value} | userId={request.userId} | chatRoomId={request.chatRoomId}")
+    raw_body = await request.body()
+    content_type = request.headers.get("content-type", "")
+    data = _parse_webhook_body(raw_body, content_type)
+
+    logger.info(
+        f"[Webhook] 요청 수신 | content-type={content_type} "
+        f"| action={data.get('action')} | sn_value={data.get('sn_value')} "
+        f"| userId={data.get('userId')} | chatRoomId={data.get('chatRoomId')} "
+        f"| raw={raw_body.decode('utf-8', errors='replace')[:300]}"
+    )
+
+    if not data:
+        logger.error(f"[Webhook] body 파싱 실패 | raw={raw_body[:200]}")
+        return _webhook_error_card("요청 형식을 파싱할 수 없습니다.")
+
     _cleanup_expired_jobs()
 
+    action = (data.get("action") or "").strip()
+    user_id = (data.get("userId") or "").strip()
+    # chatRoomId: 챗봇 Builder 템플릿 변수 미치환 케이스 방어
+    chat_room_id_raw = str(data.get("chatRoomId") or "")
+    chat_room_id = chat_room_id_raw if not chat_room_id_raw.startswith("${") else ""
+
     # ── 결과 확인 요청 ─────────────────────────────────────────────────────────
-    if request.action == "check_result":
-        job_id = (request.job_id or "").strip()
+    if action == "check_result":
+        job_id = (data.get("job_id") or "").strip()
         job = _chatbot_jobs.get(job_id)
 
         if not job:
             return _webhook_error_card("조회 결과를 찾을 수 없습니다. SN을 다시 입력해 주세요.")
 
         # 본인 job인지 확인 (userId가 있는 경우에만 검증)
-        if request.userId and job.get("userId") and job["userId"] != request.userId:
+        if user_id and job.get("userId") and job["userId"] != user_id:
             return _webhook_error_card("접근 권한이 없습니다.")
 
         sn = job.get("sn", "")
@@ -556,23 +775,23 @@ async def webhook_handler(request: WebhookRequest):
             return JSONResponse(_build_status_card(sn, job_id))
 
     # ── SN 조회 요청 ───────────────────────────────────────────────────────────
-    sn_raw = (request.sn_value or "").strip().upper()
+    sn_raw = (data.get("sn_value") or "").strip().upper()
 
     if not sn_raw:
         return _webhook_error_card("SN을 입력해 주세요.")
     if len(sn_raw) > 50:
         return _webhook_error_card("SN이 너무 깁니다 (최대 50자).")
     if not re.match(r'^[A-Z0-9\-]+$', sn_raw):
-        return _webhook_error_card("SN은 영문, 숫자, 하이픈(-)만 사용 가능합니다.")
+        return _webhook_error_card(f"SN 형식이 올바르지 않습니다: {sn_raw}")
 
-    logger.info(f"[Webhook] SN 조회 요청: {sn_raw} | userId={request.userId} | chatRoomId={request.chatRoomId}")
+    logger.info(f"[Webhook] SN 조회 시작: {sn_raw} | userId={user_id} | chatRoomId={chat_room_id}")
 
     job_id = str(uuid.uuid4())
     _chatbot_jobs[job_id] = {
         "status": "pending",
         "sn": sn_raw,
-        "userId": request.userId,
-        "chatRoomId": request.chatRoomId,
+        "userId": user_id or None,
+        "chatRoomId": chat_room_id or None,
         "created_at": time.time(),
     }
     asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn_raw))
