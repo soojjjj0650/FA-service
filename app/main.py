@@ -751,22 +751,44 @@ async def webhook_handler(request: Request):
         content_type = request.headers.get("content-type", "")
         raw_text = raw_body.decode("utf-8", errors="replace")
 
-        data = _parse_webhook_body(raw_body, content_type)
+        # ── raw body 무조건 로깅 (Samsung 챗봇 Builder 형식 파악용) ──────────────
+        logger.info(
+            f"[Webhook] RAW 수신 | len={len(raw_body)} | content-type={content_type} "
+            f"| body={raw_text[:800]}"
+        )
 
-        # data가 dict인지 보장 (방어 코드)
-        if not isinstance(data, dict):
-            data = {}
+        # ── JSON 직접 파싱 (content-type: application/json 대응) ────────────────
+        import json as _json
+        data: dict = {}
+        if raw_body:
+            try:
+                parsed = _json.loads(raw_text)
+                if isinstance(parsed, dict):
+                    data = parsed
+                else:
+                    # 최상위가 list나 string인 경우 → 내용 그대로 로깅 후 빈 dict
+                    logger.warning(
+                        f"[Webhook] JSON 최상위 타입이 dict 아님: "
+                        f"{type(parsed).__name__} = {raw_text[:300]}"
+                    )
+            except _json.JSONDecodeError:
+                # JSON 파싱 실패 → form-urlencoded 시도
+                import urllib.parse as _up
+                try:
+                    data = dict(_up.parse_qsl(raw_text))
+                    logger.info(f"[Webhook] form 파싱 성공: {data}")
+                except Exception:
+                    pass
 
         logger.info(
-            f"[Webhook] 요청 수신 | content-type={content_type} "
-            f"| parsed_action={data.get('action')} | sn_value={data.get('sn_value')} "
-            f"| userId={data.get('userId')} | chatRoomId={data.get('chatRoomId')} "
-            f"| raw={raw_text[:300]}"
+            f"[Webhook] 파싱 결과 | keys={list(data.keys())} "
+            f"| action={data.get('action')} | sn_value={data.get('sn_value')} "
+            f"| userId={data.get('userId')} | chatRoomId={data.get('chatRoomId')}"
         )
 
         if not data:
-            logger.error(f"[Webhook] body 파싱 실패 | raw={raw_text[:300]}")
-            return _webhook_error_card("요청 형식을 파싱할 수 없습니다.")
+            logger.error(f"[Webhook] 파싱 실패 - body가 비어있거나 알 수 없는 형식 | raw={raw_text[:300]}")
+            return _webhook_error_card("요청 데이터를 파싱할 수 없습니다. 관리자에게 로그를 확인해 달라고 요청하세요.")
 
         _cleanup_expired_jobs()
 
