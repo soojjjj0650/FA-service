@@ -678,9 +678,10 @@ def _cleanup_expired_jobs() -> None:
 def _parse_webhook_body(raw_body: bytes, content_type: str) -> dict:
     """
     챗봇 Builder가 보내는 다양한 body 형식을 파싱합니다.
+    항상 dict를 반환합니다 (파싱 실패 시 빈 dict).
 
     지원 형식:
-      - application/json  : JSON 객체 또는 JSON 문자열
+      - application/json  : JSON 객체 또는 JSON 문자열(이중 인코딩)
       - application/x-www-form-urlencoded : form 데이터
       - 기타 : JSON 파싱 시도
     """
@@ -689,18 +690,29 @@ def _parse_webhook_body(raw_body: bytes, content_type: str) -> dict:
 
     text = raw_body.decode("utf-8", errors="replace").strip()
 
+    def _to_dict(obj) -> dict | None:
+        """파싱 결과가 dict인 경우만 반환, 아니면 None"""
+        return obj if isinstance(obj, dict) else None
+
     # 1. JSON 객체 직접 파싱
     if text.startswith("{"):
         try:
-            return _json.loads(text)
+            result = _json.loads(text)
+            d = _to_dict(result)
+            if d is not None:
+                return d
         except Exception:
             pass
 
     # 2. JSON 문자열 이중 인코딩 (body 자체가 "\"{ ... }\"" 형태)
     if text.startswith('"'):
         try:
-            inner = _json.loads(text)          # → 문자열
-            return _json.loads(inner)          # → dict
+            inner = _json.loads(text)   # 외부 문자열 벗기기
+            if isinstance(inner, str):
+                result = _json.loads(inner)
+                d = _to_dict(result)
+                if d is not None:
+                    return d
         except Exception:
             pass
 
@@ -711,11 +723,16 @@ def _parse_webhook_body(raw_body: bytes, content_type: str) -> dict:
         except Exception:
             pass
 
-    # 4. 최후 시도: JSON 파싱
+    # 4. 최후 시도: JSON 파싱 (dict인 경우만)
     try:
-        return _json.loads(text)
+        result = _json.loads(text)
+        d = _to_dict(result)
+        if d is not None:
+            return d
     except Exception:
-        return {}
+        pass
+
+    return {}
 
 
 @app.post("/webhook")
@@ -735,6 +752,10 @@ async def webhook_handler(request: Request):
         raw_text = raw_body.decode("utf-8", errors="replace")
 
         data = _parse_webhook_body(raw_body, content_type)
+
+        # data가 dict인지 보장 (방어 코드)
+        if not isinstance(data, dict):
+            data = {}
 
         logger.info(
             f"[Webhook] 요청 수신 | content-type={content_type} "
