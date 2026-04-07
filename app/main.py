@@ -238,7 +238,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
     Samsung chatbot Builder outbound API 형식으로 전송합니다.
     """
     if not settings.CHATBOT_PUSH_URL:
-        logger.debug("[Push] CHATBOT_PUSH_URL 미설정 - 자동 push 스킵 (사용자가 '결과 확인' 버튼 사용)")
+        logger.warning("[Push] CHATBOT_PUSH_URL 미설정 → webhook push 스킵! .env에 CHATBOT_PUSH_URL을 설정하세요.")
         return
 
     chat_room_id = job.get("chatRoomId")
