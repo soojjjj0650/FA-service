@@ -831,7 +831,14 @@ async def webhook_handler(request: Request):
                 return JSONResponse(_build_status_card(sn, job_id))
 
         # ── SN 조회 요청 ─────────────────────────────────────────────────────────
-        sn_raw = (data.get("sn_value") or "").strip().upper()
+        # body → 헤더 순으로 sn_value 탐색 (chatbot Builder 헤더 전달 방식 대응)
+        sn_raw = (
+            data.get("sn_value")
+            or request.headers.get("sn_value")
+            or request.headers.get("Sn_value")
+            or request.headers.get("SN_VALUE")
+            or ""
+        ).strip().upper()
 
         if not sn_raw:
             # sn_value 없음 = 앱카드 최초 로딩 시 API 자동 호출된 경우
