@@ -282,7 +282,11 @@ async def _push_card_to_chatroom(job: dict) -> None:
     else:
         text_body = f"[{sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
 
-    payload = {"text": text_body}
+    payload = {
+        "text": text_body,
+        "chatRoomId": chat_room_id,
+        "userId": user_id,
+    }
 
     headers = {"Content-Type": "application/json"}
     if settings.CHATBOT_PUSH_API_KEY:
