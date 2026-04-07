@@ -293,7 +293,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         headers["x-api-key"] = settings.CHATBOT_PUSH_API_KEY
 
     try:
-        async with httpx.AsyncClient(timeout=30, verify=False) as client:
+        async with httpx.AsyncClient(timeout=30, verify=False, trust_env=False) as client:
             resp = await client.post(settings.CHATBOT_PUSH_URL, json=payload, headers=headers)
             logger.info(
                 f"[Push] 결과 push 완료 | SN={sn} | status={resp.status_code}"
