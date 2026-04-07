@@ -1,0 +1,41 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.3",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "FA 단말기 SN 조회",
+      "size": "Medium",
+      "weight": "Bolder"
+    },
+    {
+      "type": "TextBlock",
+      "text": "조회할 단말기의 SN을 입력하고 조회 버튼을 눌러 주세요.",
+      "wrap": true,
+      "isSubtle": true,
+      "spacing": "Small"
+    },
+    {
+      "type": "Input.Text",
+      "id": "sn_value",
+      "placeholder": "SN 입력 (예: R5KL10BNKT)",
+      "label": "단말기 SN",
+      "isRequired": true,
+      "errorMessage": "SN을 입력해 주세요."
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Submit",
+      "title": "조회",
+      "data": {
+        "intent": "appCard",
+        "entity": {
+          "name": "SN조회",
+          "update": "True"
+        }
+      }
+    }
+  ]
+}
