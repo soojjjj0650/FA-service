@@ -278,9 +278,9 @@ async def _push_card_to_chatroom(job: dict) -> None:
     # Samsung chatbot Builder webhook payload
     # 챗봇 Builder 웹훅 설정에서 ${body.text} 로 참조
     if status == "done":
-        text_body = job.get("ai_response", "")
+        text_body = f"[SN: {sn}] FA 분석 결과\n\n{job.get('ai_response', '')}"
     else:
-        text_body = f"[{sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
+        text_body = f"[SN: {sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
 
     payload = {
         "text": text_body,
