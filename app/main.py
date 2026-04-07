@@ -275,13 +275,14 @@ async def _push_card_to_chatroom(job: dict) -> None:
             ],
         }
 
-    # Samsung chatbot Builder outbound push payload
-    # ※ 실제 API 스펙에 맞게 형식을 조정하세요
-    payload = {
-        "chatRoomId": chat_room_id,
-        "userId": user_id,
-        "card": card,
-    }
+    # Samsung chatbot Builder webhook payload
+    # 챗봇 Builder 웹훅 설정에서 ${body.text} 로 참조
+    if status == "done":
+        text_body = job.get("ai_response", "")
+    else:
+        text_body = f"[{sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
+
+    payload = {"text": text_body}
 
     headers = {"Content-Type": "application/json"}
     if settings.CHATBOT_PUSH_API_KEY:
@@ -291,13 +292,12 @@ async def _push_card_to_chatroom(job: dict) -> None:
         async with httpx.AsyncClient(timeout=30, verify=False) as client:
             resp = await client.post(settings.CHATBOT_PUSH_URL, json=payload, headers=headers)
             logger.info(
-                f"[Push] 결과 카드 자동 push 완료 | SN={sn} | "
-                f"chatRoomId={chat_room_id} | status={resp.status_code}"
+                f"[Push] 결과 push 완료 | SN={sn} | status={resp.status_code}"
             )
             if resp.status_code >= 400:
                 logger.warning(f"[Push] push 응답 오류: {resp.status_code} - {resp.text[:200]}")
     except Exception as e:
-        logger.error(f"[Push] 결과 카드 push 실패 (SN: {sn}): {e}")
+        logger.error(f"[Push] 결과 push 실패 (SN: {sn}): {e}")
 
 
 @app.post("/api/batch-query")
