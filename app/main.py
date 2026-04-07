@@ -834,7 +834,10 @@ async def webhook_handler(request: Request):
         sn_raw = (data.get("sn_value") or "").strip().upper()
 
         if not sn_raw:
-            return _webhook_error_card("SN을 입력해 주세요.")
+            # sn_value 없음 = 앱카드 최초 로딩 시 API 자동 호출된 경우
+            # → SN 입력 폼 카드를 반환해서 사용자가 입력할 수 있도록 함
+            logger.info("[Webhook] sn_value 없음 → SN 입력 폼 카드 반환 (앱카드 초기 로딩)")
+            return JSONResponse(_build_input_form_card())
         if len(sn_raw) > 50:
             return _webhook_error_card("SN이 너무 깁니다 (최대 50자).")
         if not re.match(r'^[A-Z0-9\-]+$', sn_raw):
@@ -864,6 +867,45 @@ async def webhook_handler(request: Request):
 
 
 # ─── Adaptive Card 빌더 ───────────────────────────────────────────────────────
+
+def _build_input_form_card() -> dict:
+    """SN 입력 폼 카드 — 앱카드 최초 로딩 시 반환"""
+    return {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.3",
+        "body": [
+            {
+                "type": "TextBlock",
+                "text": "FA 단말기 SN 조회",
+                "size": "Medium",
+                "weight": "Bolder",
+            },
+            {
+                "type": "TextBlock",
+                "text": "조회할 단말기의 SN을 입력하고 조회 버튼을 눌러 주세요.",
+                "wrap": True,
+                "isSubtle": True,
+                "spacing": "Small",
+            },
+            {
+                "type": "Input.Text",
+                "id": "sn_value",
+                "placeholder": "SN 입력 (예: R5KL10BNKT)",
+                "label": "SN",
+                "isRequired": True,
+                "errorMessage": "SN을 입력해 주세요.",
+            },
+        ],
+        "actions": [
+            {
+                "type": "Action.Submit",
+                "title": "조회",
+                "data": {"action": "search_sn"},
+            }
+        ],
+    }
+
 
 def _build_processing_card(sn: str, job_id: str) -> dict:
     """SN 조회 접수 카드 — 즉시 반환, 결과 확인 버튼 포함"""
