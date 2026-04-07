@@ -301,7 +301,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
             if resp.status_code >= 400:
                 logger.warning(f"[Push] push 응답 오류: {resp.status_code} - {resp.text[:200]}")
     except Exception as e:
-        logger.error(f"[Push] 결과 push 실패 (SN: {sn}): {e}")
+        logger.error(f"[Push] 결과 push 실패 (SN: {sn}): {type(e).__name__}: {e}", exc_info=True)
 
 
 @app.post("/api/batch-query")
