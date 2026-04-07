@@ -757,29 +757,36 @@ async def webhook_handler(request: Request):
             f"| body={raw_text[:800]}"
         )
 
-        # ── JSON 파싱 (Samsung 챗봇 이중 인코딩 대응) ───────────────────────────
+        # ── JSON 파싱 (Samsung 챗봇 이중 인코딩 + trailing comma 대응) ──────────
         import json as _json
+        import re as _re
+
+        def _fix_json(s: str) -> str:
+            """trailing comma 제거 (Samsung 챗봇 Builder 비표준 JSON 대응)"""
+            return _re.sub(r',\s*([}\]])', r'\1', s)
+
         data: dict = {}
         if raw_body:
             try:
-                parsed = _json.loads(raw_text)
+                # 1차 파싱 시도 (trailing comma 제거 후)
+                parsed = _json.loads(_fix_json(raw_text))
+
                 if isinstance(parsed, dict):
-                    # 정상: JSON 객체 직접 수신
+                    # 정상: JSON 객체
                     data = parsed
                 elif isinstance(parsed, str):
-                    # Samsung 챗봇 Builder 이중 인코딩: body 전체가 JSON 문자열
-                    # 예) body = "\"{ \\\"sn_value\\\": \\\"R5KL10BNKT\\\" }\""
-                    inner = _json.loads(parsed)
+                    # 이중 인코딩: 파싱 결과가 문자열 → 다시 파싱
+                    inner = _json.loads(_fix_json(parsed))
                     if isinstance(inner, dict):
                         data = inner
                     else:
-                        logger.warning(f"[Webhook] 이중 파싱 결과도 dict 아님: {type(inner).__name__}")
-            except _json.JSONDecodeError:
-                # JSON 파싱 실패 → form-urlencoded 시도
+                        logger.warning(f"[Webhook] 2차 파싱도 dict 아님: {type(inner).__name__}")
+
+            except Exception as e:
+                logger.warning(f"[Webhook] JSON 파싱 실패 ({e}), form 시도")
                 import urllib.parse as _up
                 try:
                     data = dict(_up.parse_qsl(raw_text))
-                    logger.info(f"[Webhook] form 파싱 성공: {data}")
                 except Exception:
                     pass
 
