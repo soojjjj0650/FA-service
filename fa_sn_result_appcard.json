@@ -11,8 +11,15 @@
     },
     {
       "type": "TextBlock",
-      "text": "${body.text}",
+      "text": "조회 중입니다. 최대 60분이 소요될 수 있습니다.",
       "wrap": true,
+      "spacing": "Small"
+    },
+    {
+      "type": "TextBlock",
+      "text": "분석이 완료되면 결과를 전송해 드리겠습니다. 잠시만 기다려 주세요.",
+      "wrap": true,
+      "isSubtle": true,
       "spacing": "Small"
     }
   ]
