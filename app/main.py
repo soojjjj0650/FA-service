@@ -757,20 +757,23 @@ async def webhook_handler(request: Request):
             f"| body={raw_text[:800]}"
         )
 
-        # ── JSON 직접 파싱 (content-type: application/json 대응) ────────────────
+        # ── JSON 파싱 (Samsung 챗봇 이중 인코딩 대응) ───────────────────────────
         import json as _json
         data: dict = {}
         if raw_body:
             try:
                 parsed = _json.loads(raw_text)
                 if isinstance(parsed, dict):
+                    # 정상: JSON 객체 직접 수신
                     data = parsed
-                else:
-                    # 최상위가 list나 string인 경우 → 내용 그대로 로깅 후 빈 dict
-                    logger.warning(
-                        f"[Webhook] JSON 최상위 타입이 dict 아님: "
-                        f"{type(parsed).__name__} = {raw_text[:300]}"
-                    )
+                elif isinstance(parsed, str):
+                    # Samsung 챗봇 Builder 이중 인코딩: body 전체가 JSON 문자열
+                    # 예) body = "\"{ \\\"sn_value\\\": \\\"R5KL10BNKT\\\" }\""
+                    inner = _json.loads(parsed)
+                    if isinstance(inner, dict):
+                        data = inner
+                    else:
+                        logger.warning(f"[Webhook] 이중 파싱 결과도 dict 아님: {type(inner).__name__}")
             except _json.JSONDecodeError:
                 # JSON 파싱 실패 → form-urlencoded 시도
                 import urllib.parse as _up
