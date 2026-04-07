@@ -869,7 +869,7 @@ async def webhook_handler(request: Request):
 # ─── Adaptive Card 빌더 ───────────────────────────────────────────────────────
 
 def _build_input_form_card() -> dict:
-    """SN 입력 폼 카드 — 앱카드 최초 로딩 시 반환"""
+    """SN 입력 안내 카드 — 앱카드 최초 로딩 시 반환 (채팅창 입력 유도)"""
     return {
         "type": "AdaptiveCard",
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -883,26 +883,17 @@ def _build_input_form_card() -> dict:
             },
             {
                 "type": "TextBlock",
-                "text": "조회할 단말기의 SN을 입력하고 조회 버튼을 눌러 주세요.",
+                "text": "조회할 단말기의 **SN을 채팅창에 입력**해 주세요.",
+                "wrap": True,
+                "spacing": "Small",
+            },
+            {
+                "type": "TextBlock",
+                "text": "예) R5KL10BNKT",
                 "wrap": True,
                 "isSubtle": True,
                 "spacing": "Small",
             },
-            {
-                "type": "Input.Text",
-                "id": "sn_value",
-                "placeholder": "SN 입력 (예: R5KL10BNKT)",
-                "label": "SN",
-                "isRequired": True,
-                "errorMessage": "SN을 입력해 주세요.",
-            },
-        ],
-        "actions": [
-            {
-                "type": "Action.Submit",
-                "title": "조회",
-                "data": {"action": "search_sn"},
-            }
         ],
     }
 
