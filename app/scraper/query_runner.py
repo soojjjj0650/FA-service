@@ -304,6 +304,8 @@ ORDER by Date,Time"""
         )
         for task in pending:
             task.cancel()
+        # 취소된 태스크가 완전히 종료될 때까지 대기 (Playwright 내부 큐 정리)
+        await asyncio.gather(*pending, return_exceptions=True)
 
         result = done.pop().result()
 
