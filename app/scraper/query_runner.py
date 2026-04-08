@@ -291,12 +291,21 @@ ORDER by Date,Time"""
 
         async def wait_no_data():
             while True:
-                el = await page.query_selector(no_data_sel)
+                try:
+                    el = await page.query_selector(no_data_sel)
+                except Exception:
+                    return "cancelled"
                 if el:
-                    text = await el.inner_text()
+                    try:
+                        text = await el.inner_text()
+                    except Exception:
+                        return "cancelled"
                     if "no data" in text.lower():
                         return "no_data"
-                await asyncio.sleep(1)
+                try:
+                    await asyncio.sleep(1)
+                except asyncio.CancelledError:
+                    return "cancelled"
 
         done, pending = await asyncio.wait(
             [asyncio.create_task(wait_download()), asyncio.create_task(wait_no_data())],
