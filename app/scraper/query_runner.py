@@ -148,7 +148,10 @@ ORDER by Date,Time"""
             return QueryResult(sn=sn, success=True, csv_path=csv_path)
 
         finally:
-            await page.close()
+            try:
+                await page.close()
+            except Exception:
+                pass  # CSV 다운로드 후 페이지가 이미 닫힌 경우 무시
 
     async def _wait_for_sqllab_ready(self, page: Page) -> None:
         """SQL Lab 페이지가 완전히 로드될 때까지 대기합니다."""
