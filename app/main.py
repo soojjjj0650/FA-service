@@ -867,8 +867,9 @@ async def webhook_handler(request: Request):
         asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn_raw))
 
         return JSONResponse({
+            "title": f"SN: {sn_raw} 조회 중",
             "text": (
-                f"SN [{sn_raw}] 조회를 시작했습니다.\n"
+                "조회를 시작했습니다.\n"
                 "분석에 최대 60분이 소요될 수 있습니다.\n"
                 "완료되면 결과를 전송해 드리겠습니다. 잠시만 기다려 주세요."
             )
