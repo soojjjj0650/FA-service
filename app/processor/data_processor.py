@@ -221,9 +221,12 @@ class DataProcessor:
             if feat:
                 grouped.setdefault(feat, []).append(row)
 
+        logger.info(f"CSV 내 feature 목록: {list(grouped.keys())} (총 {len(grouped)}종류)")
+
         tables: dict[str, FeatureTable] = {}
         for feat, feat_rows in grouped.items():
             col_map = FEATURE_COLUMNS.get(feat)
+            logger.info(f"feature '{feat}': {len(feat_rows)}건, 매핑 {'있음' if col_map else '없음(raw출력)'}")
             if col_map:
                 table_rows = []
                 for row in feat_rows:
