@@ -149,7 +149,7 @@ ORDER by Date,Time"""
 
         finally:
             try:
-                await page.close()
+                await asyncio.wait_for(page.close(), timeout=5.0)
             except Exception:
                 pass  # CSV 다운로드 후 페이지가 이미 닫힌 경우 무시
 

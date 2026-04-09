@@ -110,9 +110,8 @@ class BrowserPool:
             raise
         finally:
             try:
-                await context.close()
+                await asyncio.wait_for(context.close(), timeout=5.0)
             except Exception as e:
-                # CSV 다운로드 완료 후 컨텍스트 닫힐 때 발생하는 정상적인 연결 종료 오류 무시
                 logger.debug(f"브라우저 컨텍스트 닫기 오류 (무시): {e}")
             self._active_count -= 1
             self._semaphore.release()
