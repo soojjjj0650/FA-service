@@ -401,26 +401,10 @@ class DataProcessor:
         lines.append(f"Feature 분포: {feat_summary or '없음'}")
         lines.append("")
 
-        # ─ MUTE 주요 발생 지역 ────────────────────────────────────────────────
-        mute = feature_tables.get("MUTE")
-        if not mute or not mute.rows:
-            lines.append("MUTE 데이터 없음")
-            return "\n".join(lines)
-
-        cols = mute.columns
-
-        def col_idx(name: str) -> int | None:
-            return cols.index(name) if name in cols else None
-
-        # 전체 컬럼 표시 (이미 ECNT 내림차순 정렬됨)
-        display_idx = [(c, col_idx(c)) for c in cols if col_idx(c) is not None]
-        header = " | ".join(c for c, _ in display_idx)
-
-        lines.append(f"■ MUTE 주요 발생 지역 (ECNT 기준 내림차순, 총 {len(mute.rows)}개 셀)")
-        lines.append(header)
-        lines.append("-" * max(len(header), 20))
-        for r in mute.rows:
-            lines.append(" | ".join(str(r[i]) for _, i in display_idx))
+        # ─ 모든 feature 테이블 텍스트 출력 ────────────────────────────────────
+        for feat_name, table in feature_tables.items():
+            lines.append(table.to_text())
+            lines.append("")
 
         return "\n".join(lines)
 
