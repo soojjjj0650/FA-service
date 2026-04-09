@@ -67,7 +67,15 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("RxP_avg", "RxP1"),
         ("CAU",     "CAU1"),
     ]),
-    # 추후 추가: ATTS, CEND, SCGF, ATTF, ATTI, SIMD, NSVC, CRSH 등
+    "NSVC": OrderedDict([
+        ("LEV0_avg", "LEV0"),
+        ("LEV1_avg", "LEV1"),
+        ("LEV2_avg", "LEV2"),
+        ("LEV3_avg", "LEV3"),
+        ("LEV4_avg", "LEV4"),
+        ("LEV5_avg", "LEV5"),
+    ]),
+    # 추후 추가: ATTS, CEND, SCGF, ATTF, ATTI, SIMD, CRSH 등
 }
 
 
@@ -107,6 +115,12 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "avg":           ["RxP_avg"],
         "value_counts":  "CAU",
         "sort_by":       "RLFI횟수",
+    },
+    "NSVC": {
+        "group_by":      [],           # 전체를 하나로 집계
+        "count_col":     "NSVC_Count",
+        "count_col_pos": "start",      # 맨 앞에 삽입
+        "avg":           ["LEV0_avg", "LEV1_avg", "LEV2_avg", "LEV3_avg", "LEV4_avg", "LEV5_avg"],
     },
 }
 
@@ -313,20 +327,25 @@ class DataProcessor:
             return columns, rows
 
         col_idx = {c: i for i, c in enumerate(columns)}
-        group_by_cols  = [c for c in agg_cfg["group_by"] if c in col_idx]
+        raw_group_by   = agg_cfg.get("group_by", None)
+        aggregate_all  = raw_group_by == []          # 빈 리스트 = 전체를 하나로 집계
+        group_by_cols  = [c for c in (raw_group_by or []) if c in col_idx]
         sum_cols       = [c for c in agg_cfg.get("sum",  []) if c in col_idx]
         avg_cols       = [c for c in agg_cfg.get("avg",  []) if c in col_idx]
         count_col      = agg_cfg.get("count_col")   # 그룹 행 수 컬럼명
         vc_col         = agg_cfg.get("value_counts") # 고유값 카운트 컬럼명
 
-        if not group_by_cols:
+        if not group_by_cols and not aggregate_all:
             return columns, rows
 
         # 그룹 키 → 해당 rows 묶기
         groups: dict[tuple, list[list[str]]] = {}
-        for row in rows:
-            key = tuple(row[col_idx[c]] for c in group_by_cols)
-            groups.setdefault(key, []).append(row)
+        if aggregate_all:
+            groups[("__all__",)] = rows
+        else:
+            for row in rows:
+                key = tuple(row[col_idx[c]] for c in group_by_cols)
+                groups.setdefault(key, []).append(row)
 
         result = []
         for group_rows in groups.values():
@@ -374,9 +393,12 @@ class DataProcessor:
 
             result.append(merged)
 
-        # count_col 삽입: "end"이면 맨 뒤, 기본은 group_by 컬럼 바로 뒤
+        # count_col 삽입: "start"=맨 앞, "end"=맨 뒤, 기본=group_by 바로 뒤
         if count_col:
-            if agg_cfg.get("count_col_pos") == "end":
+            pos = agg_cfg.get("count_col_pos")
+            if pos == "start":
+                insert_pos = 0
+            elif pos == "end":
                 insert_pos = len(columns)
             else:
                 insert_pos = len(group_by_cols)
