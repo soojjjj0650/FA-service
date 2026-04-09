@@ -339,7 +339,7 @@ ORDER by Date,Time"""
         save_path = os.path.join(self.DOWNLOAD_DIR, f"{sn}_inputdata.csv")
 
         async with page.expect_download(timeout=60_000) as dl_info:
-            await page.click('button:has-text("Download to CSV")')
+            await page.click('button:has-text("Download to CSV")', no_wait_after=True)
         download = await dl_info.value
         await download.save_as(save_path)
 
