@@ -83,12 +83,32 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("Nband", "NBnd"),
         ("Ftype", "Ftype"),
     ]),
-    # 추후 추가: ATTS, CEND, ATTF, ATTI, SIMD, CRSH 등
+    "ATTF": OrderedDict([
+        ("Feature", "__feature__"),
+        ("PLMN",  "PLMN"),
+        ("ACT_",  "ACT_"),
+        ("LAC_",  "LAC_"),
+        ("TAC_",  "TAC_"),
+        ("PhID_", "PhID"),
+        ("DLCh",  "DLCh"),
+        ("EMMC",  "EMMC"),
+    ]),
+    "ATTI": OrderedDict([
+        ("Feature", "__feature__"),
+        ("PLMN",  "PLMN"),
+        ("ACT_",  "ACT_"),
+        ("LAC_",  "LAC_"),
+        ("TAC_",  "TAC_"),
+        ("PhID_", "PhID"),
+        ("DLCh",  "DLCh"),
+        ("EMMC",  "EMMC"),
+    ]),
+    # 추후 추가: ATTS, CEND, SIMD, CRSH 등
 }
 
 
 # ─── 16진수 → 10진수 변환이 필요한 컬럼 (표시명 기준, 전 feature 공통) ────────
-HEX_COLUMNS: set[str] = {"TAC", "LAC"}
+HEX_COLUMNS: set[str] = {"TAC", "LAC", "TAC_", "LAC_"}
 
 
 # ─── feature별 집계 규칙 ──────────────────────────────────────────────────────
@@ -136,6 +156,18 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "count_col_pos": "end",
         "value_counts":  "Ftype",
         "sort_by":       "SCGF발생횟수",
+    },
+    "ATTF": {
+        "group_by":      ["Feature", "PLMN", "ACT_", "LAC_", "TAC_", "PhID_", "DLCh"],
+        "count_col":     "Count",
+        "value_counts":  "EMMC",
+        "sort_by":       "Count",
+    },
+    "ATTI": {
+        "group_by":      ["Feature", "PLMN", "ACT_", "LAC_", "TAC_", "PhID_", "DLCh"],
+        "count_col":     "Count",
+        "value_counts":  "EMMC",
+        "sort_by":       "Count",
     },
 }
 
@@ -283,6 +315,8 @@ class DataProcessor:
                             val = str(row.get("Date", "") or "")
                         elif json_key == "__time__":
                             val = str(row.get("Time", "") or "")
+                        elif json_key == "__feature__":
+                            val = feat
                         else:
                             val = cv.get(json_key, "")
                             if col_name in HEX_COLUMNS:
