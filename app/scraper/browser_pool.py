@@ -109,22 +109,22 @@ class BrowserPool:
                 session_manager.mark_expired()
             raise
         finally:
+            self._active_count -= 1
+            self._semaphore.release()  # 즉시 반환 → 다음 요청 바로 시작 가능
+
+            needs_restart = False
             try:
                 await asyncio.wait_for(context.close(), timeout=5.0)
             except asyncio.TimeoutError:
-                logger.warning("브라우저 컨텍스트 닫기 타임아웃 → Playwright 완전 재시작")
-                try:
-                    if self._playwright:
-                        await asyncio.wait_for(self._playwright.stop(), timeout=2.0)
-                except Exception:
-                    pass
-                self._browser = None
-                self._playwright = None
-                await self.startup()
+                needs_restart = True
             except Exception as e:
                 logger.debug(f"브라우저 컨텍스트 닫기 오류 (무시): {e}")
-            self._active_count -= 1
-            self._semaphore.release()
+
+            if needs_restart:
+                logger.warning("브라우저 컨텍스트 닫기 타임아웃 → 백그라운드에서 Playwright 재시작")
+                self._browser = None
+                self._playwright = None
+                asyncio.create_task(self.startup())  # 백그라운드 재시작
             logger.debug(
                 f"브라우저 컨텍스트 반환 "
                 f"(활성: {self._active_count}/{self._max_size})"
