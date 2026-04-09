@@ -112,10 +112,10 @@ class BrowserPool:
             try:
                 await asyncio.wait_for(context.close(), timeout=5.0)
             except asyncio.TimeoutError:
-                logger.warning("브라우저 컨텍스트 닫기 타임아웃 → 브라우저 재시작")
+                logger.warning("브라우저 컨텍스트 닫기 타임아웃 → Playwright 완전 재시작")
                 try:
-                    if self._browser:
-                        await asyncio.wait_for(self._browser.close(), timeout=3.0)
+                    if self._playwright:
+                        await asyncio.wait_for(self._playwright.stop(), timeout=2.0)
                 except Exception:
                     pass
                 self._browser = None
