@@ -58,7 +58,16 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("RSCP_avg",    "RSCP"),
         ("SIPR",        "SIPR"),
     ]),
-    # 추후 추가: ATTS, CEND, SCGF, ATTF, ATTI, SIMD, RLFI, NSVC, CRSH 등
+    "RLFI": OrderedDict([
+        ("ACT",     "ACT1"),
+        ("LAC",     "LAC1"),
+        ("TAC",     "TAC1"),
+        ("PID",     "PID"),
+        ("DCh",     "DCh1"),
+        ("RxP_avg", "RxP1"),
+        ("CAU",     "CAU1"),
+    ]),
+    # 추후 추가: ATTS, CEND, SCGF, ATTF, ATTI, SIMD, NSVC, CRSH 등
 }
 
 
@@ -90,6 +99,14 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "avg":          ["RxP0_avg", "RxP1_avg", "SNR0_avg", "BLER_avg", "RSCP_avg"],
         "value_counts": "SIPR",
         "sort_by":      "Drop횟수",
+    },
+    "RLFI": {
+        "group_by":      ["ACT", "LAC", "TAC", "PID", "DCh"],
+        "count_col":     "RLFI횟수",
+        "count_col_pos": "end",
+        "avg":           ["RxP_avg"],
+        "value_counts":  "CAU",
+        "sort_by":       "RLFI횟수",
     },
 }
 
@@ -357,9 +374,12 @@ class DataProcessor:
 
             result.append(merged)
 
-        # count_col: group_by 컬럼 바로 뒤에 행 수 컬럼 삽입
+        # count_col 삽입: "end"이면 맨 뒤, 기본은 group_by 컬럼 바로 뒤
         if count_col:
-            insert_pos = len(group_by_cols)
+            if agg_cfg.get("count_col_pos") == "end":
+                insert_pos = len(columns)
+            else:
+                insert_pos = len(group_by_cols)
             columns = columns[:insert_pos] + [count_col] + columns[insert_pos:]
             group_sizes = [len(g) for g in groups.values()]
             result = [
