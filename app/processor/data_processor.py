@@ -103,7 +103,19 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("DLCh",  "DLCh"),
         ("EMMC",  "EMMC"),
     ]),
-    # 추후 추가: ATTS, CEND, SIMD, CRSH 등
+    "CRSH": OrderedDict([
+        ("PLMN",  "PLMN"),
+        ("ACT_",  "ACT_"),
+        ("LAC_",  "LAC_"),
+        ("TAC_",  "TAC_"),
+        ("PhID",  "PhID"),
+        ("DLCh",  "DLCh"),
+        ("File",  "File"),
+        ("Line",  "Line"),
+        ("Msg",   "Msg_"),
+        ("InCa",  "InCa"),
+    ]),
+    # 추후 추가: ATTS, CEND, SIMD 등
 }
 
 
@@ -167,6 +179,13 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "group_by":      ["Feature", "PLMN", "ACT_", "LAC_", "TAC_", "PhID_", "DLCh"],
         "count_col":     "Count",
         "value_counts":  "EMMC",
+        "sort_by":       "Count",
+    },
+    "CRSH": {
+        "group_by":      ["PLMN", "ACT_", "LAC_", "TAC_", "PhID", "DLCh"],
+        "count_col":     "Count",
+        "count_col_pos": "end",
+        "value_counts":  "InCa",
         "sort_by":       "Count",
     },
 }
