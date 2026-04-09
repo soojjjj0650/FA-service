@@ -380,6 +380,30 @@ class DataProcessor:
                     rows=table_rows,
                 )
 
+        # MUTE 보조 테이블: SAMS / SMBU / MCST 전체 value_counts
+        if "MUTE" in grouped:
+            extra_cols = ["SAMS", "SMBU", "MCST"]
+            vc: dict[str, dict[str, int]] = {c: {} for c in extra_cols}
+            for row in grouped["MUTE"]:
+                cv = self._parse_custom_value(str(row.get("custom_value", "") or ""))
+                for col in extra_cols:
+                    v = str(cv.get(col, "")).strip()
+                    if v:
+                        vc[col][v] = vc[col].get(v, 0) + 1
+            # 하나라도 값이 있는 경우에만 테이블 추가
+            if any(vc[c] for c in extra_cols):
+                summary_row = [
+                    ", ".join(f"{v}:{n}회" for v, n in sorted(vc[c].items(), key=lambda x: -x[1]))
+                    if vc[c] else "-"
+                    for c in extra_cols
+                ]
+                tables["MUTE_EXTRA"] = FeatureTable(
+                    feature="MUTE(SAMS/SMBU/MCST)",
+                    columns=extra_cols,
+                    rows=[summary_row],
+                )
+                logger.debug(f"MUTE 보조 테이블 생성: {summary_row}")
+
         return tables
 
     def _aggregate_rows(
