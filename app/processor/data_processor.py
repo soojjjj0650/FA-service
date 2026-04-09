@@ -115,7 +115,15 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("Msg",   "Msg_"),
         ("InCa",  "InCa"),
     ]),
-    # 추후 추가: ATTS, CEND, SIMD 등
+    "CEND": OrderedDict([
+        ("ACT",  "ACT_"),
+        ("TAC",  "TAC_"),
+        ("LAC",  "LAC_"),
+        ("PCI",  "PhID"),
+        ("DLCh", "DLCh"),
+        ("SIPR", "SIPR"),
+    ]),
+    # 추후 추가: ATTS, SIMD 등
 }
 
 
@@ -187,6 +195,12 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "count_col_pos": "end",
         "value_counts":  "InCa",
         "sort_by":       "Count",
+    },
+    "CEND": {
+        "group_by":      ["ACT", "TAC", "LAC", "PCI", "DLCh"],
+        "count_col":     "CEND Count",
+        "value_counts":  "SIPR",
+        "sort_by":       "CEND Count",
     },
 }
 
