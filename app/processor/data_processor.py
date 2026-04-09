@@ -44,7 +44,21 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("SINR",  "CINR"),
         ("BLER",  "BLER"),
     ]),
-    # 추후 추가: DROP, ATTS, CEND, SCGF, ATTF, ATTI, SIMD, RLFI, NSVC, CRSH 등
+    "DROP": OrderedDict([
+        ("ACT",         "ACT_"),
+        ("LAC",         "LAC_"),
+        ("TAC",         "TAC_"),
+        ("PCI",         "PhID"),
+        ("DLCh",        "DLCh"),
+        ("Band",        "LBND"),
+        ("RxP0_avg",    "RxP0"),
+        ("RxP1_avg",    "RxP1"),
+        ("SNR0_avg",    "SNR0"),
+        ("BLER_avg",    "BLER"),
+        ("RSCP_avg",    "RSCP"),
+        ("SIPR",        "SIPR"),
+    ]),
+    # 추후 추가: ATTS, CEND, SCGF, ATTF, ATTI, SIMD, RLFI, NSVC, CRSH 등
 }
 
 
@@ -53,12 +67,14 @@ HEX_COLUMNS: set[str] = {"TAC", "LAC"}
 
 
 # ─── feature별 집계 규칙 ──────────────────────────────────────────────────────
-# group_by : 동일 조합으로 묶을 표시명 컬럼 목록
-# sum      : 합계를 낼 컬럼
-# avg      : 평균을 낼 컬럼 (소수점 1자리)
-# first    : 그룹 내 첫 번째 값을 그대로 사용할 컬럼
-# drop     : 집계 후 제거할 컬럼
-# sort_by  : 집계 후 내림차순 정렬 기준 컬럼
+# group_by     : 동일 조합으로 묶을 표시명 컬럼 목록
+# sum          : 합계를 낼 컬럼
+# avg          : 평균을 낼 컬럼 (소수점 1자리)
+# first        : 그룹 내 첫 번째 값을 그대로 사용할 컬럼
+# drop         : 집계 후 제거할 컬럼
+# count_col    : 그룹 행 수를 표시할 새 컬럼명 (group_by 바로 뒤에 삽입)
+# value_counts : 고유값별 출현 횟수를 "값:N회" 형식으로 표시할 컬럼명
+# sort_by      : 집계 후 내림차순 정렬 기준 컬럼
 FEATURE_AGGREGATION: dict[str, dict] = {
     "MUTE": {
         "group_by": ["PLMN", "ACT", "TAC", "LAC", "PCI", "DLCh", "Band"],
@@ -67,6 +83,13 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "first":    ["Band"],
         "drop":     ["Date", "Time"],
         "sort_by":  "ECNT",
+    },
+    "DROP": {
+        "group_by":     ["ACT", "LAC", "TAC", "PCI", "DLCh", "Band"],
+        "count_col":    "Drop횟수",
+        "avg":          ["RxP0_avg", "RxP1_avg", "SNR0_avg", "BLER_avg", "RSCP_avg"],
+        "value_counts": "SIPR",
+        "sort_by":      "Drop횟수",
     },
 }
 
@@ -219,7 +242,7 @@ class DataProcessor:
                     table_rows.append(tr)
 
                 columns = list(col_map.keys())
-                agg_rows = self._aggregate_rows(feat, columns, table_rows)
+                columns, agg_rows = self._aggregate_rows(feat, columns, table_rows)
 
                 # drop 컬럼 제거
                 drop_cols = set(FEATURE_AGGREGATION.get(feat, {}).get("drop", []))
@@ -262,20 +285,22 @@ class DataProcessor:
         feat: str,
         columns: list[str],
         rows: list[list[str]],
-    ) -> list[list[str]]:
+    ) -> tuple[list[str], list[list[str]]]:
         """FEATURE_AGGREGATION 규칙에 따라 행을 그룹화·집계합니다.
-        집계 규칙이 없는 feature는 원본 rows를 그대로 반환합니다."""
+        (columns, rows) 튜플을 반환합니다."""
         agg_cfg = FEATURE_AGGREGATION.get(feat)
         if not agg_cfg or not rows:
-            return rows
+            return columns, rows
 
         col_idx = {c: i for i, c in enumerate(columns)}
-        group_by_cols = [c for c in agg_cfg["group_by"] if c in col_idx]
-        sum_cols  = [c for c in agg_cfg.get("sum",  []) if c in col_idx]
-        avg_cols  = [c for c in agg_cfg.get("avg",  []) if c in col_idx]
+        group_by_cols  = [c for c in agg_cfg["group_by"] if c in col_idx]
+        sum_cols       = [c for c in agg_cfg.get("sum",  []) if c in col_idx]
+        avg_cols       = [c for c in agg_cfg.get("avg",  []) if c in col_idx]
+        count_col      = agg_cfg.get("count_col")   # 그룹 행 수 컬럼명
+        vc_col         = agg_cfg.get("value_counts") # 고유값 카운트 컬럼명
 
         if not group_by_cols:
-            return rows
+            return columns, rows
 
         # 그룹 키 → 해당 rows 묶기
         groups: dict[tuple, list[list[str]]] = {}
@@ -285,7 +310,7 @@ class DataProcessor:
 
         result = []
         for group_rows in groups.values():
-            merged = list(group_rows[0])  # 기준행 (Date·Time·first 값 유지)
+            merged = list(group_rows[0])
 
             # Date: min ~ max 범위
             if "Date" in col_idx:
@@ -316,13 +341,38 @@ class DataProcessor:
                         pass
                 merged[col_idx[col]] = f"{sum(vals)/len(vals):.1f}" if vals else ""
 
+            # 고유값 카운트 (예: "1401:2회, 2000:1회")
+            if vc_col and vc_col in col_idx:
+                vc_counts: dict[str, int] = {}
+                for r in group_rows:
+                    v = r[col_idx[vc_col]].strip()
+                    if v:
+                        vc_counts[v] = vc_counts.get(v, 0) + 1
+                merged[col_idx[vc_col]] = ", ".join(
+                    f"{v}:{n}회" for v, n in sorted(vc_counts.items(), key=lambda x: -x[1])
+                )
+
             result.append(merged)
+
+        # count_col: group_by 컬럼 바로 뒤에 행 수 컬럼 삽입
+        if count_col:
+            insert_pos = len(group_by_cols)
+            columns = columns[:insert_pos] + [count_col] + columns[insert_pos:]
+            group_sizes = [len(g) for g in groups.values()]
+            result = [
+                row[:insert_pos] + [str(sz)] + row[insert_pos:]
+                for row, sz in zip(result, group_sizes)
+            ]
+
+        # value_counts 컬럼명 변경 (SIPR → SIPR_Counts)
+        if vc_col and vc_col in columns:
+            columns = [f"{vc_col}_Counts" if c == vc_col else c for c in columns]
 
         logger.debug(
             f"[{feat}] 집계 완료: 원본 {len(rows)}건 → 집계 {len(result)}건 "
             f"(group_by={group_by_cols})"
         )
-        return result
+        return columns, result
 
     def _build_summary(
         self,
