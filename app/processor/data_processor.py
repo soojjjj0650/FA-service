@@ -359,6 +359,9 @@ class DataProcessor:
                     si = columns.index(sort_col)
                     agg_rows.sort(key=lambda r: _safe_float(r[si]), reverse=True)
 
+                # 최대 10행 제한
+                agg_rows = agg_rows[:10]
+
                 tables[feat] = FeatureTable(
                     feature=feat,
                     columns=columns,
