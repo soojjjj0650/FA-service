@@ -55,7 +55,7 @@ with Data_SN as (
 )
 SELECT yymmddcrt as Date, SUBSTR(generation_timestamp,12,8) AS Time, feature,custom_value
 FROM `bigdata-dqa-data.mobile_udc`.to_udc_modem INNER JOIN Data_SN USING (un)
-WHERE p_yymmddval between DATE_SUB(current_date(), INTERVAL 1 DAY) and current_date()
+WHERE p_yymmddval between DATE_SUB(current_date(), INTERVAL 10 DAY) and current_date()
 ORDER by Date,Time"""
 
     async def run(
