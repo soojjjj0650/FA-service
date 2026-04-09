@@ -75,7 +75,15 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("LEV4_avg", "LEV4"),
         ("LEV5_avg", "LEV5"),
     ]),
-    # 추후 추가: ATTS, CEND, SCGF, ATTF, ATTI, SIMD, CRSH 등
+    "SCGF": OrderedDict([
+        ("PLMN",  "PLMN"),
+        ("TAC",   "TAC_"),
+        ("PhID",  "PhID"),
+        ("Lband", "LBnd"),
+        ("Nband", "NBnd"),
+        ("Ftype", "Ftype"),
+    ]),
+    # 추후 추가: ATTS, CEND, ATTF, ATTI, SIMD, CRSH 등
 }
 
 
@@ -121,6 +129,13 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "count_col":     "NSVC_Count",
         "count_col_pos": "start",      # 맨 앞에 삽입
         "avg":           ["LEV0_avg", "LEV1_avg", "LEV2_avg", "LEV3_avg", "LEV4_avg", "LEV5_avg"],
+    },
+    "SCGF": {
+        "group_by":      ["PLMN", "TAC", "PhID", "Lband", "Nband"],
+        "count_col":     "SCGF발생횟수",
+        "count_col_pos": "end",
+        "value_counts":  "Ftype",
+        "sort_by":       "SCGF발생횟수",
     },
 }
 
