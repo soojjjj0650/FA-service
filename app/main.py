@@ -230,6 +230,19 @@ async def _push_to_chatbot(text: str) -> None:
         logger.error(f"[Push] 챗봇 웹훅 호출 실패: {e}")
 
 
+def _strip_markdown(text: str) -> str:
+    """AI 응답의 마크다운 헤딩(#) 및 굵게(**) 기호를 제거합니다."""
+    lines = []
+    for line in text.splitlines():
+        # ### 제목 → 제목만 남기기
+        stripped = line.lstrip("#").strip() if line.startswith("#") else line
+        lines.append(stripped)
+    result = "\n".join(lines)
+    # **굵게** → 굵게
+    result = result.replace("**", "")
+    return result
+
+
 async def _push_card_to_chatroom(job: dict) -> None:
     """
     FA 분석 완료 후 결과 Adaptive Card를 채팅방으로 직접 push합니다.
@@ -278,7 +291,8 @@ async def _push_card_to_chatroom(job: dict) -> None:
     # Samsung chatbot Builder webhook payload
     # 챗봇 Builder 웹훅 설정에서 ${body.text} 로 참조
     if status == "done":
-        text_body = f"[SN: {sn}] FA 분석 결과\n\n{job.get('ai_response', '')}"
+        ai_text = _strip_markdown(job.get('ai_response', ''))
+        text_body = f"[SN: {sn}] FA 분석 결과\n\n{ai_text}"
     else:
         text_body = f"[SN: {sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
 
