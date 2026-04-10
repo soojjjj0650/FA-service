@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.scraper.query_runner import QueryResult
+from app.processor.code_mappings import apply_code
 
 logger = logging.getLogger(__name__)
 
@@ -410,8 +411,10 @@ class DataProcessor:
             # 하나라도 값이 있는 경우에만 테이블 추가
             if any(vc[c] for c in extra_cols):
                 summary_row = [
-                    ", ".join(f"{v}:{n}회" for v, n in sorted(vc[c].items(), key=lambda x: -x[1]))
-                    if vc[c] else "-"
+                    ", ".join(
+                        f"{apply_code(c, v)}:{n}회"
+                        for v, n in sorted(vc[c].items(), key=lambda x: -x[1])
+                    ) if vc[c] else "-"
                     for c in extra_cols
                 ]
                 tables["MUTE_EXTRA"] = FeatureTable(
@@ -497,7 +500,8 @@ class DataProcessor:
                     if v:
                         vc_counts[v] = vc_counts.get(v, 0) + 1
                 merged[col_idx[vc_col]] = ", ".join(
-                    f"{v}:{n}회" for v, n in sorted(vc_counts.items(), key=lambda x: -x[1])
+                    f"{apply_code(vc_col, v)}:{n}회"
+                    for v, n in sorted(vc_counts.items(), key=lambda x: -x[1])
                 )
 
             result.append(merged)
