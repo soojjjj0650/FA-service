@@ -121,10 +121,17 @@ class BrowserPool:
                 logger.debug(f"브라우저 컨텍스트 닫기 오류 (무시): {e}")
 
             if needs_restart:
-                logger.warning("브라우저 컨텍스트 닫기 타임아웃 → 백그라운드에서 Playwright 재시작")
-                self._browser = None
-                self._playwright = None
-                asyncio.create_task(self.startup())  # 백그라운드 재시작
+                if self._active_count == 0:
+                    # 다른 활성 컨텍스트가 없을 때만 재시작 (진행 중인 요청 보호)
+                    logger.warning("브라우저 컨텍스트 닫기 타임아웃 → 백그라운드에서 Playwright 재시작")
+                    self._browser = None
+                    self._playwright = None
+                    asyncio.create_task(self.startup())
+                else:
+                    logger.warning(
+                        f"브라우저 컨텍스트 닫기 타임아웃 → "
+                        f"활성 컨텍스트 {self._active_count}개 있어 재시작 건너뜀"
+                    )
             logger.debug(
                 f"브라우저 컨텍스트 반환 "
                 f"(활성: {self._active_count}/{self._max_size})"
