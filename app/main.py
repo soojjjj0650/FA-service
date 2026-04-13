@@ -909,33 +909,41 @@ async def webhook_handler(request: Request):
         ).strip().upper()
 
         if not sn_raw:
-            # sn_value 없음 = 앱카드 최초 로딩 시 API 자동 호출된 경우
-            # → SN 입력 폼 카드를 반환해서 사용자가 입력할 수 있도록 함
             logger.info("[Webhook] sn_value 없음 → SN 입력 폼 카드 반환 (앱카드 초기 로딩)")
             return JSONResponse(_build_input_form_card())
-        if len(sn_raw) > 50:
-            return _webhook_error_card("SN이 너무 깁니다 (최대 50자).")
-        if not re.match(r'^[A-Z0-9\-]+$', sn_raw):
-            return _webhook_error_card(f"SN 형식이 올바르지 않습니다: {sn_raw}")
 
-        logger.info(f"[Webhook] SN 조회 시작: {sn_raw} | userId={user_id} | chatRoomId={chat_room_id}")
+        # 쉼표/공백/줄바꿈으로 구분된 다중 SN 파싱 (최대 5개)
+        sn_list = [s.strip() for s in re.split(r'[,\s\n]+', sn_raw) if s.strip()]
+        sn_list = sn_list[:5]
 
-        job_id = str(uuid.uuid4())
-        _chatbot_jobs[job_id] = {
-            "status": "pending",
-            "sn": sn_raw,
-            "userId": user_id or None,
-            "chatRoomId": chat_room_id or None,
-            "created_at": time.time(),
-        }
-        asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn_raw))
+        # SN 형식 검증
+        for sn in sn_list:
+            if len(sn) > 50:
+                return _webhook_error_card(f"SN이 너무 깁니다 (최대 50자): {sn}")
+            if not re.match(r'^[A-Z0-9\-]+$', sn):
+                return _webhook_error_card(f"SN 형식이 올바르지 않습니다: {sn}")
 
+        logger.info(f"[Webhook] SN 조회 시작: {sn_list} | userId={user_id} | chatRoomId={chat_room_id}")
+
+        # SN별 Job 생성 + 병렬 파이프라인 시작
+        for sn in sn_list:
+            job_id = str(uuid.uuid4())
+            _chatbot_jobs[job_id] = {
+                "status": "pending",
+                "sn": sn,
+                "userId": user_id or None,
+                "chatRoomId": chat_room_id or None,
+                "created_at": time.time(),
+            }
+            asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn))
+
+        sn_display = ", ".join(sn_list)
         return JSONResponse({
-            "title": f"SN: {sn_raw} 조회 중",
+            "title": f"SN {len(sn_list)}개 조회 중",
             "text": (
-                "조회를 시작했습니다.\n"
+                f"아래 SN 조회를 시작했습니다:\n{sn_display}\n\n"
                 "분석에 최대 60분이 소요될 수 있습니다.\n"
-                "완료되면 결과를 전송해 드리겠습니다. 잠시만 기다려 주세요."
+                "완료되면 각각 결과를 전송해 드립니다. 잠시만 기다려 주세요."
             )
         })
 
