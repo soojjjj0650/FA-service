@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # MOCK_MODE=true 시 Superset 실제 조회 없이 더미 데이터로 파이프라인 테스트
     MOCK_MODE: bool = False
     # GROUPED_TABLE_DISPLAY=true 시 표를 그룹별(위치/횟수/품질) 형식으로 표시
-    GROUPED_TABLE_DISPLAY: bool = True
+    GROUPED_TABLE_DISPLAY: bool = False
 
     # ─── FastAPI 서버 ────────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"
