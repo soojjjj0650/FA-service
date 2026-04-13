@@ -237,25 +237,60 @@ async def _push_to_chatbot(text: str) -> None:
 
 
 def _strip_markdown(text: str) -> str:
-    """AI 응답의 마크다운 서식을 제거하고 챗봇 친화적 텍스트로 변환합니다."""
+    """AI 응답의 마크다운 서식을 제거하고 챗봇 친화적 텍스트로 변환합니다.
+
+    마크다운 표 → 번호 달린 key:value 행으로 변환
+    예) ① TAC:18469 PCI:160 ECNT:13 RSRP:-82.5
+    """
     import re
-    lines = []
+
+    NUMBER_EMOJI = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"]
+
+    output_lines: list[str] = []
+    header: list[str] = []
+    row_count = 0
+
     for line in text.splitlines():
-        # ### 제목 → 제목만 남기기
-        if line.startswith("#"):
-            line = line.lstrip("#").strip()
-        # |---|---| 구분선 → 제거
-        elif re.match(r'^\s*\|[\s\-:|]+\|\s*$', line):
+        stripped = line.strip()
+
+        # ### 제목 → 제목만
+        if stripped.startswith("#"):
+            output_lines.append(stripped.lstrip("#").strip())
+            header = []
+            row_count = 0
+
+        # |---|---| 구분선 → 건너뜀
+        elif re.match(r'^\|[\s\-:|]+\|', stripped):
             continue
-        # | val | val | → val  val  (표 행 → 공백 구분)
-        elif line.strip().startswith("|"):
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            line = "  ".join(c for c in cells if c)
-        lines.append(line)
-    result = "\n".join(lines)
-    # **굵게** → 굵게
+
+        # | val | val | 표 행
+        elif stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            cells = [c for c in cells if c]
+
+            if not header:
+                # 첫 번째 표 행 = 헤더
+                header = cells
+            else:
+                # 데이터 행 → key:value 형식
+                num = NUMBER_EMOJI[row_count] if row_count < len(NUMBER_EMOJI) else f"{row_count+1}."
+                pairs = [
+                    f"{header[i]}:{cells[i]}"
+                    for i in range(min(len(header), len(cells)))
+                    if cells[i]  # 빈 값 제외
+                ]
+                output_lines.append(f"{num} " + " ".join(pairs))
+                row_count += 1
+
+        # 일반 텍스트
+        else:
+            if stripped == "":
+                header = []  # 빈 줄 나오면 표 컨텍스트 초기화
+                row_count = 0
+            output_lines.append(line)
+
+    result = "\n".join(output_lines)
     result = result.replace("**", "")
-    # 연속 빈 줄 2개 이상 → 1개로
     result = re.sub(r'\n{3,}', '\n\n', result)
     return result
 
