@@ -65,10 +65,7 @@ ORDER by Date,Time"""
     ) -> QueryResult:
         """
         SN에 대해 SQL 쿼리를 실행하고 CSV를 다운로드합니다.
-
-        Args:
-            sn: 단말기 시리얼 넘버
-            progress_callback: 진행 상태 콜백 async fn(message: str)
+        Connection 오류 시 1회 자동 재시도합니다.
         """
         logger.info(f"쿼리 시작 - SN: {sn}")
 
@@ -77,17 +74,29 @@ ORDER by Date,Time"""
             if progress_callback:
                 await progress_callback(msg)
 
-        try:
-            async with browser_pool.acquire() as context:
-                return await self._execute_query(context, sn, notify)
-        except SessionExpiredNotice as e:
-            msg = str(e)
-            await notify("세션 만료 - 수동 재로그인 필요 (python scripts/manual_login.py)")
-            logger.warning(f"세션 만료로 쿼리 중단 [{sn}]")
-            return QueryResult(sn=sn, success=False, error=msg, session_expired=True)
-        except Exception as e:
-            logger.error(f"쿼리 실패 [{sn}]: {e}")
-            return QueryResult(sn=sn, success=False, error=str(e))
+        for attempt in range(2):  # 최대 2회 시도
+            try:
+                async with browser_pool.acquire() as context:
+                    return await self._execute_query(context, sn, notify)
+            except SessionExpiredNotice as e:
+                msg = str(e)
+                await notify("세션 만료 - 수동 재로그인 필요 (python scripts/manual_login.py)")
+                logger.warning(f"세션 만료로 쿼리 중단 [{sn}]")
+                return QueryResult(sn=sn, success=False, error=msg, session_expired=True)
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_connection_error = any(kw in err_msg for kw in [
+                    "connection closed", "target closed", "browser has been closed",
+                    "browser closed", "connection error",
+                ])
+                if is_connection_error and attempt == 0:
+                    logger.warning(f"브라우저 연결 오류 → 5초 후 재시도 [{sn}]: {e}")
+                    await notify("브라우저 연결 오류 - 재시도 중...")
+                    import asyncio as _asyncio
+                    await _asyncio.sleep(5)
+                    continue
+                logger.error(f"쿼리 실패 [{sn}]: {e}")
+                return QueryResult(sn=sn, success=False, error=str(e))
 
     # ─────────────────────────────────────────────────────────────────────────
     # Internal
