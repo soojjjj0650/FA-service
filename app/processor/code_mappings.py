@@ -39,6 +39,7 @@ _COLUMN_PAIRS = [
 def load_code_mappings() -> None:
     """서버 시작 시 CSV에서 코드 매핑을 로드합니다."""
     path = os.path.abspath(_CSV_PATH)
+    logger.info(f"코드 매핑 파일 경로: {path}")
     if not os.path.exists(path):
         logger.warning(f"코드 매핑 파일 없음 (코드 변환 비활성화): {path}")
         return
