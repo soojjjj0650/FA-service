@@ -237,15 +237,26 @@ async def _push_to_chatbot(text: str) -> None:
 
 
 def _strip_markdown(text: str) -> str:
-    """AI 응답의 마크다운 헤딩(#) 및 굵게(**) 기호를 제거합니다."""
+    """AI 응답의 마크다운 서식을 제거하고 챗봇 친화적 텍스트로 변환합니다."""
+    import re
     lines = []
     for line in text.splitlines():
         # ### 제목 → 제목만 남기기
-        stripped = line.lstrip("#").strip() if line.startswith("#") else line
-        lines.append(stripped)
+        if line.startswith("#"):
+            line = line.lstrip("#").strip()
+        # |---|---| 구분선 → 제거
+        elif re.match(r'^\s*\|[\s\-:|]+\|\s*$', line):
+            continue
+        # | val | val | → val  val  (표 행 → 공백 구분)
+        elif line.strip().startswith("|"):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            line = "  ".join(c for c in cells if c)
+        lines.append(line)
     result = "\n".join(lines)
     # **굵게** → 굵게
     result = result.replace("**", "")
+    # 연속 빈 줄 2개 이상 → 1개로
+    result = re.sub(r'\n{3,}', '\n\n', result)
     return result
 
 
