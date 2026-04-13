@@ -245,7 +245,7 @@ _TABLE_GROUPS: list[tuple[frozenset, list[tuple[str, list[str]]]]] = [
         [
             ("위치", ["PLMN", "ACT", "TAC", "LAC", "PCI", "DLCh", "Band"]),
             ("횟수", ["UBMT", "RSMT", "RNMT", "DBMT", "ECNT"]),
-            ("품질", ["RSRP", "RSCP", "SINR", "BLER"]),
+            ("신호", ["RSRP", "RSCP", "SINR", "BLER"]),
         ],
     ),
 ]
