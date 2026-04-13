@@ -236,15 +236,53 @@ async def _push_to_chatbot(text: str) -> None:
         logger.error(f"[Push] 챗봇 웹훅 호출 실패: {e}")
 
 
-def _strip_markdown(text: str) -> str:
-    """AI 응답의 마크다운 서식을 제거하고 챗봇 친화적 텍스트로 변환합니다.
+# ─── 표 컬럼 그룹 정의 (GROUPED_TABLE_DISPLAY=true 시 사용) ──────────────────
+# 헤더 컬럼 집합 → [(그룹명, [컬럼명, ...])] 매핑
+_TABLE_GROUPS: list[tuple[frozenset, list[tuple[str, list[str]]]]] = [
+    (
+        frozenset(["PLMN","ACT","TAC","LAC","PCI","DLCh","Band",
+                   "UBMT","RSMT","RNMT","DBMT","ECNT","RSRP","RSCP","SINR","BLER"]),
+        [
+            ("위치", ["PLMN", "ACT", "TAC", "LAC", "PCI", "DLCh", "Band"]),
+            ("횟수", ["UBMT", "RSMT", "RNMT", "DBMT", "ECNT"]),
+            ("품질", ["RSRP", "RSCP", "SINR", "BLER"]),
+        ],
+    ),
+]
 
-    마크다운 표 → 번호 달린 key:value 행으로 변환
-    예) ① TAC:18469 PCI:160 ECNT:13 RSRP:-82.5
-    """
+
+def _find_groups(headers: list[str]):
+    """헤더 목록에 맞는 그룹 정의를 찾아 반환. 없으면 None."""
+    h_set = frozenset(headers)
+    for key_set, groups in _TABLE_GROUPS:
+        if h_set >= key_set or h_set <= key_set:  # 부분 일치도 허용
+            return groups
+    return None
+
+
+def _format_row_grouped(
+    headers: list[str],
+    cells: list[str],
+    groups: list[tuple[str, list[str]]],
+    num: str,
+) -> str:
+    """데이터 행을 그룹별 여러 줄로 포맷."""
+    col_map = {h: (cells[i] if i < len(cells) else "") for i, h in enumerate(headers)}
+    lines = []
+    for g_name, g_cols in groups:
+        pairs = [f"{c}:{col_map[c]}" for c in g_cols if col_map.get(c)]
+        if pairs:
+            prefix = f"{num} [{g_name}]" if not lines else f"   [{g_name}]"
+            lines.append(prefix + " " + " ".join(pairs))
+    return "\n".join(lines)
+
+
+def _strip_markdown(text: str) -> str:
+    """AI 응답의 마크다운 서식을 제거하고 챗봇 친화적 텍스트로 변환합니다."""
     import re
 
     NUMBER_EMOJI = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"]
+    grouped_mode = settings.GROUPED_TABLE_DISPLAY
 
     output_lines: list[str] = []
     header: list[str] = []
@@ -266,26 +304,29 @@ def _strip_markdown(text: str) -> str:
         # | val | val | 표 행
         elif stripped.startswith("|"):
             cells = [c.strip() for c in stripped.strip("|").split("|")]
-            cells = [c for c in cells if c]
+            cells = [c for c in cells if c != ""]
 
             if not header:
-                # 첫 번째 표 행 = 헤더
-                header = cells
+                header = cells  # 첫 번째 행 = 헤더
             else:
-                # 데이터 행 → key:value 형식
                 num = NUMBER_EMOJI[row_count] if row_count < len(NUMBER_EMOJI) else f"{row_count+1}."
-                pairs = [
-                    f"{header[i]}:{cells[i]}"
-                    for i in range(min(len(header), len(cells)))
-                    if cells[i]  # 빈 값 제외
-                ]
-                output_lines.append(f"{num} " + " ".join(pairs))
+                groups = _find_groups(header) if grouped_mode else None
+
+                if groups:
+                    output_lines.append(_format_row_grouped(header, cells, groups, num))
+                else:
+                    pairs = [
+                        f"{header[i]}:{cells[i]}"
+                        for i in range(min(len(header), len(cells)))
+                        if cells[i]
+                    ]
+                    output_lines.append(f"{num} " + " ".join(pairs))
                 row_count += 1
 
         # 일반 텍스트
         else:
             if stripped == "":
-                header = []  # 빈 줄 나오면 표 컨텍스트 초기화
+                header = []
                 row_count = 0
             output_lines.append(line)
 
