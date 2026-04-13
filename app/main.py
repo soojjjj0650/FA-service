@@ -283,61 +283,13 @@ def _format_row_grouped(
 
 
 def _strip_markdown(text: str) -> str:
-    """AI 응답의 마크다운 서식을 제거하고 챗봇 친화적 텍스트로 변환합니다."""
-    import re
-
-    NUMBER_EMOJI = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"]
-    grouped_mode = getattr(settings, "GROUPED_TABLE_DISPLAY", True)
-
-    output_lines: list[str] = []
-    header: list[str] = []
-    row_count = 0
-
+    """AI 응답의 마크다운 헤딩(#) 및 굵게(**) 기호를 제거합니다."""
+    lines = []
     for line in text.splitlines():
-        stripped = line.strip()
-
-        # ### 제목 → 제목만
-        if stripped.startswith("#"):
-            output_lines.append(stripped.lstrip("#").strip())
-            header = []
-            row_count = 0
-
-        # |---|---| 구분선 → 건너뜀
-        elif re.match(r'^\|[\s\-:|]+\|', stripped):
-            continue
-
-        # | val | val | 표 행
-        elif stripped.startswith("|"):
-            cells = [c.strip() for c in stripped.strip("|").split("|")]
-            cells = [c for c in cells if c != ""]
-
-            if not header:
-                header = cells  # 첫 번째 행 = 헤더
-            else:
-                num = NUMBER_EMOJI[row_count] if row_count < len(NUMBER_EMOJI) else f"{row_count+1}."
-                groups = _find_groups(header) if grouped_mode else None
-
-                if groups:
-                    output_lines.append(_format_row_grouped(header, cells, groups, num))
-                else:
-                    pairs = [
-                        f"{header[i]}:{cells[i]}"
-                        for i in range(min(len(header), len(cells)))
-                        if cells[i]
-                    ]
-                    output_lines.append(f"{num} " + " ".join(pairs))
-                row_count += 1
-
-        # 일반 텍스트
-        else:
-            if stripped == "":
-                header = []
-                row_count = 0
-            output_lines.append(line)
-
-    result = "\n".join(output_lines)
+        stripped = line.lstrip("#").strip() if line.startswith("#") else line
+        lines.append(stripped)
+    result = "\n".join(lines)
     result = result.replace("**", "")
-    result = re.sub(r'\n{3,}', '\n\n', result)
     return result
 
 
