@@ -287,7 +287,7 @@ def _strip_markdown(text: str) -> str:
     import re
 
     NUMBER_EMOJI = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"]
-    grouped_mode = settings.GROUPED_TABLE_DISPLAY
+    grouped_mode = getattr(settings, "GROUPED_TABLE_DISPLAY", True)
 
     output_lines: list[str] = []
     header: list[str] = []
