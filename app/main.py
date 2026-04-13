@@ -283,11 +283,17 @@ def _format_row_grouped(
 
 
 def _strip_markdown(text: str) -> str:
-    """AI 응답의 마크다운 헤딩(#) 및 굵게(**) 기호를 제거합니다."""
+    """AI 응답의 마크다운 헤딩(#) 및 굵게(**) 기호를 제거하고 제목을 강조합니다."""
     lines = []
     for line in text.splitlines():
-        stripped = line.lstrip("#").strip() if line.startswith("#") else line
-        lines.append(stripped)
+        if line.startswith("###"):
+            lines.append(f"\n▶ {line.lstrip('#').strip()}")
+        elif line.startswith("##"):
+            lines.append(f"\n◆ {line.lstrip('#').strip()}")
+        elif line.startswith("#"):
+            lines.append(f"\n■ {line.lstrip('#').strip()}")
+        else:
+            lines.append(line)
     result = "\n".join(lines)
     result = result.replace("**", "")
     return result
