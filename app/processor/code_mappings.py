@@ -45,8 +45,18 @@ def load_code_mappings() -> None:
         return
 
     try:
-        with open(path, encoding="utf-8-sig", newline="") as f:
-            rows = list(csv.reader(f))
+        # 인코딩 순서대로 시도 (한국어 윈도우 환경 대응)
+        for encoding in ("utf-8-sig", "cp949", "euc-kr", "latin-1"):
+            try:
+                with open(path, encoding=encoding, newline="") as f:
+                    rows = list(csv.reader(f))
+                logger.info(f"코드 매핑 파일 인코딩: {encoding}")
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            logger.error("코드 매핑 파일 인코딩 감지 실패")
+            return
 
         if not rows:
             return
