@@ -103,8 +103,12 @@ _chatbot_jobs: dict[str, dict] = {}
 @app.on_event("startup")
 async def startup():
     await browser_pool.startup()
-    from app.processor.code_mappings import load_code_mappings
-    load_code_mappings()
+    logger.info("코드 매핑 로드 시작...")
+    try:
+        from app.processor.code_mappings import load_code_mappings
+        load_code_mappings()
+    except Exception as e:
+        logger.error(f"코드 매핑 로드 중 오류: {e}", exc_info=True)
     logger.info("FA Chatbot Service 시작")
 
 
