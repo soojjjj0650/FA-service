@@ -18,10 +18,15 @@ FA Chatbot Service - FastAPI 메인 애플리케이션
 import asyncio
 import logging
 import re
+import sys
 import time
 import uuid
 from pathlib import Path
 from typing import Optional
+
+# Windows에서 Playwright가 ProactorEventLoop를 요구
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 import httpx
 
