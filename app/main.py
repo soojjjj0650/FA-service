@@ -40,7 +40,8 @@ from app.config import settings
 from app.scraper.browser_pool import browser_pool
 from app.scraper.query_runner import query_runner
 from app.scraper.session_manager import session_manager
-from app.processor.data_processor import data_processor
+from app.scraper.station_scraper import station_scraper
+from app.processor.data_processor import data_processor, ProcessedData
 from app.agent.agent_client import agent_client
 
 # ─── 로깅 설정 ───────────────────────────────────────────────────────────────
@@ -653,6 +654,51 @@ async def _send(websocket: WebSocket, msg_type: str, message: str):
     await websocket.send_json({"type": msg_type, "message": message})
 
 
+# ─── 기지국 정보 조회 헬퍼 ────────────────────────────────────────────────────
+_PLMN_OPERATOR = {"45005": "skt", "45006": "lgu", "45008": "kt"}
+
+
+async def _fetch_station_info(processed: ProcessedData) -> str:
+    """MUTE/DROP 첫 행의 TAC·PCI로 기지국 정보를 조회하여 텍스트로 반환합니다.
+    PLMN(45005→SKT, 45006→LGU, 45008→KT)으로 사업자를 결정합니다."""
+
+    operator = "skt"  # 기본값 (MUTE에서 결정)
+    results: list[str] = []
+
+    def _col_val(table, col_name: str) -> str:
+        if col_name in table.columns:
+            return table.rows[0][table.columns.index(col_name)]
+        return ""
+
+    # ── MUTE 첫 행 ──────────────────────────────────────────────────────────
+    mute = processed.feature_tables.get("MUTE")
+    if mute and mute.rows:
+        plmn = _col_val(mute, "PLMN").rstrip("#").strip()
+        operator = _PLMN_OPERATOR.get(plmn, "skt")
+        tac = _col_val(mute, "TAC")
+        pci = _col_val(mute, "PCI")
+        if tac and pci:
+            try:
+                r = await station_scraper.search(operator, tac, pci)
+                results.append(f"[MUTE 기지국]\n{r.to_text()}")
+            except Exception as e:
+                logger.warning(f"MUTE 기지국 조회 실패: {e}")
+
+    # ── DROP 첫 행 (사업자는 MUTE에서 결정한 값 사용) ────────────────────────
+    drop = processed.feature_tables.get("DROP")
+    if drop and drop.rows:
+        tac = _col_val(drop, "TAC")
+        pci = _col_val(drop, "PCI")
+        if tac and pci:
+            try:
+                r = await station_scraper.search(operator, tac, pci)
+                results.append(f"[DROP 기지국]\n{r.to_text()}")
+            except Exception as e:
+                logger.warning(f"DROP 기지국 조회 실패: {e}")
+
+    return "\n\n".join(results)
+
+
 # ─── 챗봇 전용 백그라운드 파이프라인 ─────────────────────────────────────────
 async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
     """챗봇 Job: SQL 조회 → 데이터 가공 → AI 분석 전체 파이프라인 실행"""
@@ -709,7 +755,13 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
             await _push_card_to_chatroom(job)
             return
 
-        # 3. AI 분석
+        # 3. 기지국 정보 조회 (MUTE/DROP 첫 행 TAC·PCI 기반)
+        station_text = await _fetch_station_info(processed)
+        if station_text:
+            processed.summary_text += "\n\n" + station_text
+            logger.info(f"[Chatbot Job {job_id}] 기지국 정보 추가 완료")
+
+        # 4. AI 분석
         ai_response = await agent_client.analyze(processed)
 
         feature_summary = "  |  ".join(
