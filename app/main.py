@@ -321,7 +321,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         return
 
     if status == "done":
-        card = _build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""))
+        card = _build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_text", ""))
     else:
         error_msg = job.get("error", "처리 중 오류가 발생했습니다.")
         card = {
@@ -349,7 +349,10 @@ async def _push_card_to_chatroom(job: dict) -> None:
     # 챗봇 Builder 웹훅 설정에서 ${body.text} 로 참조
     if status == "done":
         ai_text = _strip_markdown(job.get('ai_response', ''))
+        station = job.get('station_text', '')
         text_body = f"[SN: {sn}] FA 분석 결과\n\n{ai_text}"
+        if station:
+            text_body += f"\n\n■ 기지국 정보\n{station}"
     else:
         text_body = f"[SN: {sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
 
@@ -755,14 +758,13 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
             await _push_card_to_chatroom(job)
             return
 
-        # 3. 기지국 정보 조회 (MUTE/DROP 첫 행 TAC·PCI 기반)
+        # 3. AI 분석 (사용자 데이터만 전송)
+        ai_response = await agent_client.analyze(processed)
+
+        # 4. 기지국 정보 조회 (별도 - AI에 보내지 않고 챗봇에만 표시)
         station_text = await _fetch_station_info(processed)
         if station_text:
-            processed.summary_text += "\n\n" + station_text
-            logger.info(f"[Chatbot Job {job_id}] 기지국 정보 추가 완료")
-
-        # 4. AI 분석
-        ai_response = await agent_client.analyze(processed)
+            logger.info(f"[Chatbot Job {job_id}] 기지국 정보 조회 완료")
 
         feature_summary = "  |  ".join(
             f"{f}: {len(t.rows)}건" for f, t in processed.feature_tables.items()
@@ -771,8 +773,9 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         job["status"] = "done"
         job["ai_response"] = ai_response
         job["feature_summary"] = feature_summary
+        job["station_text"] = station_text  # 기지국 정보 별도 저장
 
-        # 4. 결과 카드 자동 push (CHATBOT_PUSH_URL 설정 시)
+        # 5. 결과 카드 자동 push (CHATBOT_PUSH_URL 설정 시)
         await _push_card_to_chatroom(job)
 
     except Exception as e:
@@ -958,7 +961,7 @@ async def webhook_handler(request: Request):
             status = job.get("status", "unknown")
 
             if status == "done":
-                return JSONResponse(_build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", "")))
+                return JSONResponse(_build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_text", "")))
             elif status == "error":
                 return _webhook_error_card(job.get("error", "처리 중 오류가 발생했습니다."))
             else:
@@ -1178,66 +1181,83 @@ def _build_status_card(sn: str, job_id: str) -> dict:
     }
 
 
-def _build_result_card(sn: str, ai_response: str, feature_summary: str) -> dict:
+def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_text: str = "") -> dict:
     """분석 완료 결과 카드"""
     MAX_AI_LEN = 800
     ai_text = ai_response if len(ai_response) <= MAX_AI_LEN else ai_response[:MAX_AI_LEN] + "..."
+
+    body = [
+        {
+            "type": "TextBlock",
+            "text": f"SN 조회 결과: {sn}",
+            "size": "Medium",
+            "weight": "Bolder",
+        },
+        {
+            "type": "ColumnSet",
+            "style": "emphasis",
+            "columns": [
+                {
+                    "type": "Column",
+                    "width": "100px",
+                    "items": [{"type": "TextBlock", "text": "SN", "weight": "Bolder", "wrap": True}],
+                },
+                {
+                    "type": "Column",
+                    "width": "stretch",
+                    "items": [{"type": "TextBlock", "text": sn, "wrap": True}],
+                },
+            ],
+        },
+        {
+            "type": "ColumnSet",
+            "columns": [
+                {
+                    "type": "Column",
+                    "width": "100px",
+                    "items": [{"type": "TextBlock", "text": "분석 데이터", "wrap": True}],
+                },
+                {
+                    "type": "Column",
+                    "width": "stretch",
+                    "items": [{"type": "TextBlock", "text": feature_summary, "wrap": True}],
+                },
+            ],
+        },
+        {
+            "type": "TextBlock",
+            "text": "■ AI 분석 결과",
+            "weight": "Bolder",
+            "spacing": "Large",
+        },
+        {
+            "type": "TextBlock",
+            "text": ai_text,
+            "wrap": True,
+            "spacing": "Small",
+        },
+    ]
+
+    # 기지국 정보 섹션 추가
+    if station_text:
+        body.append({
+            "type": "TextBlock",
+            "text": "■ 기지국 정보",
+            "weight": "Bolder",
+            "spacing": "Large",
+        })
+        body.append({
+            "type": "TextBlock",
+            "text": station_text,
+            "wrap": True,
+            "spacing": "Small",
+        })
 
     return {
         "type": "AdaptiveCard",
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "version": "1.3",
-        "body": [
-            {
-                "type": "TextBlock",
-                "text": f"SN 조회 결과: {sn}",
-                "size": "Medium",
-                "weight": "Bolder",
-            },
-            {
-                "type": "ColumnSet",
-                "style": "emphasis",
-                "columns": [
-                    {
-                        "type": "Column",
-                        "width": "100px",
-                        "items": [{"type": "TextBlock", "text": "SN", "weight": "Bolder", "wrap": True}],
-                    },
-                    {
-                        "type": "Column",
-                        "width": "stretch",
-                        "items": [{"type": "TextBlock", "text": sn, "wrap": True}],
-                    },
-                ],
-            },
-            {
-                "type": "ColumnSet",
-                "columns": [
-                    {
-                        "type": "Column",
-                        "width": "100px",
-                        "items": [{"type": "TextBlock", "text": "분석 데이터", "wrap": True}],
-                    },
-                    {
-                        "type": "Column",
-                        "width": "stretch",
-                        "items": [{"type": "TextBlock", "text": feature_summary, "wrap": True}],
-                    },
-                ],
-            },
-            {
-                "type": "TextBlock",
-                "text": "■ AI 분석 결과",
-                "weight": "Bolder",
-                "spacing": "Large",
-            },
-            {
-                "type": "TextBlock",
-                "text": ai_text,
-                "wrap": True,
-                "spacing": "Small",
-            },
-        ],
+        "body": body,
     }
 
 
