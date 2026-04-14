@@ -320,7 +320,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         return
 
     if status == "done":
-        card = _build_result_card(sn, job["ai_response"], job["feature_summary"])
+        card = _build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""))
     else:
         error_msg = job.get("error", "처리 중 오류가 발생했습니다.")
         card = {
@@ -696,6 +696,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         if query_result.csv_path is None:
             job["status"] = "done"
             job["ai_response"] = f"[SN: {sn}] 최근 10일간 조회 결과가 없습니다."
+            job["feature_summary"] = "데이터 없음"
             await _push_card_to_chatroom(job)
             return
 
@@ -905,7 +906,7 @@ async def webhook_handler(request: Request):
             status = job.get("status", "unknown")
 
             if status == "done":
-                return JSONResponse(_build_result_card(sn, job["ai_response"], job["feature_summary"]))
+                return JSONResponse(_build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", "")))
             elif status == "error":
                 return _webhook_error_card(job.get("error", "처리 중 오류가 발생했습니다."))
             else:
