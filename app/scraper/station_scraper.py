@@ -2,7 +2,7 @@
 Station Scraper - 기지국 정보 조회 (10.246.56.50:8000)
 
 흐름:
-  1. 사이트 접속
+  1. 기존 BrowserPool 컨텍스트 재사용 (별도 브라우저 실행 없음)
   2. 사업자 선택 (SKT / KT / LGU+)
   3. TAC / PCI 입력
   4. 검색 버튼 클릭
@@ -13,7 +13,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeout
+from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +21,11 @@ STATION_URL = "http://10.246.56.50:8000"
 
 # 사업자 버튼 클래스명 매핑
 OPERATOR_MAP = {
-    "skt": "skt",
-    "kt":  "kt",
-    "lgu": "lgu",
+    "skt":  "skt",
+    "kt":   "kt",
+    "lgu":  "lgu",
     "lgu+": "lgu",
-    "lg":  "lgu",
+    "lg":   "lgu",
 }
 
 
@@ -49,14 +49,14 @@ class StationResult:
         if not self.rows:
             return f"[{self.operator.upper()} TAC:{self.tac} PCI:{self.pci}] 조회 결과 없음"
 
-        lines = [f"[기지국 정보] {self.operator.upper()} / TAC:{self.tac} / PCI:{self.pci} ({self.row_count}건)"]
+        lines = [f"{self.operator.upper()} / TAC:{self.tac} / PCI:{self.pci} ({self.row_count}건)"]
         for r in self.rows:
             lines.append("  " + " | ".join(f"{k}:{v}" for k, v in r.items()))
         return "\n".join(lines)
 
 
 class StationScraper:
-    """TAC / PCI로 기지국 정보를 조회합니다."""
+    """TAC / PCI로 기지국 정보를 조회합니다. BrowserPool을 재사용합니다."""
 
     URL = STATION_URL
 
@@ -72,23 +72,23 @@ class StationScraper:
             tac: TAC 값
             pci: PCI 값
         """
+        # import here to avoid circular import
+        from app.scraper.browser_pool import browser_pool
+
         op = OPERATOR_MAP.get(operator.lower().strip(), operator.lower().strip())
         logger.info(f"기지국 조회 시작 - operator:{op} TAC:{tac} PCI:{pci}")
 
         try:
-            async with async_playwright() as pw:
-                browser = await pw.chromium.launch(
-                    headless=True,
-                    args=["--no-sandbox", "--disable-dev-shm-usage"],
-                )
+            async with browser_pool.acquire() as context:
+                page = await context.new_page()
                 try:
-                    page = await browser.new_page(
-                        viewport={"width": 1920, "height": 1080}
-                    )
                     rows = await self._scrape(page, op, tac, pci)
                     return StationResult(operator=op, tac=tac, pci=pci, rows=rows)
                 finally:
-                    await browser.close()
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
 
         except Exception as e:
             logger.error(f"기지국 조회 실패: {e}")
@@ -106,7 +106,7 @@ class StationScraper:
         await page.click(f'button.operator-tab.{operator}')
         await page.wait_for_timeout(500)
 
-        # 3. TAC 입력 (id="seach-tac" - 오타 그대로)
+        # 3. TAC 입력 (id="seach-tac" - 원본 오타 그대로)
         await page.fill('#seach-tac', tac)
 
         # 4. PCI 입력
@@ -128,14 +128,12 @@ class StationScraper:
                 const trs = document.querySelectorAll('#station-table tr');
                 const results = [];
                 trs.forEach(tr => {
-                    // onclick에서 showDetail({...}) 파싱
                     const onclick = tr.getAttribute('onclick') || '';
                     const match = onclick.match(/showDetail\\((.+?)\\)$/);
                     if (match) {
                         try {
                             results.push(JSON.parse(match[1]));
                         } catch(e) {
-                            // JSON 파싱 실패 시 td 텍스트로 대체
                             const tds = Array.from(tr.querySelectorAll('td'));
                             if (tds.length > 0) {
                                 results.push({ raw: tds.map(td => td.innerText.trim()).join(' | ') });
