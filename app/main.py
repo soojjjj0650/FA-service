@@ -662,36 +662,39 @@ _PLMN_OPERATOR = {"45005": "skt", "45006": "lgu", "45008": "kt"}
 
 
 async def _fetch_station_info(processed: ProcessedData) -> str:
-    """MUTE/DROP 첫 행의 TAC·PCI로 기지국 정보를 조회하여 텍스트로 반환합니다.
+    """MUTE 상위 3행 + DROP 첫 행의 TAC·PCI로 기지국 정보를 조회하여 텍스트로 반환합니다.
     PLMN(45005→SKT, 45006→LGU, 45008→KT)으로 사업자를 결정합니다."""
 
     operator = "skt"  # 기본값 (MUTE에서 결정)
     results: list[str] = []
 
-    def _col_val(table, col_name: str) -> str:
-        if col_name in table.columns:
-            return table.rows[0][table.columns.index(col_name)]
+    def _col_val(cols: list[str], row: list, col_name: str) -> str:
+        if col_name in cols:
+            return row[cols.index(col_name)]
         return ""
 
-    # ── MUTE 첫 행 ──────────────────────────────────────────────────────────
+    # ── MUTE 상위 3행 ────────────────────────────────────────────────────────
     mute = processed.feature_tables.get("MUTE")
     if mute and mute.rows:
-        plmn = _col_val(mute, "PLMN").rstrip("#").strip()
+        # PLMN은 첫 행에서 결정
+        plmn = _col_val(mute.columns, mute.rows[0], "PLMN").rstrip("#").strip()
         operator = _PLMN_OPERATOR.get(plmn, "skt")
-        tac = _col_val(mute, "TAC")
-        pci = _col_val(mute, "PCI")
-        if tac and pci:
-            try:
-                r = await station_scraper.search(operator, tac, pci)
-                results.append(f"[MUTE 기지국]\n{r.to_text()}")
-            except Exception as e:
-                logger.warning(f"MUTE 기지국 조회 실패: {e}")
+
+        for i, row in enumerate(mute.rows[:3]):
+            tac = _col_val(mute.columns, row, "TAC")
+            pci = _col_val(mute.columns, row, "PCI")
+            if tac and pci:
+                try:
+                    r = await station_scraper.search(operator, tac, pci)
+                    results.append(f"[MUTE {i+1}위 기지국]\n{r.to_text()}")
+                except Exception as e:
+                    logger.warning(f"MUTE {i+1}위 기지국 조회 실패: {e}")
 
     # ── DROP 첫 행 (사업자는 MUTE에서 결정한 값 사용) ────────────────────────
     drop = processed.feature_tables.get("DROP")
     if drop and drop.rows:
-        tac = _col_val(drop, "TAC")
-        pci = _col_val(drop, "PCI")
+        tac = _col_val(drop.columns, drop.rows[0], "TAC")
+        pci = _col_val(drop.columns, drop.rows[0], "PCI")
         if tac and pci:
             try:
                 r = await station_scraper.search(operator, tac, pci)
