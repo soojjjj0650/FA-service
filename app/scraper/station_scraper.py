@@ -51,7 +51,7 @@ class StationResult:
         return len(self.rows)
 
     def to_text(self) -> str:
-        """챗봇 표시용 텍스트"""
+        """챗봇 표시용 텍스트 - 전체 필드, 주차별 구분"""
         if not self.success:
             return f"기지국 조회 실패: {self.error}"
         if not self.rows:
@@ -59,13 +59,24 @@ class StationResult:
 
         lines = []
         for r in self.rows:
+            week  = r.get('week', '-')
+            year  = r.get('year', '-')
             lines.append(
-                f"지역: {r.get('region','-')} | "
-                f"Vendor: {r.get('vendor','-')} | "
+                f"{year}년 {week}주차 | "
+                f"operator:{r.get('operator','-')} | "
+                f"TAC:{r.get('tac','-')} | "
+                f"PCI:{r.get('pci','-')} | "
+                f"DLCh:{r.get('dlch','-')} | "
+                f"CID:{r.get('cid','-')} | "
+                f"지역:{r.get('region','-')} | "
+                f"Vendor:{r.get('vendor','-')} | "
                 f"단말:{r.get('device_cnt','-')} | "
+                f"호:{r.get('call_cnt','-')} | "
                 f"Drop:{r.get('drop_cnt','-')} | "
                 f"RLF:{r.get('rlf_cnt','-')} | "
                 f"HO실패:{r.get('ho_failure_cnt','-')} | "
+                f"NoRTP:{r.get('no_rtp_cnt','-')} | "
+                f"이슈율:{r.get('total_issue_rate','-')} | "
                 f"이상점수:{r.get('anomaly_score','-')}"
             )
         return "\n".join(lines)
