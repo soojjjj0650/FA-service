@@ -80,6 +80,24 @@ curl -s http://10.246.56.50:8000/api/stations | python -c "import json,sys; d=js
 echo.
 
 echo.
+echo ==============================
+echo  operator별 필터링 테스트
+echo ==============================
+echo.
+
+echo [13] ?operator=KT
+curl -s "http://10.246.56.50:8000/api/stations?operator=KT" | python -c "import json,sys; d=json.load(sys.stdin); print(type(d), len(d) if isinstance(d,list) else d)"
+echo.
+
+echo [14] ?operator=LGU
+curl -s "http://10.246.56.50:8000/api/stations?operator=LGU" | python -c "import json,sys; d=json.load(sys.stdin); print(type(d), len(d) if isinstance(d,list) else d)"
+echo.
+
+echo [15] ?operator=SKT (비교용)
+curl -s "http://10.246.56.50:8000/api/stations?operator=SKT" | python -c "import json,sys; d=json.load(sys.stdin); print(type(d), len(d) if isinstance(d,list) else d)"
+echo.
+
+echo.
 echo 완료. 위 결과를 복사해서 알려주세요.
 pause
 
