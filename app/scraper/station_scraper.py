@@ -1,31 +1,39 @@
 """
-Station Scraper - 기지국 정보 조회 (10.246.56.50:8000)
+Station Client - 기지국 정보 조회 (10.246.56.50:8000/api/stations)
 
 흐름:
-  1. 기존 BrowserPool 컨텍스트 재사용 (별도 브라우저 실행 없음)
-  2. 사업자 선택 (SKT / KT / LGU+)
-  3. TAC / PCI 입력
-  4. 검색 버튼 클릭
-  5. 결과 테이블 전체 행 추출
+  1. GET /api/stations 전체 목록 조회
+  2. operator / TAC / PCI 로 필터링
+  3. 결과 반환
 """
 
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
+import httpx
 
 logger = logging.getLogger(__name__)
 
-STATION_URL = "http://10.246.56.50:8000"
+STATION_API_URL = "http://10.246.56.50:8000/api/stations"
 
-# 사업자 버튼 클래스명 매핑
-OPERATOR_MAP = {
-    "skt":  "skt",
-    "kt":   "kt",
-    "lgu":  "lgu",
-    "lgu+": "lgu",
-    "lg":   "lgu",
+# PLMN → API operator 값 매핑
+PLMN_OPERATOR: dict[str, str] = {
+    "45005": "SKT",
+    "45006": "LGU",
+    "45008": "KT",
+}
+
+# 내부 입력값 → API operator 값 정규화
+OPERATOR_MAP: dict[str, str] = {
+    "skt":  "SKT",
+    "kt":   "KT",
+    "lgu":  "LGU",
+    "lgu+": "LGU",
+    "lg":   "LGU",
+    "SKT":  "SKT",
+    "KT":   "KT",
+    "LGU":  "LGU",
 }
 
 
@@ -43,22 +51,28 @@ class StationResult:
         return len(self.rows)
 
     def to_text(self) -> str:
-        """챗봇/AI 입력용 텍스트 변환"""
+        """챗봇 표시용 텍스트"""
         if not self.success:
             return f"기지국 조회 실패: {self.error}"
         if not self.rows:
-            return f"[{self.operator.upper()} TAC:{self.tac} PCI:{self.pci}] 조회 결과 없음"
+            return f"[{self.operator} TAC:{self.tac} PCI:{self.pci}] 조회 결과 없음"
 
-        lines = [f"{self.operator.upper()} / TAC:{self.tac} / PCI:{self.pci} ({self.row_count}건)"]
+        lines = []
         for r in self.rows:
-            lines.append("  " + " | ".join(f"{k}:{v}" for k, v in r.items()))
+            lines.append(
+                f"지역: {r.get('region','-')} | "
+                f"Vendor: {r.get('vendor','-')} | "
+                f"단말:{r.get('device_cnt','-')} | "
+                f"Drop:{r.get('drop_cnt','-')} | "
+                f"RLF:{r.get('rlf_cnt','-')} | "
+                f"HO실패:{r.get('ho_failure_cnt','-')} | "
+                f"이상점수:{r.get('anomaly_score','-')}"
+            )
         return "\n".join(lines)
 
 
 class StationScraper:
-    """TAC / PCI로 기지국 정보를 조회합니다. BrowserPool을 재사용합니다."""
-
-    URL = STATION_URL
+    """GET /api/stations에서 operator·TAC·PCI로 기지국 정보를 조회합니다."""
 
     async def search(
         self,
@@ -66,87 +80,29 @@ class StationScraper:
         tac: str,
         pci: str,
     ) -> StationResult:
-        """
-        Args:
-            operator: 사업자 ("skt" / "kt" / "lgu")
-            tac: TAC 값
-            pci: PCI 값
-        """
-        # import here to avoid circular import
-        from app.scraper.browser_pool import browser_pool
-
-        op = OPERATOR_MAP.get(operator.lower().strip(), operator.lower().strip())
-        logger.info(f"기지국 조회 시작 - operator:{op} TAC:{tac} PCI:{pci}")
+        op = OPERATOR_MAP.get(operator.strip(), operator.strip().upper())
+        logger.info(f"기지국 조회 - operator:{op} TAC:{tac} PCI:{pci}")
 
         try:
-            async with browser_pool.acquire() as context:
-                page = await context.new_page()
-                try:
-                    rows = await self._scrape(page, op, tac, pci)
-                    return StationResult(operator=op, tac=tac, pci=pci, rows=rows)
-                finally:
-                    try:
-                        await page.close()
-                    except Exception:
-                        pass
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(STATION_API_URL)
+                resp.raise_for_status()
+                all_stations: list[dict] = resp.json()
+
+            # operator / TAC / PCI 필터링
+            matched = [
+                s for s in all_stations
+                if str(s.get("operator", "")).upper() == op
+                and str(s.get("tac", "")) == str(tac)
+                and str(s.get("pci", "")) == str(pci)
+            ]
+
+            logger.info(f"기지국 조회 완료: 전체 {len(all_stations)}건 중 {len(matched)}건 매칭")
+            return StationResult(operator=op, tac=tac, pci=pci, rows=matched)
 
         except Exception as e:
-            logger.error(f"기지국 조회 실패: {e}")
+            logger.error(f"기지국 API 조회 실패: {e}")
             return StationResult(operator=op, tac=tac, pci=pci, success=False, error=str(e))
-
-    async def _scrape(self, page: Page, operator: str, tac: str, pci: str) -> list[dict]:
-        # 1. 페이지 접속
-        await page.goto(self.URL, wait_until="domcontentloaded", timeout=30_000)
-        try:
-            await page.wait_for_load_state("networkidle", timeout=10_000)
-        except PlaywrightTimeout:
-            pass
-
-        # 2. 사업자 버튼 클릭
-        await page.click(f'button.operator-tab.{operator}')
-        await page.wait_for_timeout(500)
-
-        # 3. TAC 입력 (id="seach-tac" - 원본 오타 그대로)
-        await page.fill('#seach-tac', tac)
-
-        # 4. PCI 입력
-        await page.fill('#search-pci', pci)
-
-        # 5. 검색 버튼 클릭
-        await page.click('button:has-text("검색")')
-
-        # 6. 결과 테이블 대기
-        try:
-            await page.wait_for_selector('#station-table tr', state="visible", timeout=15_000)
-        except PlaywrightTimeout:
-            logger.warning("결과 테이블 감지 안됨 - 결과 없음으로 처리")
-            return []
-
-        # 7. 결과 추출: onclick 속성의 showDetail({...}) JSON 파싱
-        rows: list[dict] = await page.evaluate("""
-            () => {
-                const trs = document.querySelectorAll('#station-table tr');
-                const results = [];
-                trs.forEach(tr => {
-                    const onclick = tr.getAttribute('onclick') || '';
-                    const match = onclick.match(/showDetail\\((.+?)\\)$/);
-                    if (match) {
-                        try {
-                            results.push(JSON.parse(match[1]));
-                        } catch(e) {
-                            const tds = Array.from(tr.querySelectorAll('td'));
-                            if (tds.length > 0) {
-                                results.push({ raw: tds.map(td => td.innerText.trim()).join(' | ') });
-                            }
-                        }
-                    }
-                });
-                return results;
-            }
-        """)
-
-        logger.info(f"기지국 조회 완료: {len(rows)}건")
-        return rows
 
 
 # 싱글턴 인스턴스
