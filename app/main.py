@@ -744,7 +744,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         # 데이터 없음 처리 (쿼리 성공했으나 결과 없음)
         if query_result.csv_path is None:
             job["status"] = "done"
-            job["ai_response"] = f"[SN: {sn}] 최근 10일간 조회 결과가 없습니다."
+            job["ai_response"] = "최근 10일간 조회 결과가 없습니다."
             job["feature_summary"] = "데이터 없음"
             await _push_card_to_chatroom(job)
             return
