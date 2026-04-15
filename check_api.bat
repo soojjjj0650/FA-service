@@ -70,6 +70,16 @@ curl -s "http://10.246.56.50:8000/api/stations?operator=SKT&tac=18469&pci=160"
 echo.
 
 echo.
+echo ==============================
+echo  operator 고유값 확인
+echo ==============================
+echo.
+
+echo [12] API내 operator 값 목록
+curl -s http://10.246.56.50:8000/api/stations | python -c "import json,sys; d=json.load(sys.stdin); ops=set(x.get('operator','') for x in d); print(sorted(ops))"
+echo.
+
+echo.
 echo 완료. 위 결과를 복사해서 알려주세요.
 pause
 
