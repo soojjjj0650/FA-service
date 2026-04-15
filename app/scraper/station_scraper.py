@@ -108,6 +108,11 @@ class StationScraper:
                 and str(s.get("pci", "")) == str(pci)
             ]
 
+            # 최근 주차 1건만 유지 (year 내림차순 → week 내림차순)
+            if matched:
+                matched.sort(key=lambda s: (s.get("year", 0), s.get("week", 0)), reverse=True)
+                matched = matched[:1]
+
             logger.info(f"기지국 조회 완료: 전체 {len(all_stations)}건 중 {len(matched)}건 매칭")
             return StationResult(operator=op, tac=tac, pci=pci, rows=matched)
 
