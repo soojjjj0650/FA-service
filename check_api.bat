@@ -60,6 +60,17 @@ echo.
 echo ------------------------------
 
 echo.
+echo ==============================
+echo  서버측 필터링 테스트
+echo ==============================
+echo.
+
+echo [11] 쿼리 파라미터 필터링 테스트 (operator+TAC+PCI)
+curl -s "http://10.246.56.50:8000/api/stations?operator=SKT&tac=18469&pci=160"
+echo.
+
+echo.
 echo 완료. 위 결과를 복사해서 알려주세요.
 pause
+
 
