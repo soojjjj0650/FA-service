@@ -115,6 +115,11 @@ class StationScraper:
         op = OPERATOR_MAP.get(operator.strip(), operator.strip().upper())
         logger.info(f"기지국 조회 - operator:{op} TAC:{tac} PCI:{pci}")
 
+        # 현재 API에 SKT 데이터만 존재
+        if op != "SKT":
+            logger.info(f"기지국 조회 스킵 - {op} 데이터 미등록")
+            return StationResult(operator=op, tac=tac, pci=pci, rows=[], success=True)
+
         try:
             all_stations = await self._get_all_stations()
 
