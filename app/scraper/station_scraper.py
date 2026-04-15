@@ -8,6 +8,7 @@ Station Client - 기지국 정보 조회 (10.246.56.50:8000/api/stations)
 """
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -85,6 +86,26 @@ class StationResult:
 class StationScraper:
     """GET /api/stations에서 operator·TAC·PCI로 기지국 정보를 조회합니다."""
 
+    _cache: list[dict] = []
+    _cache_time: float = 0.0
+    _CACHE_TTL: float = 3600.0  # 1시간
+
+    async def _get_all_stations(self) -> list[dict]:
+        """전체 기지국 목록을 반환합니다. 1시간 캐시 적용."""
+        now = time.time()
+        if self._cache and (now - self._cache_time) < self._CACHE_TTL:
+            logger.debug(f"기지국 캐시 사용 ({len(self._cache)}건)")
+            return self._cache
+
+        logger.info("기지국 전체 목록 갱신 중...")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(STATION_API_URL)
+            resp.raise_for_status()
+            StationScraper._cache = resp.json()
+            StationScraper._cache_time = now
+        logger.info(f"기지국 캐시 갱신 완료: {len(self._cache)}건")
+        return self._cache
+
     async def search(
         self,
         operator: str,
@@ -95,10 +116,7 @@ class StationScraper:
         logger.info(f"기지국 조회 - operator:{op} TAC:{tac} PCI:{pci}")
 
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(STATION_API_URL)
-                resp.raise_for_status()
-                all_stations: list[dict] = resp.json()
+            all_stations = await self._get_all_stations()
 
             # operator / TAC / PCI 필터링
             matched = [
