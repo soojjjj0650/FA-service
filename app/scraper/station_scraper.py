@@ -104,11 +104,20 @@ class StationScraper:
             matched = [
                 s for s in all_stations
                 if str(s.get("operator", "")).upper() == op
-                and str(s.get("tac", "")) == str(tac)
-                and str(s.get("pci", "")) == str(pci)
+                and str(s.get("tac", "")).strip() == str(tac).strip()
+                and str(s.get("pci", "")).strip() == str(pci).strip()
             ]
 
-            # 최근 주차 1건만 유지 (year 내림차순 → week 내림차순)
+            # 디버그: 검색 조건과 비슷한 항목 샘플 출력
+            samples = [
+                s for s in all_stations
+                if str(s.get("operator", "")).upper() == op
+                and str(s.get("tac", "")).strip() == str(tac).strip()
+            ][:3]
+            logger.info(
+                f"기지국 검색 조건 → operator:{op} TAC:'{tac}' PCI:'{pci}' | "
+                f"TAC 매칭 샘플(PCI 무관): {[(s.get('tac'), s.get('pci')) for s in samples]}"
+            )
             if matched:
                 matched.sort(key=lambda s: (s.get("year", 0), s.get("week", 0)), reverse=True)
                 matched = matched[:1]
