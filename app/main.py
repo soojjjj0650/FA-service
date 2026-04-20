@@ -660,32 +660,40 @@ async def _send(websocket: WebSocket, msg_type: str, message: str):
 # ─── 처리 결과 파일 저장 ──────────────────────────────────────────────────────
 def _save_processing_files(sn: str, processed) -> None:
     """AI 입력 텍스트(.txt)와 처리 결과 테이블(.csv)을 저장합니다."""
-    import csv as _csv
+    import csv
     import os
 
     save_dir = settings.CSV_DOWNLOAD_PATH
-    os.makedirs(save_dir, exist_ok=True)
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+    except Exception as e:
+        logger.warning(f"저장 폴더 생성 실패 [{save_dir}]: {e}")
+        return
 
     # 1. AI 입력 텍스트 저장
     txt_path = os.path.join(save_dir, f"{sn}_ai_input.txt")
     try:
         with open(txt_path, "w", encoding="utf-8-sig") as f:
             f.write(processed.summary_text)
-        logger.info(f"AI 입력 텍스트 저장: {txt_path}")
+        logger.info(f"AI 입력 텍스트 저장 완료: {txt_path}")
     except Exception as e:
         logger.warning(f"AI 입력 텍스트 저장 실패: {e}")
 
     # 2. 처리 결과 CSV 저장 (feature별 테이블을 하나의 CSV로)
     csv_path = os.path.join(save_dir, f"{sn}_processed.csv")
     try:
+        tables = processed.feature_tables
+        if not tables:
+            logger.warning(f"처리 결과 CSV: feature_tables 비어있음 - 저장 스킵")
+            return
         with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
-            writer = _csv.writer(f)
-            for feat, table in processed.feature_tables.items():
-                writer.writerow([f"[{feat}]"])           # 섹션 헤더
-                writer.writerow(table.columns)            # 컬럼명
-                writer.writerows(table.rows)              # 데이터
-                writer.writerow([])                       # 빈 줄 구분
-        logger.info(f"처리 결과 CSV 저장: {csv_path}")
+            writer = csv.writer(f)
+            for feat, table in tables.items():
+                writer.writerow([f"[{feat}]"])
+                writer.writerow(table.columns)
+                writer.writerows(table.rows)
+                writer.writerow([])
+        logger.info(f"처리 결과 CSV 저장 완료: {csv_path} ({len(tables)}개 feature)")
     except Exception as e:
         logger.warning(f"처리 결과 CSV 저장 실패: {e}")
 
