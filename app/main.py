@@ -679,23 +679,31 @@ def _save_processing_files(sn: str, processed) -> None:
     except Exception as e:
         logger.warning(f"AI 입력 텍스트 저장 실패: {e}")
 
-    # 2. 처리 결과 CSV 저장 (feature별 테이블을 하나의 CSV로)
-    csv_path = os.path.join(save_dir, f"{sn}_processed.csv")
+    # 2. 처리 결과 Excel 저장 (feature별 시트)
+    xlsx_path = os.path.join(save_dir, f"{sn}_processed.xlsx")
     try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill
         tables = processed.feature_tables
         if not tables:
-            logger.warning(f"처리 결과 CSV: feature_tables 비어있음 - 저장 스킵")
+            logger.warning("처리 결과 xlsx: feature_tables 비어있음 - 저장 스킵")
             return
-        with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
-            writer = csv.writer(f)
-            for feat, table in tables.items():
-                writer.writerow([f"[{feat}]"])
-                writer.writerow(table.columns)
-                writer.writerows(table.rows)
-                writer.writerow([])
-        logger.info(f"처리 결과 CSV 저장 완료: {csv_path} ({len(tables)}개 feature)")
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)  # 기본 시트 제거
+        for feat, table in tables.items():
+            ws = wb.create_sheet(title=feat[:31])  # 시트명 최대 31자
+            # 헤더 행
+            ws.append(table.columns)
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill("solid", fgColor="DCE6F1")
+            # 데이터 행
+            for row in table.rows:
+                ws.append(row)
+        wb.save(xlsx_path)
+        logger.info(f"처리 결과 xlsx 저장 완료: {xlsx_path} ({len(tables)}개 feature)")
     except Exception as e:
-        logger.warning(f"처리 결과 CSV 저장 실패: {e}")
+        logger.warning(f"처리 결과 xlsx 저장 실패: {e}")
 
 
 # ─── 기지국 정보 조회 헬퍼 ────────────────────────────────────────────────────
