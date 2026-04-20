@@ -657,6 +657,39 @@ async def _send(websocket: WebSocket, msg_type: str, message: str):
     await websocket.send_json({"type": msg_type, "message": message})
 
 
+# ─── 처리 결과 파일 저장 ──────────────────────────────────────────────────────
+def _save_processing_files(sn: str, processed) -> None:
+    """AI 입력 텍스트(.txt)와 처리 결과 테이블(.csv)을 저장합니다."""
+    import csv as _csv
+    import os
+
+    save_dir = settings.CSV_DOWNLOAD_PATH
+    os.makedirs(save_dir, exist_ok=True)
+
+    # 1. AI 입력 텍스트 저장
+    txt_path = os.path.join(save_dir, f"{sn}_ai_input.txt")
+    try:
+        with open(txt_path, "w", encoding="utf-8-sig") as f:
+            f.write(processed.summary_text)
+        logger.info(f"AI 입력 텍스트 저장: {txt_path}")
+    except Exception as e:
+        logger.warning(f"AI 입력 텍스트 저장 실패: {e}")
+
+    # 2. 처리 결과 CSV 저장 (feature별 테이블을 하나의 CSV로)
+    csv_path = os.path.join(save_dir, f"{sn}_processed.csv")
+    try:
+        with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+            writer = _csv.writer(f)
+            for feat, table in processed.feature_tables.items():
+                writer.writerow([f"[{feat}]"])           # 섹션 헤더
+                writer.writerow(table.columns)            # 컬럼명
+                writer.writerows(table.rows)              # 데이터
+                writer.writerow([])                       # 빈 줄 구분
+        logger.info(f"처리 결과 CSV 저장: {csv_path}")
+    except Exception as e:
+        logger.warning(f"처리 결과 CSV 저장 실패: {e}")
+
+
 # ─── 기지국 정보 조회 헬퍼 ────────────────────────────────────────────────────
 _PLMN_OPERATOR = {"45005": "skt", "45006": "lgu", "45008": "kt"}
 
@@ -760,6 +793,9 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
             job["error"] = processed.error
             await _push_card_to_chatroom(job)
             return
+
+        # 2-1. AI 입력 텍스트 및 처리 결과 CSV 저장
+        _save_processing_files(sn, processed)
 
         # 3. AI 분석 (사용자 데이터만 전송)
         ai_response = await agent_client.analyze(processed)
