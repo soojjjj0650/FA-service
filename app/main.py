@@ -780,18 +780,38 @@ _FEATURE_DISPLAY_COLS = {
         ("ACT", "ACT"), ("TAC", "TAC"), ("PCI", "PCI"), ("Band", "Band"),
         ("ECNT", "ECNT"), ("RSRP", "RSRP"), ("SINR", "SINR"), ("BLER", "BLER"),
     ],
+    "MUTE_EXTRA": [
+        ("SAMS", "SAMS"), ("SMBU", "SMBU"), ("MCST", "MCST"),
+    ],
     "DROP": [
         ("ACT", "ACT"), ("TAC", "TAC"), ("PCI", "PCI"), ("DLCh", "DLCh"),
         ("Drop횟수", "Drop횟수"), ("RxP0", "RxP0_avg"), ("RxP1", "RxP1_avg"),
         ("BLER", "BLER_avg"), ("SIPR", "SIPR_Counts"),
     ],
+    "RLFI": [
+        ("ACT", "ACT"), ("TAC", "TAC"), ("PID", "PID"), ("DCh", "DCh"),
+        ("RLFI횟수", "RLFI횟수"), ("RxP", "RxP_avg"), ("원인", "CAU_Counts"),
+    ],
+    "SCGF": [
+        ("TAC", "TAC"), ("PhID", "PhID"), ("L밴드", "Lband"), ("N밴드", "Nband"),
+        ("발생횟수", "SCGF발생횟수"), ("유형", "Ftype_Counts"),
+    ],
+}
+
+# 표시 레이블 (feature key → 챗봇 표시용 이름)
+_FEATURE_LABELS = {
+    "MUTE":       "MUTE",
+    "MUTE_EXTRA": "MUTE (SAMS/SMBU/MCST 발생횟수)",
+    "DROP":       "DROP",
+    "RLFI":       "RLFI",
+    "SCGF":       "SCGF",
 }
 
 
 def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
-    """MUTE·DROP 집계 테이블을 Adaptive Card ColumnSet 표 형태로 변환합니다."""
+    """MUTE·MUTE_EXTRA·DROP·RLFI·SCGF 집계 테이블을 Adaptive Card ColumnSet 표 형태로 변환합니다."""
     blocks = []
-    for feat in ["MUTE", "DROP"]:
+    for feat in ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF"]:
         table = feature_tables.get(feat)
         if not table or not table.rows:
             continue
@@ -802,9 +822,10 @@ def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
         if not valid:
             continue
 
+        label = _FEATURE_LABELS.get(feat, feat)
         blocks.append({
             "type": "TextBlock",
-            "text": f"◆ {feat} ({len(table.rows)}건)",
+            "text": f"◆ {label} ({len(table.rows)}건)",
             "weight": "Bolder",
             "spacing": "Medium",
         })
