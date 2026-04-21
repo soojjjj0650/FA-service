@@ -349,11 +349,8 @@ async def _push_card_to_chatroom(job: dict) -> None:
     # 챗봇 Builder 웹훅 설정에서 ${body.text} 로 참조
     if status == "done":
         ai_text = _strip_markdown(job.get('ai_response', ''))
-        feat_text = _feature_tables_to_text(job.get('feature_tables') or {})
         station = job.get('station_text', '')
         text_body = f"[SN: {sn}] FA 분석 결과\n\n{ai_text}"
-        if feat_text:
-            text_body += f"\n\n■ 주요 이벤트 현황\n{feat_text}"
         if station:
             text_body += f"\n\n■ 기지국 정보\n{station}"
     else:
