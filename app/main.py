@@ -762,8 +762,19 @@ async def _fetch_station_info(processed: ProcessedData) -> list[dict]:
     return entries
 
 
+def _col_width(s: str) -> int:
+    """한글 등 전각문자는 2, 나머지는 1로 계산한 표시 너비."""
+    import unicodedata
+    return sum(2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in s)
+
+
+def _col_pad(s: str, width: int) -> str:
+    """표시 너비 기준으로 오른쪽 공백 패딩."""
+    return s + " " * max(0, width - _col_width(s))
+
+
 def _feature_tables_to_text(feature_tables: dict) -> str:
-    """MUTE/MUTE_EXTRA/DROP/RLFI/SCGF 테이블을 지정 컬럼만 추려 텍스트로 변환합니다."""
+    """MUTE/MUTE_EXTRA/DROP/RLFI/SCGF 테이블을 지정 컬럼만 추려 정렬된 텍스트로 변환합니다."""
     parts = []
     for feat in ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF"]:
         table = feature_tables.get(feat)
@@ -775,6 +786,7 @@ def _feature_tables_to_text(feature_tables: dict) -> str:
             continue
         label = _FEATURE_LABELS.get(feat, feat)
         lines = [f"◆ {label} ({len(table.rows)}건)"]
+
         if feat == "MUTE_EXTRA":
             row = table.rows[0]
             lines.append("  ".join(
@@ -782,12 +794,23 @@ def _feature_tables_to_text(feature_tables: dict) -> str:
                 for disp, actual in valid
             ))
         else:
-            lines.append(" | ".join(disp for disp, _ in valid))
-            for row in table.rows:
-                lines.append(" | ".join(
-                    _trunc(str(row[table.columns.index(actual)]), 10)
-                    for _, actual in valid
-                ))
+            # 컬럼별 최대 너비 계산 (헤더 vs 데이터 중 큰 값)
+            data_rows = [
+                [_trunc(str(row[table.columns.index(actual)]), 12) for _, actual in valid]
+                for row in table.rows
+            ]
+            headers = [disp for disp, _ in valid]
+            widths = [_col_width(h) for h in headers]
+            for row_vals in data_rows:
+                for i, v in enumerate(row_vals):
+                    widths[i] = max(widths[i], _col_width(v))
+
+            sep = "-+-".join("-" * w for w in widths)
+            lines.append(" | ".join(_col_pad(h, widths[i]) for i, h in enumerate(headers)))
+            lines.append(sep)
+            for row_vals in data_rows:
+                lines.append(" | ".join(_col_pad(v, widths[i]) for i, v in enumerate(row_vals)))
+
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
