@@ -808,8 +808,13 @@ _FEATURE_LABELS = {
 }
 
 
+def _trunc(s: str, n: int = 12) -> str:
+    """긴 문자열을 n자로 잘라 '…' 붙입니다."""
+    return s if len(s) <= n else s[:n - 1] + "…"
+
+
 def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
-    """MUTE·MUTE_EXTRA·DROP·RLFI·SCGF 집계 테이블을 Adaptive Card ColumnSet 표 형태로 변환합니다."""
+    """MUTE·MUTE_EXTRA·DROP·RLFI·SCGF 집계 테이블을 Adaptive Card 텍스트 표로 변환합니다."""
     blocks = []
     for feat in ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF"]:
         table = feature_tables.get(feat)
@@ -817,7 +822,6 @@ def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
             continue
 
         col_map = _FEATURE_DISPLAY_COLS.get(feat, [])
-        # 실제 존재하는 컬럼만 추림
         valid = [(disp, actual) for disp, actual in col_map if actual in table.columns]
         if not valid:
             continue
@@ -830,23 +834,41 @@ def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
             "spacing": "Medium",
         })
 
-        # 각 컬럼별로 헤더 + 데이터를 세로로 쌓는 ColumnSet
-        columns = []
-        for disp, actual in valid:
-            idx = table.columns.index(actual)
-            items = [{"type": "TextBlock", "text": disp, "weight": "Bolder",
-                      "wrap": False, "size": "Small", "color": "Accent"}]
+        if feat == "MUTE_EXTRA":
+            # SAMS/SMBU/MCST: FactSet으로 한 행씩 표시
+            row = table.rows[0]
+            facts = [
+                {"title": disp, "value": str(row[table.columns.index(actual)]) or "-"}
+                for disp, actual in valid
+            ]
+            blocks.append({"type": "FactSet", "facts": facts, "spacing": "Small"})
+        else:
+            # 헤더 행
+            header = " | ".join(disp for disp, _ in valid)
+            blocks.append({
+                "type": "TextBlock",
+                "text": header,
+                "weight": "Bolder",
+                "wrap": False,
+                "size": "Small",
+                "color": "Accent",
+                "spacing": "Small",
+                "fontType": "Monospace",
+            })
+            # 데이터 행 (value_counts 컬럼은 12자 truncate)
             for row in table.rows:
-                items.append({"type": "TextBlock", "text": str(row[idx]),
-                               "wrap": False, "size": "Small"})
-            columns.append({"type": "Column", "width": "auto", "items": items})
-
-        blocks.append({
-            "type": "ColumnSet",
-            "columns": columns,
-            "spacing": "Small",
-            "separator": True,
-        })
+                vals = " | ".join(
+                    _trunc(str(row[table.columns.index(actual)]))
+                    for _, actual in valid
+                )
+                blocks.append({
+                    "type": "TextBlock",
+                    "text": vals,
+                    "wrap": False,
+                    "size": "Small",
+                    "spacing": "None",
+                    "fontType": "Monospace",
+                })
 
     return blocks
 
