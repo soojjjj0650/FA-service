@@ -358,6 +358,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
 
     payload = {
         "text": text_body,
+        "card": card,
         "chatRoomId": chat_room_id,
         "userId": user_id,
     }
@@ -737,6 +738,7 @@ async def _fetch_station_info(processed: ProcessedData) -> list[dict]:
                         entries.append({"label": f"MUTE {i+1}위", "row": None, "tac": tac, "pci": pci})
                 except Exception as e:
                     logger.warning(f"MUTE {i+1}위 기지국 조회 실패: {e}")
+                    entries.append({"label": f"MUTE {i+1}위", "row": None, "tac": tac, "pci": pci})
 
     # ── DROP 첫 행 ───────────────────────────────────────────────────────────
     drop = processed.feature_tables.get("DROP")
@@ -752,26 +754,31 @@ async def _fetch_station_info(processed: ProcessedData) -> list[dict]:
                     entries.append({"label": "DROP", "row": None, "tac": tac, "pci": pci})
             except Exception as e:
                 logger.warning(f"DROP 기지국 조회 실패: {e}")
+                entries.append({"label": "DROP", "row": None, "tac": tac, "pci": pci})
 
     return entries
 
 
 def _station_entries_to_text(entries: list[dict]) -> str:
     """기지국 entries를 push용 텍스트로 변환합니다."""
-    lines = []
+    parts = []
     for e in entries:
         r = e.get("row")
         label = e["label"]
+        lines = [f"◆ {label} 기지국"]
         if not r:
-            lines.append(f"[{label}] 조회 결과 없음 (TAC:{e.get('tac','-')} PCI:{e.get('pci','-')})")
-            continue
-        lines.append(
-            f"[{label}] {r.get('year','-')}년 {r.get('week','-')}주차 | "
-            f"{r.get('operator','-')} | TAC:{r.get('tac','-')} | PCI:{r.get('pci','-')} | "
-            f"지역:{r.get('region','-')} | Drop:{r.get('drop_cnt','-')} | "
-            f"RLF:{r.get('rlf_cnt','-')} | 이상점수:{r.get('anomaly_score','-')}"
-        )
-    return "\n".join(lines)
+            lines.append(f"조회 결과 없음 (TAC:{e.get('tac','-')} PCI:{e.get('pci','-')})")
+        else:
+            lines.append(f"지역      {r.get('region', '-')}")
+            lines.append(f"사업자    {r.get('operator','-')} | {r.get('year','-')}년 {r.get('week','-')}주차")
+            lines.append(f"TAC/PCI   {r.get('tac','-')} / {r.get('pci','-')}  DLCh:{r.get('dlch','-')}")
+            lines.append(f"Vendor    {r.get('vendor', '-')}")
+            lines.append(f"단말/호   {r.get('device_cnt','-')} / {r.get('call_cnt','-')}")
+            lines.append(f"Drop/RLF  {r.get('drop_cnt','-')} / {r.get('rlf_cnt','-')}")
+            lines.append(f"HO실패    {r.get('ho_failure_cnt', '-')}")
+            lines.append(f"이상점수  {r.get('anomaly_score', '-')}")
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts)
 
 
 # (표시명, 실제 컬럼명) - 표시명은 챗봇에 보여줄 짧은 이름
