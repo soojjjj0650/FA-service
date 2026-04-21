@@ -850,28 +850,35 @@ def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
             ]
             blocks.append({"type": "FactSet", "facts": facts, "spacing": "Small"})
         else:
-            # 헤더 + 각 행을 "키:값 | 키:값" 형식으로 표시
-            header = " | ".join(disp for disp, _ in valid)
+            # 헤더 행 (ColumnSet)
             blocks.append({
-                "type": "TextBlock",
-                "text": header,
-                "weight": "Bolder",
-                "wrap": False,
-                "size": "Small",
-                "color": "Accent",
+                "type": "ColumnSet",
+                "style": "emphasis",
                 "spacing": "Small",
+                "columns": [
+                    {
+                        "type": "Column", "width": 1,
+                        "items": [{"type": "TextBlock", "text": disp,
+                                   "weight": "Bolder", "size": "Small",
+                                   "wrap": False, "color": "Accent"}],
+                    }
+                    for disp, _ in valid
+                ],
             })
-            for i, row in enumerate(table.rows):
-                vals = " | ".join(
-                    f"{disp}:{_trunc(str(row[table.columns.index(actual)]), 10)}"
-                    for disp, actual in valid
-                )
+            # 데이터 행 (ColumnSet per row)
+            for row in table.rows:
                 blocks.append({
-                    "type": "TextBlock",
-                    "text": f"{i+1}. {vals}",
-                    "wrap": True,
-                    "size": "Small",
+                    "type": "ColumnSet",
                     "spacing": "None",
+                    "columns": [
+                        {
+                            "type": "Column", "width": 1,
+                            "items": [{"type": "TextBlock",
+                                       "text": _trunc(str(row[table.columns.index(actual)]), 10),
+                                       "size": "Small", "wrap": False}],
+                        }
+                        for _, actual in valid
+                    ],
                 })
 
     return blocks
