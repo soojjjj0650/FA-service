@@ -321,7 +321,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         return
 
     if status == "done":
-        card = _build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_entries"), job.get("station_text", ""))
+        card = _build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_entries"), job.get("station_text", ""), job.get("feature_tables"))
     else:
         error_msg = job.get("error", "처리 중 오류가 발생했습니다.")
         card = {
@@ -774,6 +774,62 @@ def _station_entries_to_text(entries: list[dict]) -> str:
     return "\n".join(lines)
 
 
+# (표시명, 실제 컬럼명) - 표시명은 챗봇에 보여줄 짧은 이름
+_FEATURE_DISPLAY_COLS = {
+    "MUTE": [
+        ("ACT", "ACT"), ("TAC", "TAC"), ("PCI", "PCI"), ("Band", "Band"),
+        ("ECNT", "ECNT"), ("RSRP", "RSRP"), ("SINR", "SINR"), ("BLER", "BLER"),
+    ],
+    "DROP": [
+        ("ACT", "ACT"), ("TAC", "TAC"), ("PCI", "PCI"), ("DLCh", "DLCh"),
+        ("Drop횟수", "Drop횟수"), ("RxP0", "RxP0_avg"), ("RxP1", "RxP1_avg"),
+        ("BLER", "BLER_avg"), ("SIPR", "SIPR_Counts"),
+    ],
+}
+
+
+def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
+    """MUTE·DROP 집계 테이블을 Adaptive Card ColumnSet 표 형태로 변환합니다."""
+    blocks = []
+    for feat in ["MUTE", "DROP"]:
+        table = feature_tables.get(feat)
+        if not table or not table.rows:
+            continue
+
+        col_map = _FEATURE_DISPLAY_COLS.get(feat, [])
+        # 실제 존재하는 컬럼만 추림
+        valid = [(disp, actual) for disp, actual in col_map if actual in table.columns]
+        if not valid:
+            continue
+
+        blocks.append({
+            "type": "TextBlock",
+            "text": f"◆ {feat} ({len(table.rows)}건)",
+            "weight": "Bolder",
+            "spacing": "Medium",
+        })
+
+        # 각 컬럼별로 헤더 + 데이터를 세로로 쌓는 ColumnSet
+        columns = []
+        for disp, actual in valid:
+            idx = table.columns.index(actual)
+            items = [{"type": "TextBlock", "text": disp, "weight": "Bolder",
+                      "wrap": False, "size": "Small", "color": "Accent"}]
+            for row in table.rows:
+                items.append({"type": "TextBlock", "text": str(row[idx]),
+                               "wrap": False, "size": "Small"})
+            columns.append({"type": "Column", "width": "auto", "items": items})
+
+        blocks.append({
+            "type": "ColumnSet",
+            "columns": columns,
+            "spacing": "Small",
+            "separator": True,
+        })
+
+    return blocks
+
+
 def _build_station_card_blocks(entries: list[dict]) -> list[dict]:
     """기지국 entries를 Adaptive Card FactSet 블록으로 변환합니다."""
     blocks = []
@@ -887,6 +943,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         job["feature_summary"] = feature_summary
         job["station_entries"] = station_entries  # 기지국 구조화 데이터
         job["station_text"] = _station_entries_to_text(station_entries)  # push용 텍스트
+        job["feature_tables"] = processed.feature_tables  # MUTE/DROP 표 데이터
 
         # 5. 결과 카드 자동 push (CHATBOT_PUSH_URL 설정 시)
         await _push_card_to_chatroom(job)
@@ -1074,7 +1131,7 @@ async def webhook_handler(request: Request):
             status = job.get("status", "unknown")
 
             if status == "done":
-                return JSONResponse(_build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_text", "")))
+                return JSONResponse(_build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_entries"), job.get("station_text", ""), job.get("feature_tables")))
             elif status == "error":
                 return _webhook_error_card(job.get("error", "처리 중 오류가 발생했습니다."))
             else:
@@ -1294,7 +1351,7 @@ def _build_status_card(sn: str, job_id: str) -> dict:
     }
 
 
-def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_entries: list | None = None, station_text: str = "") -> dict:
+def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_entries: list | None = None, station_text: str = "", feature_tables: dict | None = None) -> dict:
     """분석 완료 결과 카드"""
     MAX_AI_LEN = 800
     ai_text = ai_response if len(ai_response) <= MAX_AI_LEN else ai_response[:MAX_AI_LEN] + "..."
@@ -1350,6 +1407,18 @@ def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_
             "spacing": "Small",
         },
     ]
+
+    # MUTE/DROP 집계 표 섹션
+    if feature_tables:
+        feat_blocks = _build_feature_table_blocks(feature_tables)
+        if feat_blocks:
+            body.append({
+                "type": "TextBlock",
+                "text": "■ 주요 이벤트 현황",
+                "weight": "Bolder",
+                "spacing": "Large",
+            })
+            body.extend(feat_blocks)
 
     # 기지국 정보 섹션 추가 (FactSet 형식)
     if station_entries:
