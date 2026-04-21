@@ -821,7 +821,7 @@ def _trunc(s: str, n: int = 12) -> str:
 
 
 def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
-    """MUTE·MUTE_EXTRA·DROP·RLFI·SCGF 집계 테이블을 Adaptive Card 텍스트 표로 변환합니다."""
+    """MUTE·MUTE_EXTRA·DROP·RLFI·SCGF 집계 테이블을 Adaptive Card 블록으로 변환합니다."""
     blocks = []
     for feat in ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF"]:
         table = feature_tables.get(feat)
@@ -842,7 +842,7 @@ def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
         })
 
         if feat == "MUTE_EXTRA":
-            # SAMS/SMBU/MCST: FactSet으로 한 행씩 표시
+            # SAMS/SMBU/MCST: FactSet으로 표시
             row = table.rows[0]
             facts = [
                 {"title": disp, "value": str(row[table.columns.index(actual)]) or "-"}
@@ -850,7 +850,7 @@ def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
             ]
             blocks.append({"type": "FactSet", "facts": facts, "spacing": "Small"})
         else:
-            # 헤더 행
+            # 헤더 + 각 행을 "키:값 | 키:값" 형식으로 표시
             header = " | ".join(disp for disp, _ in valid)
             blocks.append({
                 "type": "TextBlock",
@@ -860,21 +860,18 @@ def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
                 "size": "Small",
                 "color": "Accent",
                 "spacing": "Small",
-                "fontType": "Monospace",
             })
-            # 데이터 행 (value_counts 컬럼은 12자 truncate)
-            for row in table.rows:
+            for i, row in enumerate(table.rows):
                 vals = " | ".join(
-                    _trunc(str(row[table.columns.index(actual)]))
-                    for _, actual in valid
+                    f"{disp}:{_trunc(str(row[table.columns.index(actual)]), 10)}"
+                    for disp, actual in valid
                 )
                 blocks.append({
                     "type": "TextBlock",
-                    "text": vals,
-                    "wrap": False,
+                    "text": f"{i+1}. {vals}",
+                    "wrap": True,
                     "size": "Small",
                     "spacing": "None",
-                    "fontType": "Monospace",
                 })
 
     return blocks
