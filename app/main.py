@@ -349,8 +349,11 @@ async def _push_card_to_chatroom(job: dict) -> None:
     # 챗봇 Builder 웹훅 설정에서 ${body.text} 로 참조
     if status == "done":
         ai_text = _strip_markdown(job.get('ai_response', ''))
+        feat_text = _feature_tables_to_text(job.get('feature_tables') or {})
         station = job.get('station_text', '')
         text_body = f"[SN: {sn}] FA 분석 결과\n\n{ai_text}"
+        if feat_text:
+            text_body += f"\n\n■ 주요 이벤트 현황\n{feat_text}"
         if station:
             text_body += f"\n\n■ 기지국 정보\n{station}"
     else:
@@ -757,6 +760,36 @@ async def _fetch_station_info(processed: ProcessedData) -> list[dict]:
                 entries.append({"label": "DROP", "row": None, "tac": tac, "pci": pci})
 
     return entries
+
+
+def _feature_tables_to_text(feature_tables: dict) -> str:
+    """MUTE/MUTE_EXTRA/DROP/RLFI/SCGF 테이블을 지정 컬럼만 추려 텍스트로 변환합니다."""
+    parts = []
+    for feat in ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF"]:
+        table = feature_tables.get(feat)
+        if not table or not table.rows:
+            continue
+        col_map = _FEATURE_DISPLAY_COLS.get(feat, [])
+        valid = [(disp, actual) for disp, actual in col_map if actual in table.columns]
+        if not valid:
+            continue
+        label = _FEATURE_LABELS.get(feat, feat)
+        lines = [f"◆ {label} ({len(table.rows)}건)"]
+        if feat == "MUTE_EXTRA":
+            row = table.rows[0]
+            lines.append("  ".join(
+                f"{disp}:{row[table.columns.index(actual)]}"
+                for disp, actual in valid
+            ))
+        else:
+            lines.append(" | ".join(disp for disp, _ in valid))
+            for row in table.rows:
+                lines.append(" | ".join(
+                    _trunc(str(row[table.columns.index(actual)]), 10)
+                    for _, actual in valid
+                ))
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts)
 
 
 def _station_entries_to_text(entries: list[dict]) -> str:
