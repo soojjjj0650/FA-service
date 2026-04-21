@@ -321,7 +321,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         return
 
     if status == "done":
-        card = _build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_text", ""))
+        card = _build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_entries"), job.get("station_text", ""))
     else:
         error_msg = job.get("error", "처리 중 오류가 발생했습니다.")
         card = {
@@ -710,36 +710,35 @@ def _save_processing_files(sn: str, processed) -> None:
 _PLMN_OPERATOR = {"45005": "skt", "45006": "lgu", "45008": "kt"}
 
 
-async def _fetch_station_info(processed: ProcessedData) -> str:
-    """MUTE 상위 3행 + DROP 첫 행의 TAC·PCI로 기지국 정보를 조회하여 텍스트로 반환합니다.
-    PLMN(45005→SKT, 45006→LGU, 45008→KT)으로 사업자를 결정합니다."""
+async def _fetch_station_info(processed: ProcessedData) -> list[dict]:
+    """MUTE 상위 3행 + DROP 첫 행의 TAC·PCI로 기지국 정보를 조회합니다.
+    반환: [{"label": "MUTE 1위", "row": {...}}, ...]"""
 
-    operator = "skt"  # 기본값 (MUTE에서 결정)
-    results: list[str] = []
+    operator = "skt"
+    entries: list[dict] = []
 
     def _col_val(cols: list[str], row: list, col_name: str) -> str:
-        if col_name in cols:
-            return row[cols.index(col_name)]
-        return ""
+        return row[cols.index(col_name)] if col_name in cols else ""
 
     # ── MUTE 상위 3행 ────────────────────────────────────────────────────────
     mute = processed.feature_tables.get("MUTE")
     if mute and mute.rows:
-        # PLMN은 첫 행에서 결정
         plmn = _col_val(mute.columns, mute.rows[0], "PLMN").rstrip("#").strip()
         operator = _PLMN_OPERATOR.get(plmn, "skt")
-
         for i, row in enumerate(mute.rows[:3]):
             tac = _col_val(mute.columns, row, "TAC")
             pci = _col_val(mute.columns, row, "PCI")
             if tac and pci:
                 try:
                     r = await station_scraper.search(operator, tac, pci)
-                    results.append(f"[MUTE {i+1}위 기지국]\n{r.to_text()}")
+                    if r.rows:
+                        entries.append({"label": f"MUTE {i+1}위", "row": r.rows[0]})
+                    else:
+                        entries.append({"label": f"MUTE {i+1}위", "row": None, "tac": tac, "pci": pci})
                 except Exception as e:
                     logger.warning(f"MUTE {i+1}위 기지국 조회 실패: {e}")
 
-    # ── DROP 첫 행 (사업자는 MUTE에서 결정한 값 사용) ────────────────────────
+    # ── DROP 첫 행 ───────────────────────────────────────────────────────────
     drop = processed.feature_tables.get("DROP")
     if drop and drop.rows:
         tac = _col_val(drop.columns, drop.rows[0], "TAC")
@@ -747,11 +746,69 @@ async def _fetch_station_info(processed: ProcessedData) -> str:
         if tac and pci:
             try:
                 r = await station_scraper.search(operator, tac, pci)
-                results.append(f"[DROP 기지국]\n{r.to_text()}")
+                if r.rows:
+                    entries.append({"label": "DROP", "row": r.rows[0]})
+                else:
+                    entries.append({"label": "DROP", "row": None, "tac": tac, "pci": pci})
             except Exception as e:
                 logger.warning(f"DROP 기지국 조회 실패: {e}")
 
-    return "\n\n".join(results)
+    return entries
+
+
+def _station_entries_to_text(entries: list[dict]) -> str:
+    """기지국 entries를 push용 텍스트로 변환합니다."""
+    lines = []
+    for e in entries:
+        r = e.get("row")
+        label = e["label"]
+        if not r:
+            lines.append(f"[{label}] 조회 결과 없음 (TAC:{e.get('tac','-')} PCI:{e.get('pci','-')})")
+            continue
+        lines.append(
+            f"[{label}] {r.get('year','-')}년 {r.get('week','-')}주차 | "
+            f"{r.get('operator','-')} | TAC:{r.get('tac','-')} | PCI:{r.get('pci','-')} | "
+            f"지역:{r.get('region','-')} | Drop:{r.get('drop_cnt','-')} | "
+            f"RLF:{r.get('rlf_cnt','-')} | 이상점수:{r.get('anomaly_score','-')}"
+        )
+    return "\n".join(lines)
+
+
+def _build_station_card_blocks(entries: list[dict]) -> list[dict]:
+    """기지국 entries를 Adaptive Card FactSet 블록으로 변환합니다."""
+    blocks = []
+    for e in entries:
+        r = e.get("row")
+        label = e["label"]
+        blocks.append({
+            "type": "TextBlock",
+            "text": f"◆ {label} 기지국",
+            "weight": "Bolder",
+            "spacing": "Medium",
+        })
+        if not r:
+            blocks.append({
+                "type": "TextBlock",
+                "text": f"조회 결과 없음 (TAC:{e.get('tac','-')} PCI:{e.get('pci','-')})",
+                "wrap": True,
+                "isSubtle": True,
+            })
+            continue
+        blocks.append({
+            "type": "FactSet",
+            "spacing": "Small",
+            "facts": [
+                {"title": "지역",    "value": str(r.get("region", "-"))},
+                {"title": "사업자",  "value": f"{r.get('operator','-')} | {r.get('year','-')}년 {r.get('week','-')}주차"},
+                {"title": "TAC/PCI", "value": f"{r.get('tac','-')} / {r.get('pci','-')}  DLCh:{r.get('dlch','-')}"},
+                {"title": "Vendor",  "value": str(r.get("vendor", "-"))},
+                {"title": "단말/호", "value": f"{r.get('device_cnt','-')} / {r.get('call_cnt','-')}"},
+                {"title": "Drop/RLF","value": f"{r.get('drop_cnt','-')} / {r.get('rlf_cnt','-')}"},
+                {"title": "HO실패",  "value": str(r.get("ho_failure_cnt", "-"))},
+                {"title": "이상점수","value": str(r.get("anomaly_score", "-"))},
+            ],
+        })
+    return blocks
 
 
 # ─── 챗봇 전용 백그라운드 파이프라인 ─────────────────────────────────────────
@@ -817,9 +874,9 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         ai_response = await agent_client.analyze(processed)
 
         # 4. 기지국 정보 조회 (별도 - AI에 보내지 않고 챗봇에만 표시)
-        station_text = await _fetch_station_info(processed)
-        if station_text:
-            logger.info(f"[Chatbot Job {job_id}] 기지국 정보 조회 완료")
+        station_entries = await _fetch_station_info(processed)
+        if station_entries:
+            logger.info(f"[Chatbot Job {job_id}] 기지국 정보 조회 완료 ({len(station_entries)}건)")
 
         feature_summary = "  |  ".join(
             f"{f}: {len(t.rows)}건" for f, t in processed.feature_tables.items()
@@ -828,7 +885,8 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         job["status"] = "done"
         job["ai_response"] = ai_response
         job["feature_summary"] = feature_summary
-        job["station_text"] = station_text  # 기지국 정보 별도 저장
+        job["station_entries"] = station_entries  # 기지국 구조화 데이터
+        job["station_text"] = _station_entries_to_text(station_entries)  # push용 텍스트
 
         # 5. 결과 카드 자동 push (CHATBOT_PUSH_URL 설정 시)
         await _push_card_to_chatroom(job)
@@ -1236,7 +1294,7 @@ def _build_status_card(sn: str, job_id: str) -> dict:
     }
 
 
-def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_text: str = "") -> dict:
+def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_entries: list | None = None, station_text: str = "") -> dict:
     """분석 완료 결과 카드"""
     MAX_AI_LEN = 800
     ai_text = ai_response if len(ai_response) <= MAX_AI_LEN else ai_response[:MAX_AI_LEN] + "..."
@@ -1293,20 +1351,15 @@ def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_
         },
     ]
 
-    # 기지국 정보 섹션 추가
-    if station_text:
+    # 기지국 정보 섹션 추가 (FactSet 형식)
+    if station_entries:
         body.append({
             "type": "TextBlock",
             "text": "■ 기지국 정보",
             "weight": "Bolder",
             "spacing": "Large",
         })
-        body.append({
-            "type": "TextBlock",
-            "text": station_text,
-            "wrap": True,
-            "spacing": "Small",
-        })
+        body.extend(_build_station_card_blocks(station_entries))
 
     return {
         "type": "AdaptiveCard",
