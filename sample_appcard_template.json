@@ -19,39 +19,6 @@
       "type": "TextBlock",
       "text": "${body.ai_result}",
       "wrap": true,
-      "spacing": "Small"
-    },
-    {
-      "type": "TextBlock",
-      "text": "${body.mute_table}",
-      "wrap": true,
-      "fontType": "Monospace",
-      "spacing": "Small"
-    },
-    {
-      "type": "TextBlock",
-      "text": "${body.mute_extra}",
-      "wrap": true,
-      "spacing": "Small"
-    },
-    {
-      "type": "TextBlock",
-      "text": "${body.drop_table}",
-      "wrap": true,
-      "fontType": "Monospace",
-      "spacing": "Small"
-    },
-    {
-      "type": "TextBlock",
-      "text": "${body.rlfi_table}",
-      "wrap": true,
-      "fontType": "Monospace",
-      "spacing": "Small"
-    },
-    {
-      "type": "TextBlock",
-      "text": "${body.scgf_table}",
-      "wrap": true,
       "fontType": "Monospace",
       "spacing": "Small"
     },
@@ -65,6 +32,7 @@
       "type": "TextBlock",
       "text": "${body.station_info}",
       "wrap": true,
+      "fontType": "Monospace",
       "spacing": "Small"
     }
   ]

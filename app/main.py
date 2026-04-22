@@ -284,13 +284,9 @@ def _format_row_grouped(
 
 
 def _strip_markdown(text: str) -> str:
-    """AI 응답의 마크다운 헤딩·굵게·표를 제거하고 제목을 기호로 강조합니다."""
+    """AI 응답의 마크다운 헤딩·굵게 기호를 제거하고 제목을 기호로 강조합니다."""
     lines = []
     for line in text.splitlines():
-        s = line.strip()
-        # 마크다운 표 행(| 시작) 제거 — 표는 ${body.xxx_table} 변수로 별도 표시
-        if s.startswith("|"):
-            continue
         if line.startswith("###"):
             lines.append(f"\n▶ {line.lstrip('#').strip()}")
         elif line.startswith("##"):
@@ -301,8 +297,6 @@ def _strip_markdown(text: str) -> str:
             lines.append(line)
     result = "\n".join(lines)
     result = result.replace("**", "")
-    # 표 제거로 생긴 연속 빈 줄 정리
-    result = re.sub(r'\n{3,}', '\n\n', result).strip()
     return result
 
 
@@ -326,31 +320,6 @@ async def _push_card_to_chatroom(job: dict) -> None:
         logger.warning(f"[Push] chatRoomId/userId 없음 - 자동 push 불가 (SN: {sn})")
         return
 
-    if status == "done":
-        card = _build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_entries"), job.get("station_text", ""), job.get("feature_tables"))
-    else:
-        error_msg = job.get("error", "처리 중 오류가 발생했습니다.")
-        card = {
-            "type": "AdaptiveCard",
-            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-            "version": "1.3",
-            "body": [
-                {
-                    "type": "TextBlock",
-                    "text": f"[{sn}] FA 분석 오류",
-                    "size": "Medium",
-                    "weight": "Bolder",
-                    "color": "Attention",
-                },
-                {
-                    "type": "TextBlock",
-                    "text": error_msg,
-                    "wrap": True,
-                    "color": "Attention",
-                },
-            ],
-        }
-
     # Samsung chatbot Builder push payload
     # - text 모드    : ${body.text} 참조
     # - 앱카드 템플릿 : ${body.title} / ${body.ai_result} / ${body.station_info}
@@ -362,23 +331,12 @@ async def _push_card_to_chatroom(job: dict) -> None:
         if station_text:
             text_body += f"\n\n■ 기지국 정보\n{station_text}"
 
-        ft = job.get('feature_tables') or {}
-
-        def _vt(feat: str) -> str:
-            t = ft.get(feat)
-            return _feature_table_to_vertical_text(feat, t) if t and t.rows else ""
-
         payload = {
             "text":         text_body,
             "chatRoomId":   chat_room_id,
             "userId":       user_id,
             "title":        f"[SN: {sn}] FA 분석 결과",
             "ai_result":    ai_text,
-            "mute_table":   _vt("MUTE"),
-            "mute_extra":   _vt("MUTE_EXTRA"),
-            "drop_table":   _vt("DROP"),
-            "rlfi_table":   _vt("RLFI"),
-            "scgf_table":   _vt("SCGF"),
             "station_info": station_text,
         }
     else:
@@ -1672,18 +1630,6 @@ def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_
             "spacing": "Small",
         },
     ]
-
-    # MUTE/DROP 집계 표 섹션
-    if feature_tables:
-        feat_blocks = _build_feature_table_blocks(feature_tables)
-        if feat_blocks:
-            body.append({
-                "type": "TextBlock",
-                "text": "■ 주요 이벤트 현황",
-                "weight": "Bolder",
-                "spacing": "Large",
-            })
-            body.extend(feat_blocks)
 
     # 기지국 정보 섹션 추가 (FactSet 형식)
     if station_entries:
