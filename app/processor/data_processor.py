@@ -12,6 +12,7 @@ import csv
 import json
 import logging
 import re
+import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any
@@ -246,14 +247,60 @@ class FeatureTable:
     columns: list[str]
     rows: list[list[str]]
 
+    @staticmethod
+    def _cw(s: str) -> int:
+        """한글 등 전각문자 2, 나머지 1로 계산한 표시 너비."""
+        return sum(2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in s)
+
+    @staticmethod
+    def _pad(s: str, width: int) -> str:
+        return s + " " * max(0, width - FeatureTable._cw(s))
+
     def to_text(self) -> str:
-        """AI Agent 전송용 plain-text 테이블"""
+        """AI Agent 전송용 세로(전치) plain-text 테이블.
+
+        행=인자, 열=순위1·2·3 (최대 3건) 형식으로 출력합니다.
+        """
         if not self.rows:
             return f"[{self.feature}] 데이터 없음"
-        header = " | ".join(self.columns)
-        sep = "-" * max(len(header), 20)
-        data_lines = [" | ".join(str(v) for v in row) for row in self.rows]
-        return "\n".join([f"[{self.feature}] {len(self.rows)}건", header, sep] + data_lines)
+
+        n_total = len(self.rows)
+        header = f"[{self.feature}] {n_total}건"
+
+        # MUTE_EXTRA: 단일 행이므로 key:value 나열
+        if self.feature == "MUTE_EXTRA":
+            row = self.rows[0]
+            pairs = "  ".join(f"{c}:{row[i]}" for i, c in enumerate(self.columns))
+            return f"{header}\n{pairs}"
+
+        display = self.rows[:3]
+        n_cols = len(display)
+
+        # 셀값 미리 계산
+        cells: dict[tuple[int, int], str] = {}
+        for pi, col in enumerate(self.columns):
+            for ci, row in enumerate(display):
+                cells[(pi, ci)] = str(row[pi])
+
+        # 열 너비 계산
+        param_w = max(self._cw("인자"), max(self._cw(c) for c in self.columns))
+        col_ws = [
+            max(self._cw(str(ci + 1)), max(self._cw(cells[(pi, ci)]) for pi in range(len(self.columns))))
+            for ci in range(n_cols)
+        ]
+
+        lines = [header]
+        lines.append(
+            self._pad("인자", param_w) + " | " +
+            " | ".join(self._pad(str(ci + 1), col_ws[ci]) for ci in range(n_cols))
+        )
+        lines.append("-" * param_w + "-+-" + "-+-".join("-" * w for w in col_ws))
+        for pi, col in enumerate(self.columns):
+            lines.append(
+                self._pad(col, param_w) + " | " +
+                " | ".join(self._pad(cells[(pi, ci)], col_ws[ci]) for ci in range(n_cols))
+            )
+        return "\n".join(lines)
 
     def to_html(self) -> str:
         """챗봇 표시용 HTML 테이블"""
