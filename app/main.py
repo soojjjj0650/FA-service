@@ -337,6 +337,8 @@ def _strip_markdown(text: str) -> str:
             lines.append(line)
     result = "\n".join(lines)
     result = result.replace("**", "")
+    # 마크다운 수평선 (---, ***, ___) 제거
+    result = re.sub(r'^\s*[-*_]{3,}\s*$', '', result, flags=re.MULTILINE)
     # "1. MUTE (설명...)" → "1. MUTE 결과"
     result = re.sub(
         r'(\d+\.\s*)(MUTE|DROP|RLFI|SCGF)\b.*',
