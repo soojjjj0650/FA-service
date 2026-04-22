@@ -932,7 +932,7 @@ def _station_entries_to_text(entries: list[dict]) -> str:
     KEY_W = 10
 
     def _kv(key: str, val) -> str:
-        return _col_pad(key, KEY_W) + str(val)
+        return _col_pad(key + " :", KEY_W + 2) + str(val)
 
     parts = []
     for e in entries:
