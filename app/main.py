@@ -283,8 +283,21 @@ def _format_row_grouped(
     return "\n".join(lines)
 
 
+def _remove_md_tables(text: str) -> str:
+    """AI 응답 안의 마크다운 표 행(| 구분자, ---+--- 구분선) 제거."""
+    result = []
+    for line in text.splitlines():
+        s = line.strip()
+        # | 로 시작하는 표 데이터/헤더 행 또는 ---+--- 구분선 제거
+        if s.startswith("|") or (re.match(r'^[-|+: ]+$', s) and ("|" in s or "-" in s)):
+            continue
+        result.append(line)
+    # 표 제거 후 생긴 3줄 이상 연속 빈 줄을 2줄로 정리
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(result)).strip()
+
+
 def _strip_markdown(text: str) -> str:
-    """AI 응답의 마크다운 헤딩(#) 및 굵게(**) 기호를 제거하고 제목을 강조합니다."""
+    """AI 응답의 마크다운 헤딩·굵게·표를 제거하고 제목을 기호로 강조합니다."""
     lines = []
     for line in text.splitlines():
         if line.startswith("###"):
@@ -297,6 +310,8 @@ def _strip_markdown(text: str) -> str:
             lines.append(line)
     result = "\n".join(lines)
     result = result.replace("**", "")
+    # 마크다운 표 제거 (표는 ${body.feature_tables} 변수로 별도 표시)
+    result = _remove_md_tables(result)
     return result
 
 
@@ -346,13 +361,12 @@ async def _push_card_to_chatroom(job: dict) -> None:
         }
 
     # Samsung chatbot Builder push payload
-    # - text 모드: ${body.text} 참조
-    # - 앱카드 템플릿 모드: ${body.title}, ${body.ai_result}, ${body.feature_tables}, ${body.station_info} 참조
+    # - text 모드     : ${body.text} 참조
+    # - 앱카드 템플릿  : sample_appcard_template.json 의 ${body.xxx} 변수와 대응
     if status == "done":
-        ai_text = _strip_markdown(job.get('ai_response', ''))
+        ai_text = _strip_markdown(job.get('ai_response', ''))  # 표 포함 마크다운 제거
         station_text = job.get('station_text', '')
-        feature_tables = job.get('feature_tables') or {}
-        feat_text = _feature_tables_to_text(feature_tables) if feature_tables else ""
+        ft = job.get('feature_tables') or {}
 
         text_body = f"[SN: {sn}] FA 분석 결과\n\n{ai_text}"
         if station_text:
@@ -362,10 +376,14 @@ async def _push_card_to_chatroom(job: dict) -> None:
             "text": text_body,
             "chatRoomId": chat_room_id,
             "userId": user_id,
-            # 앱카드 템플릿 변수 (sample_appcard_template.json 의 ${body.xxx} 와 대응)
-            "title": f"[SN: {sn}] FA 분석 결과",
-            "ai_result": ai_text,
-            "feature_tables": feat_text,
+            # 앱카드 템플릿 변수
+            "title":      f"[SN: {sn}] FA 분석 결과",
+            "ai_result":  ai_text,
+            "mute_table":  _feature_tables_to_text({k: v for k, v in ft.items() if k == "MUTE"}),
+            "mute_extra":  _feature_tables_to_text({k: v for k, v in ft.items() if k == "MUTE_EXTRA"}),
+            "drop_table":  _feature_tables_to_text({k: v for k, v in ft.items() if k == "DROP"}),
+            "rlfi_table":  _feature_tables_to_text({k: v for k, v in ft.items() if k == "RLFI"}),
+            "scgf_table":  _feature_tables_to_text({k: v for k, v in ft.items() if k == "SCGF"}),
             "station_info": station_text,
         }
     else:
@@ -374,10 +392,10 @@ async def _push_card_to_chatroom(job: dict) -> None:
             "text": text_body,
             "chatRoomId": chat_room_id,
             "userId": user_id,
-            "title": f"[SN: {sn}] FA 분석 오류",
-            "ai_result": job.get('error', '처리 중 오류가 발생했습니다.'),
-            "feature_tables": "",
-            "station_info": "",
+            "title":      f"[SN: {sn}] FA 분석 오류",
+            "ai_result":  job.get('error', '처리 중 오류가 발생했습니다.'),
+            "mute_table": "", "mute_extra": "", "drop_table": "",
+            "rlfi_table": "", "scgf_table": "", "station_info": "",
         }
 
     headers = {"Content-Type": "application/json"}
@@ -911,14 +929,14 @@ def _station_entries_to_text(entries: list[dict]) -> str:
         if not r:
             lines.append(f"조회 결과 없음 (TAC:{e.get('tac','-')} PCI:{e.get('pci','-')})")
         else:
-            lines.append(f"지역      {r.get('region', '-')}")
-            lines.append(f"사업자    {r.get('operator','-')} | {r.get('year','-')}년 {r.get('week','-')}주차")
-            lines.append(f"TAC/PCI   {r.get('tac','-')} / {r.get('pci','-')}  DLCh:{r.get('dlch','-')}")
-            lines.append(f"Vendor    {r.get('vendor', '-')}")
-            lines.append(f"단말/호   {r.get('device_cnt','-')} / {r.get('call_cnt','-')}")
-            lines.append(f"Drop/RLF  {r.get('drop_cnt','-')} / {r.get('rlf_cnt','-')}")
-            lines.append(f"HO실패    {r.get('ho_failure_cnt', '-')}")
-            lines.append(f"이상점수  {r.get('anomaly_score', '-')}")
+            lines.append(f"지역      :  {r.get('region', '-')}")
+            lines.append(f"사업자    :  {r.get('operator','-')}")
+            lines.append(f"TAC/PCI   :  {r.get('tac','-')} / {r.get('pci','-')}  DLCh:{r.get('dlch','-')}")
+            lines.append(f"Vendor    :  {r.get('vendor', '-')}")
+            lines.append(f"단말/콜수 :  {r.get('device_cnt','-')} / {r.get('call_cnt','-')}")
+            lines.append(f"Drop/RLF  :  {r.get('drop_cnt','-')} / {r.get('rlf_cnt','-')}")
+            lines.append(f"HO실패    :  {r.get('ho_failure_cnt', '-')}")
+            lines.append(f"이상점수  :  {r.get('anomaly_score', '-')}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
