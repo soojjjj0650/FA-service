@@ -284,9 +284,13 @@ def _format_row_grouped(
 
 
 def _strip_markdown(text: str) -> str:
-    """AI 응답의 마크다운 헤딩·굵게 기호를 제거하고 제목을 기호로 강조합니다."""
+    """AI 응답의 마크다운 헤딩·굵게·표를 제거하고 제목을 기호로 강조합니다."""
     lines = []
     for line in text.splitlines():
+        s = line.strip()
+        # 마크다운 표 행(| 시작) 제거 — 표는 ${body.xxx_table} 변수로 별도 표시
+        if s.startswith("|"):
+            continue
         if line.startswith("###"):
             lines.append(f"\n▶ {line.lstrip('#').strip()}")
         elif line.startswith("##"):
@@ -297,6 +301,8 @@ def _strip_markdown(text: str) -> str:
             lines.append(line)
     result = "\n".join(lines)
     result = result.replace("**", "")
+    # 표 제거로 생긴 연속 빈 줄 정리
+    result = re.sub(r'\n{3,}', '\n\n', result).strip()
     return result
 
 
@@ -356,12 +362,23 @@ async def _push_card_to_chatroom(job: dict) -> None:
         if station_text:
             text_body += f"\n\n■ 기지국 정보\n{station_text}"
 
+        ft = job.get('feature_tables') or {}
+
+        def _vt(feat: str) -> str:
+            t = ft.get(feat)
+            return _feature_table_to_vertical_text(feat, t) if t and t.rows else ""
+
         payload = {
             "text":         text_body,
             "chatRoomId":   chat_room_id,
             "userId":       user_id,
             "title":        f"[SN: {sn}] FA 분석 결과",
             "ai_result":    ai_text,
+            "mute_table":   _vt("MUTE"),
+            "mute_extra":   _vt("MUTE_EXTRA"),
+            "drop_table":   _vt("DROP"),
+            "rlfi_table":   _vt("RLFI"),
+            "scgf_table":   _vt("SCGF"),
             "station_info": station_text,
         }
     else:
