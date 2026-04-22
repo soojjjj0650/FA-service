@@ -357,7 +357,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         text_body = f"[SN: {sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
 
     payload = {
-        **card,
+        "text": text_body,
         "chatRoomId": chat_room_id,
         "userId": user_id,
     }
