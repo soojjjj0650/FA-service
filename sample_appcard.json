@@ -1,0 +1,231 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.3",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "SN 조회 결과: R3CY7050P9",
+      "size": "Medium",
+      "weight": "Bolder"
+    },
+    {
+      "type": "ColumnSet",
+      "style": "emphasis",
+      "columns": [
+        {
+          "type": "Column", "width": "100px",
+          "items": [{ "type": "TextBlock", "text": "SN", "weight": "Bolder", "wrap": true }]
+        },
+        {
+          "type": "Column", "width": "stretch",
+          "items": [{ "type": "TextBlock", "text": "R3CY7050P9", "wrap": true }]
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "■ AI 분석 결과",
+      "weight": "Bolder",
+      "spacing": "Large"
+    },
+    {
+      "type": "TextBlock",
+      "text": "SKT LTE 환경에서 TAC 18469, PCI 160 셀에 MUTE 이벤트가 집중 발생하고 있습니다. ECNT 150건이며 평균 RSRP -105.3 dBm으로 신호가 약합니다. 해당 셀 기지국 점검을 권장합니다.",
+      "wrap": true,
+      "spacing": "Small"
+    },
+
+    {
+      "type": "TextBlock",
+      "text": "◆ MUTE (3건)",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
+    {
+      "type": "ColumnSet",
+      "style": "emphasis",
+      "spacing": "Small",
+      "columns": [
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "ACT",  "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "TAC",  "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "PCI",  "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "Band", "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "ECNT", "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "RSRP", "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "SINR", "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "BLER", "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] }
+      ]
+    },
+    {
+      "type": "ColumnSet", "spacing": "None",
+      "columns": [
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "LTE",   "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "18469", "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "160",   "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "B3",    "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "150",   "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "-105.3","size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "2.1",   "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "0.5",   "size": "Small", "wrap": false }] }
+      ]
+    },
+    {
+      "type": "ColumnSet", "spacing": "None",
+      "columns": [
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "LTE",   "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "12345", "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "200",   "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "B3",    "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "80",    "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "-98.7", "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "5.4",   "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "0.3",   "size": "Small", "wrap": false }] }
+      ]
+    },
+
+    {
+      "type": "TextBlock",
+      "text": "◆ MUTE 추가정보 (SAMS/SMBU/MCST 발생횟수)",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
+    {
+      "type": "FactSet",
+      "spacing": "Small",
+      "facts": [
+        { "title": "SAMS", "value": "1002:5회, 1004:3회, 1001:1회" },
+        { "title": "SMBU", "value": "2:7회, 3:2회" },
+        { "title": "MCST", "value": "1:6회, 2:3회" }
+      ]
+    },
+
+    {
+      "type": "TextBlock",
+      "text": "◆ DROP (2건)",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
+    {
+      "type": "ColumnSet",
+      "style": "emphasis",
+      "spacing": "Small",
+      "columns": [
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "ACT",    "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "TAC",    "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "PCI",    "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "DLCh",   "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "발생횟수","weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "RxP0",   "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "RxP1",   "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "BLER",   "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "SIPR",   "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] }
+      ]
+    },
+    {
+      "type": "ColumnSet", "spacing": "None",
+      "columns": [
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "LTE",        "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "18469",       "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "160",         "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "1350",        "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "3",           "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "-85.2",       "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "-88.1",       "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "0.2",         "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "1401:2회",    "size": "Small", "wrap": false }] }
+      ]
+    },
+
+    {
+      "type": "TextBlock",
+      "text": "◆ RLFI (1건)",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
+    {
+      "type": "ColumnSet",
+      "style": "emphasis",
+      "spacing": "Small",
+      "columns": [
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "ACT",    "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "TAC",    "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "PID",    "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "DCh",    "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "발생횟수","weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "RxP",    "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 2, "items": [{ "type": "TextBlock", "text": "원인",   "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] }
+      ]
+    },
+    {
+      "type": "ColumnSet", "spacing": "None",
+      "columns": [
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "LTE",         "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "18469",        "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "160",          "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "1350",         "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "5",            "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "-92.3",        "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 2, "items": [{ "type": "TextBlock", "text": "3002:3회",     "size": "Small", "wrap": true  }] }
+      ]
+    },
+
+    {
+      "type": "TextBlock",
+      "text": "◆ SCGF (2건)",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
+    {
+      "type": "ColumnSet",
+      "style": "emphasis",
+      "spacing": "Small",
+      "columns": [
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "TAC",    "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "PhID",   "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "L밴드",  "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "N밴드",  "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "발생횟수","weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] },
+        { "type": "Column", "width": 2, "items": [{ "type": "TextBlock", "text": "원인",   "weight": "Bolder", "size": "Small", "wrap": false, "color": "Accent" }] }
+      ]
+    },
+    {
+      "type": "ColumnSet", "spacing": "None",
+      "columns": [
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "18469",     "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "160",        "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "B3",         "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "N78",        "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 1, "items": [{ "type": "TextBlock", "text": "7",          "size": "Small", "wrap": false }] },
+        { "type": "Column", "width": 2, "items": [{ "type": "TextBlock", "text": "HOF:4회",    "size": "Small", "wrap": true  }] }
+      ]
+    },
+
+    {
+      "type": "TextBlock",
+      "text": "■ 기지국 정보",
+      "weight": "Bolder",
+      "spacing": "Large"
+    },
+    {
+      "type": "TextBlock",
+      "text": "◆ MUTE 1위 기지국",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
+    {
+      "type": "FactSet",
+      "spacing": "Small",
+      "facts": [
+        { "title": "지역",     "value": "서울 송파구 잠실동 39" },
+        { "title": "사업자",   "value": "SKT | 2026년 15주차" },
+        { "title": "TAC/PCI",  "value": "18469 / 160  DLCh:1350" },
+        { "title": "Vendor",   "value": "samsung" },
+        { "title": "단말/호",  "value": "594 / 1292" },
+        { "title": "Drop/RLF", "value": "7 / 301" },
+        { "title": "HO실패",   "value": "86" },
+        { "title": "이상점수", "value": "54.2" }
+      ]
+    }
+  ]
+}
