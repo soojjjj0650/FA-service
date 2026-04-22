@@ -387,23 +387,19 @@ async def _push_card_to_chatroom(job: dict) -> None:
         )
 
         payload = {
-            "chatRoomId": chat_room_id,
-            "userId":     user_id,
-            "body": {
-                "title":        f"[SN: {sn}] FA 분석 결과",
-                "ai_result":    ai_text,
-                "station_info": station_section,
-            },
+            "chatRoomId":   chat_room_id,
+            "userId":       user_id,
+            "title":        f"[SN: {sn}] FA 분석 결과",
+            "ai_result":    ai_text,
+            "station_info": station_section,
         }
     else:
         payload = {
-            "chatRoomId": chat_room_id,
-            "userId":     user_id,
-            "body": {
-                "title":        f"[SN: {sn}] FA 분석 오류",
-                "ai_result":    job.get('error', '처리 중 오류가 발생했습니다.'),
-                "station_info": "",
-            },
+            "chatRoomId":   chat_room_id,
+            "userId":       user_id,
+            "title":        f"[SN: {sn}] FA 분석 오류",
+            "ai_result":    job.get('error', '처리 중 오류가 발생했습니다.'),
+            "station_info": "",
         }
 
     headers = {"Content-Type": "application/json"}
