@@ -380,7 +380,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
 
         text_body = f"[SN: {sn}] FA 분석 결과\n\n{ai_text}"
         if station_text:
-            text_body += f"\n\n■ 기지국 정보\n{station_text}"
+            text_body += f"\n\n■ 기지국 정보 (이상점수 100점 이상 시 주의필요)\n{station_text}"
 
         payload = {
             "text":         text_body,
@@ -997,7 +997,13 @@ def _station_entries_to_text(entries: list[dict]) -> str:
             lines.append(_kv("단말/호",  f"{r.get('device_cnt','-')} / {r.get('call_cnt','-')}"))
             lines.append(_kv("Drop/RLF", f"{r.get('drop_cnt','-')} / {r.get('rlf_cnt','-')}"))
             lines.append(_kv("HO실패",   r.get('ho_failure_cnt', '-')))
-            lines.append(_kv("이상점수", r.get('anomaly_score', '-')))
+            anomaly_raw = r.get('anomaly_score', '-')
+            try:
+                anomaly_warn = float(str(anomaly_raw)) >= 100
+            except (ValueError, TypeError):
+                anomaly_warn = False
+            anomaly_display = f"🔵 {anomaly_raw}" + (" ⚠ 주의필요" if anomaly_warn else "")
+            lines.append(_kv("이상점수", anomaly_display))
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
