@@ -283,20 +283,18 @@ def _format_row_grouped(
     return "\n".join(lines)
 
 
-def _md_table_to_vertical(text: str) -> str:
-    """AI 응답 내 마크다운 가로 표를 세로(인자=행, 순위1·2·3=열) 형식으로 변환합니다."""
+def _md_table_to_compact(text: str) -> str:
+    """AI 응답 내 마크다운 가로 표를 '■ N위: 키=값 / 키=값' 한줄 형식으로 변환합니다."""
     lines = text.splitlines()
     result: list[str] = []
     i = 0
     while i < len(lines):
         line = lines[i]
-        # 마크다운 표 감지: | 로 시작하는 줄
         if line.strip().startswith("|") and "|" in line:
             table_block: list[str] = []
             while i < len(lines) and lines[i].strip().startswith("|"):
                 table_block.append(lines[i])
                 i += 1
-            # 구분선(|---|---|) 제거
             data_lines = [l for l in table_block
                           if not re.match(r"^\s*\|[\s\-:]+\|", l)]
             if len(data_lines) >= 2:
@@ -305,28 +303,12 @@ def _md_table_to_vertical(text: str) -> str:
                     [v.strip() for v in l.strip().strip("|").split("|")]
                     for l in data_lines[1:]
                 ]
-                display = rows[:3]
-                n_cols = len(display)
-                cells: dict[tuple[int, int], str] = {}
-                for pi in range(len(headers)):
-                    for ci, row in enumerate(display):
-                        cells[(pi, ci)] = row[pi] if pi < len(row) else "-"
-                param_w = max(_col_width("인자"), max(_col_width(h) for h in headers))
-                col_ws = [
-                    max(_col_width(str(ci + 1)),
-                        max(_col_width(cells[(pi, ci)]) for pi in range(len(headers))))
-                    for ci in range(n_cols)
-                ]
-                result.append(
-                    _col_pad("인자", param_w) + " | " +
-                    " | ".join(_col_pad(str(ci + 1), col_ws[ci]) for ci in range(n_cols))
-                )
-                result.append("-" * param_w + "-+-" + "-+-".join("-" * w for w in col_ws))
-                for pi, h in enumerate(headers):
-                    result.append(
-                        _col_pad(h, param_w) + " | " +
-                        " | ".join(_col_pad(cells[(pi, ci)], col_ws[ci]) for ci in range(n_cols))
+                for ci, row in enumerate(rows[:3]):
+                    pairs = " / ".join(
+                        f"{h}:{row[pi] if pi < len(row) else '-'}"
+                        for pi, h in enumerate(headers)
                     )
+                    result.append(f"  {ci+1}위: {pairs}")
             else:
                 result.extend(table_block)
         else:
@@ -349,7 +331,7 @@ def _strip_markdown(text: str) -> str:
             lines.append(line)
     result = "\n".join(lines)
     result = result.replace("**", "")
-    result = _md_table_to_vertical(result)
+    result = _md_table_to_compact(result)
     return result
 
 
