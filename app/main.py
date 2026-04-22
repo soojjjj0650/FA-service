@@ -356,23 +356,12 @@ async def _push_card_to_chatroom(job: dict) -> None:
         if station_text:
             text_body += f"\n\n■ 기지국 정보\n{station_text}"
 
-        ft = job.get('feature_tables') or {}
-
-        def _vt(feat: str) -> str:
-            t = ft.get(feat)
-            return _feature_table_to_vertical_text(feat, t) if t and t.rows else ""
-
         payload = {
             "text":         text_body,
             "chatRoomId":   chat_room_id,
             "userId":       user_id,
             "title":        f"[SN: {sn}] FA 분석 결과",
             "ai_result":    ai_text,
-            "mute_table":   _vt("MUTE"),
-            "mute_extra":   _vt("MUTE_EXTRA"),
-            "drop_table":   _vt("DROP"),
-            "rlfi_table":   _vt("RLFI"),
-            "scgf_table":   _vt("SCGF"),
             "station_info": station_text,
         }
     else:
