@@ -283,6 +283,46 @@ def _format_row_grouped(
     return "\n".join(lines)
 
 
+def _normalize_md_tables(text: str) -> str:
+    """AI 응답 내 마크다운 표의 열 너비를 헤더 기준으로 맞춰 정렬합니다."""
+    lines = text.splitlines()
+    result: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip().startswith("|") and "|" in line:
+            table_block: list[str] = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                table_block.append(lines[i])
+                i += 1
+            data_lines = [l for l in table_block
+                          if not re.match(r"^\s*\|[\s\-:]+\|", l)]
+            if len(data_lines) >= 2:
+                all_rows = [
+                    [v.strip() for v in l.strip().strip("|").split("|")]
+                    for l in data_lines
+                ]
+                n_cols = max(len(r) for r in all_rows)
+                for r in all_rows:
+                    while len(r) < n_cols:
+                        r.append("")
+                widths = [max(len(r[j]) for r in all_rows) for j in range(n_cols)]
+
+                def fmt(row: list[str]) -> str:
+                    return "| " + " | ".join(f"{row[j]:<{widths[j]}}" for j in range(n_cols)) + " |"
+
+                result.append(fmt(all_rows[0]))
+                result.append("|" + "|".join("-" * (w + 2) for w in widths) + "|")
+                for row in all_rows[1:]:
+                    result.append(fmt(row))
+            else:
+                result.extend(table_block)
+        else:
+            result.append(line)
+            i += 1
+    return "\n".join(result)
+
+
 def _strip_markdown(text: str) -> str:
     """AI 응답의 마크다운 헤딩·굵게 기호를 제거하고 제목을 기호로 강조합니다."""
     lines = []
@@ -306,6 +346,8 @@ def _strip_markdown(text: str) -> str:
     )
     # 연속 빈 줄 2개 이상 → 1개로 축소
     result = re.sub(r'\n{3,}', '\n\n', result)
+    # 마크다운 표 열 너비 정규화
+    result = _normalize_md_tables(result)
     return result
 
 
