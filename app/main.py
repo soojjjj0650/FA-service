@@ -283,6 +283,44 @@ def _format_row_grouped(
     return "\n".join(lines)
 
 
+def _md_tables_to_compact(text: str) -> str:
+    """AI 응답 내 마크다운 가로 표를 'N위: 키:값 / 키:값 ...' 한 줄 형식으로 변환합니다.
+
+    가로 표는 챗봇 화면 폭이 좁아 글자가 세로로 보이는 문제가 있어서 변환합니다.
+    AI는 전체 데이터를 가로 표로 받아 분석하고, 챗봇 표시 시에만 변환합니다.
+    """
+    lines = text.splitlines()
+    result: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip().startswith("|") and "|" in line:
+            table_block: list[str] = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                table_block.append(lines[i])
+                i += 1
+            data_lines = [l for l in table_block
+                          if not re.match(r"^\s*\|[\s\-:]+\|", l)]
+            if len(data_lines) >= 2:
+                headers = [h.strip() for h in data_lines[0].strip().strip("|").split("|")]
+                rows = [
+                    [v.strip() for v in l.strip().strip("|").split("|")]
+                    for l in data_lines[1:]
+                ]
+                for ci, row in enumerate(rows[:3]):
+                    pairs = " / ".join(
+                        f"{h}:{row[pi] if pi < len(row) else '-'}"
+                        for pi, h in enumerate(headers)
+                    )
+                    result.append(f"  {ci+1}위: {pairs}")
+            else:
+                result.extend(table_block)
+        else:
+            result.append(line)
+            i += 1
+    return "\n".join(result)
+
+
 def _strip_markdown(text: str) -> str:
     """AI 응답의 마크다운 헤딩·굵게 기호를 제거하고 제목을 기호로 강조합니다."""
     lines = []
@@ -297,6 +335,7 @@ def _strip_markdown(text: str) -> str:
             lines.append(line)
     result = "\n".join(lines)
     result = result.replace("**", "")
+    result = _md_tables_to_compact(result)
     return result
 
 
