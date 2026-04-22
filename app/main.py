@@ -283,12 +283,20 @@ def _format_row_grouped(
     return "\n".join(lines)
 
 
-def _md_tables_to_compact(text: str) -> str:
-    """AI 응답 내 마크다운 가로 표를 'N위: 키:값 / 키:값 ...' 한 줄 형식으로 변환합니다.
+def _md_tables_to_vertical(text: str) -> str:
+    """AI 응답 내 마크다운 가로 표를 세로(인자=행, 순위1·2·3=열) 형식으로 변환합니다.
 
-    가로 표는 챗봇 화면 폭이 좁아 글자가 세로로 보이는 문제가 있어서 변환합니다.
-    AI는 전체 데이터를 가로 표로 받아 분석하고, 챗봇 표시 시에만 변환합니다.
+    AI는 가로 표로 응답하지만, 챗봇 화면 폭이 좁아 가로 표는 글자가 세로로 깨집니다.
+    우리 코드에서 직접 변환하므로 \n이 정확하게 삽입되어 챗봇에서 올바르게 렌더링됩니다.
     """
+    import unicodedata
+
+    def cw(s: str) -> int:
+        return sum(2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in str(s))
+
+    def pad(s: str, w: int) -> str:
+        return str(s) + " " * max(0, w - cw(str(s)))
+
     lines = text.splitlines()
     result: list[str] = []
     i = 0
@@ -307,12 +315,30 @@ def _md_tables_to_compact(text: str) -> str:
                     [v.strip() for v in l.strip().strip("|").split("|")]
                     for l in data_lines[1:]
                 ]
-                for ci, row in enumerate(rows[:3]):
-                    pairs = " / ".join(
-                        f"{h}:{row[pi] if pi < len(row) else '-'}"
-                        for pi, h in enumerate(headers)
-                    )
-                    result.append(f"  {ci+1}위: {pairs}")
+                display = rows[:3]
+                n = len(display)
+
+                # 셀 값
+                cells = {
+                    (pi, ci): display[ci][pi] if pi < len(display[ci]) else "-"
+                    for pi in range(len(headers))
+                    for ci in range(n)
+                }
+
+                # 열 너비
+                pw = max(cw("인자"), max(cw(h) for h in headers))
+                cws = [
+                    max(cw(str(ci + 1)), max(cw(cells[(pi, ci)]) for pi in range(len(headers))))
+                    for ci in range(n)
+                ]
+
+                # 헤더행
+                result.append(pad("인자", pw) + " | " + " | ".join(pad(str(ci+1), cws[ci]) for ci in range(n)))
+                # 구분선
+                result.append("-" * pw + "-+-" + "-+-".join("-" * w for w in cws))
+                # 데이터행 (인자별)
+                for pi, h in enumerate(headers):
+                    result.append(pad(h, pw) + " | " + " | ".join(pad(cells[(pi, ci)], cws[ci]) for ci in range(n)))
             else:
                 result.extend(table_block)
         else:
@@ -335,7 +361,7 @@ def _strip_markdown(text: str) -> str:
             lines.append(line)
     result = "\n".join(lines)
     result = result.replace("**", "")
-    result = _md_tables_to_compact(result)
+    result = _md_tables_to_vertical(result)
     return result
 
 
