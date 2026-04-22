@@ -137,6 +137,28 @@ FEATURE_KEEP_COLS: dict[str, list[str]] = {
     "SCGF": ["TAC", "PhID", "Lband", "Nband", "SCGF발생횟수", "Ftype_Counts"],
 }
 
+# ─── feature별 컬럼명 변경 (집계 후 표시용 이름으로 변환) ────────────────────────
+FEATURE_RENAME_COLS: dict[str, dict[str, str]] = {
+    "DROP": {
+        "Drop횟수":   "발생횟수",
+        "RxP0_avg":   "RxP0",
+        "RxP1_avg":   "RxP1",
+        "BLER_avg":   "BLER",
+        "SIPR_Counts": "SIPR",
+    },
+    "RLFI": {
+        "RLFI횟수":  "발생횟수",
+        "RxP_avg":   "RxP",
+        "CAU_Counts": "원인",
+    },
+    "SCGF": {
+        "Lband":        "L밴드",
+        "Nband":        "N밴드",
+        "SCGF발생횟수":  "발생횟수",
+        "Ftype_Counts": "원인",
+    },
+}
+
 
 
 HEX_COLUMNS: set[str] = {"TAC", "LAC", "TAC_", "LAC_"}
@@ -394,6 +416,11 @@ class DataProcessor:
                     keep_idx.sort(key=lambda i: keep.index(columns[i]))
                     columns  = [columns[i] for i in keep_idx]
                     agg_rows = [[row[i] for i in keep_idx] for row in agg_rows]
+
+                # 컬럼명 변경 (FEATURE_RENAME_COLS)
+                rename = FEATURE_RENAME_COLS.get(feat)
+                if rename:
+                    columns = [rename.get(c, c) for c in columns]
 
                 tables[feat] = FeatureTable(
                     feature=feat,

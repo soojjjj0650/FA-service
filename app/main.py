@@ -995,16 +995,16 @@ _FEATURE_DISPLAY_COLS = {
     ],
     "DROP": [
         ("ACT", "ACT"), ("TAC", "TAC"), ("PCI", "PCI"), ("DLCh", "DLCh"),
-        ("발생횟수", "Drop횟수"), ("RxP0", "RxP0_avg"), ("RxP1", "RxP1_avg"),
-        ("BLER", "BLER_avg"), ("SIPR", "SIPR_Counts"),
+        ("발생횟수", "발생횟수"), ("RxP0", "RxP0"), ("RxP1", "RxP1"),
+        ("BLER", "BLER"), ("SIPR", "SIPR"),
     ],
     "RLFI": [
         ("ACT", "ACT"), ("TAC", "TAC"), ("PID", "PID"), ("DCh", "DCh"),
-        ("발생횟수", "RLFI횟수"), ("RxP", "RxP_avg"), ("원인", "CAU_Counts"),
+        ("발생횟수", "발생횟수"), ("RxP", "RxP"), ("원인", "원인"),
     ],
     "SCGF": [
-        ("TAC", "TAC"), ("PhID", "PhID"), ("L밴드", "Lband"), ("N밴드", "Nband"),
-        ("발생횟수", "SCGF발생횟수"), ("원인", "Ftype_Counts"),
+        ("TAC", "TAC"), ("PhID", "PhID"), ("L밴드", "L밴드"), ("N밴드", "N밴드"),
+        ("발생횟수", "발생횟수"), ("원인", "원인"),
     ],
 }
 
