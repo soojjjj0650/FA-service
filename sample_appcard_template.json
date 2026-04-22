@@ -20,7 +20,6 @@
       "text": "${body.ai_result}",
       "wrap": true,
       "fontType": "Monospace",
-      "size": "Small",
       "spacing": "Small"
     },
     {
@@ -34,7 +33,6 @@
       "text": "${body.station_info}",
       "wrap": true,
       "fontType": "Monospace",
-      "size": "Small",
       "spacing": "Small"
     }
   ]
