@@ -345,22 +345,40 @@ async def _push_card_to_chatroom(job: dict) -> None:
             ],
         }
 
-    # Samsung chatbot Builder webhook payload
-    # 챗봇 Builder 웹훅 설정에서 ${body.text} 로 참조
+    # Samsung chatbot Builder push payload
+    # - text 모드: ${body.text} 참조
+    # - 앱카드 템플릿 모드: ${body.title}, ${body.ai_result}, ${body.feature_tables}, ${body.station_info} 참조
     if status == "done":
         ai_text = _strip_markdown(job.get('ai_response', ''))
-        station = job.get('station_text', '')
+        station_text = job.get('station_text', '')
+        feature_tables = job.get('feature_tables') or {}
+        feat_text = _feature_tables_to_text(feature_tables) if feature_tables else ""
+
         text_body = f"[SN: {sn}] FA 분석 결과\n\n{ai_text}"
-        if station:
-            text_body += f"\n\n■ 기지국 정보\n{station}"
+        if station_text:
+            text_body += f"\n\n■ 기지국 정보\n{station_text}"
+
+        payload = {
+            "text": text_body,
+            "chatRoomId": chat_room_id,
+            "userId": user_id,
+            # 앱카드 템플릿 변수 (sample_appcard_template.json 의 ${body.xxx} 와 대응)
+            "title": f"[SN: {sn}] FA 분석 결과",
+            "ai_result": ai_text,
+            "feature_tables": feat_text,
+            "station_info": station_text,
+        }
     else:
         text_body = f"[SN: {sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
-
-    payload = {
-        "text": text_body,
-        "chatRoomId": chat_room_id,
-        "userId": user_id,
-    }
+        payload = {
+            "text": text_body,
+            "chatRoomId": chat_room_id,
+            "userId": user_id,
+            "title": f"[SN: {sn}] FA 분석 오류",
+            "ai_result": job.get('error', '처리 중 오류가 발생했습니다.'),
+            "feature_tables": "",
+            "station_info": "",
+        }
 
     headers = {"Content-Type": "application/json"}
     if settings.CHATBOT_PUSH_API_KEY:

@@ -1,0 +1,49 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.3",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "${body.title}",
+      "size": "Medium",
+      "weight": "Bolder"
+    },
+    {
+      "type": "TextBlock",
+      "text": "■ AI 분석 결과",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${body.ai_result}",
+      "wrap": true,
+      "spacing": "Small"
+    },
+    {
+      "type": "TextBlock",
+      "text": "■ 주요 이벤트 현황",
+      "weight": "Bolder",
+      "spacing": "Large"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${body.feature_tables}",
+      "wrap": true,
+      "spacing": "Small"
+    },
+    {
+      "type": "TextBlock",
+      "text": "■ 기지국 정보",
+      "weight": "Bolder",
+      "spacing": "Large"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${body.station_info}",
+      "wrap": true,
+      "spacing": "Small"
+    }
+  ]
+}
