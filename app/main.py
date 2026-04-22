@@ -508,6 +508,78 @@ async def test_result_card(request: TestResultRequest):
     return JSONResponse(card)
 
 
+@app.get("/api/appcard")
+async def get_appcard(sn: str = "", userId: str = ""):
+    """
+    Samsung chatbot Builder 앱카드 API 연계 엔드포인트.
+
+    App Card 설정에서 이 URL을 지정하면 카드 표시 시 동적으로 데이터를 가져옵니다.
+
+    Query params:
+      sn     : 조회할 단말기 SN (있으면 해당 SN의 최신 완료 Job 결과 반환)
+      userId : 사용자 ID (sn 없을 때 해당 user의 최신 Job 결과 반환)
+
+    반환:
+      - 완료된 분석 결과 → _build_result_card() Adaptive Card JSON
+      - 분석 중       → 처리중 안내 카드
+      - 결과 없음     → SN 입력 폼 카드
+    """
+    sn = sn.strip().upper()
+    userId = userId.strip()
+
+    # SN 또는 userId로 최신 완료 Job 탐색 (최신 순)
+    matched_job = None
+    for job in reversed(list(_chatbot_jobs.values())):
+        if sn and job.get("sn", "").upper() == sn:
+            matched_job = job
+            break
+        if not sn and userId and job.get("userId") == userId:
+            matched_job = job
+            break
+
+    if matched_job is None:
+        return JSONResponse(_build_input_form_card())
+
+    status = matched_job.get("status")
+    job_sn = matched_job.get("sn", sn)
+
+    if status == "done":
+        card = _build_result_card(
+            job_sn,
+            matched_job.get("ai_response", ""),
+            matched_job.get("feature_summary", ""),
+            matched_job.get("station_entries"),
+            matched_job.get("station_text", ""),
+            matched_job.get("feature_tables"),
+        )
+        return JSONResponse(card)
+    elif status == "error":
+        return JSONResponse({
+            "type": "AdaptiveCard",
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "version": "1.3",
+            "body": [
+                {"type": "TextBlock", "text": f"[{job_sn}] FA 분석 오류",
+                 "weight": "Bolder", "color": "Attention"},
+                {"type": "TextBlock", "text": matched_job.get("error", "처리 중 오류 발생"),
+                 "wrap": True, "color": "Attention"},
+            ],
+        })
+    else:
+        # pending / running
+        return JSONResponse({
+            "type": "AdaptiveCard",
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "version": "1.3",
+            "body": [
+                {"type": "TextBlock", "text": f"[{job_sn}] FA 분석 진행 중",
+                 "weight": "Bolder", "color": "Warning"},
+                {"type": "TextBlock", "text": "분석이 완료되면 결과가 자동으로 표시됩니다.",
+                 "wrap": True, "isSubtle": True},
+            ],
+        })
+
+
 @app.get("/api/jobs")
 async def list_jobs():
     """
