@@ -356,12 +356,23 @@ async def _push_card_to_chatroom(job: dict) -> None:
         if station_text:
             text_body += f"\n\n■ 기지국 정보\n{station_text}"
 
+        ft = job.get('feature_tables') or {}
+
+        def _vt(feat: str) -> str:
+            t = ft.get(feat)
+            return _feature_table_to_vertical_text(feat, t) if t and t.rows else ""
+
         payload = {
             "text":         text_body,
             "chatRoomId":   chat_room_id,
             "userId":       user_id,
             "title":        f"[SN: {sn}] FA 분석 결과",
             "ai_result":    ai_text,
+            "mute_table":   _vt("MUTE"),
+            "mute_extra":   _vt("MUTE_EXTRA"),
+            "drop_table":   _vt("DROP"),
+            "rlfi_table":   _vt("RLFI"),
+            "scgf_table":   _vt("SCGF"),
             "station_info": station_text,
         }
     else:
@@ -894,6 +905,55 @@ def _feature_tables_to_text(feature_tables: dict) -> str:
 
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
+
+
+def _feature_table_to_vertical_text(feat: str, table) -> str:
+    """단일 feature 테이블을 세로 형식(행=인자, 열=순위1·2·3)으로 변환합니다."""
+    col_map = _FEATURE_DISPLAY_COLS.get(feat, [])
+    valid = [(disp, actual) for disp, actual in col_map if actual in table.columns]
+    if not valid or not table.rows:
+        return ""
+
+    label = _FEATURE_LABELS.get(feat, feat)
+    n_total = len(table.rows)
+
+    if feat == "MUTE_EXTRA":
+        row = table.rows[0]
+        lines = [f"◆ {label}"]
+        for disp, actual in valid:
+            lines.append(f"{disp}: {row[table.columns.index(actual)]}")
+        return "\n".join(lines)
+
+    # 최대 3개 행(순위)을 열로, 인자를 행으로 전치
+    display_rows = table.rows[:3]
+    n_cols = len(display_rows)
+
+    # 셀 값 미리 계산
+    cells = {}
+    for pi, (disp, actual) in enumerate(valid):
+        idx = table.columns.index(actual)
+        for ci, row in enumerate(display_rows):
+            cells[(pi, ci)] = _trunc(str(row[idx]), 10)
+
+    # 컬럼 너비: 인자명 열 / 순위 열
+    param_w = max(_col_width("인자"), max(_col_width(disp) for disp, _ in valid))
+    col_ws = [
+        max(_col_width(str(ci + 1)), max(_col_width(cells[(pi, ci)]) for pi in range(len(valid))))
+        for ci in range(n_cols)
+    ]
+
+    lines = [f"◆ {label} ({n_total}건)"]
+    lines.append(
+        _col_pad("인자", param_w) + " | " +
+        " | ".join(_col_pad(str(ci + 1), col_ws[ci]) for ci in range(n_cols))
+    )
+    lines.append("-" * param_w + "-+-" + "-+-".join("-" * w for w in col_ws))
+    for pi, (disp, _) in enumerate(valid):
+        lines.append(
+            _col_pad(disp, param_w) + " | " +
+            " | ".join(_col_pad(cells[(pi, ci)], col_ws[ci]) for ci in range(n_cols))
+        )
+    return "\n".join(lines)
 
 
 def _station_entries_to_text(entries: list[dict]) -> str:

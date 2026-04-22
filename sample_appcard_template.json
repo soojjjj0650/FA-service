@@ -23,6 +23,46 @@
     },
     {
       "type": "TextBlock",
+      "text": "■ 주요 이벤트 현황",
+      "weight": "Bolder",
+      "spacing": "Large"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${body.mute_table}",
+      "wrap": true,
+      "fontType": "Monospace",
+      "spacing": "Small"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${body.mute_extra}",
+      "wrap": true,
+      "spacing": "Small"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${body.drop_table}",
+      "wrap": true,
+      "fontType": "Monospace",
+      "spacing": "Small"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${body.rlfi_table}",
+      "wrap": true,
+      "fontType": "Monospace",
+      "spacing": "Small"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${body.scgf_table}",
+      "wrap": true,
+      "fontType": "Monospace",
+      "spacing": "Small"
+    },
+    {
+      "type": "TextBlock",
       "text": "■ 기지국 정보",
       "weight": "Bolder",
       "spacing": "Large"
