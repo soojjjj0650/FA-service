@@ -378,24 +378,19 @@ async def _push_card_to_chatroom(job: dict) -> None:
     # - 앱카드 템플릿 : ${body.title} / ${body.ai_result} / ${body.station_info}
     if status == "done":
         ai_text = _strip_markdown(job.get('ai_response', ''))
-        station_entries = job.get('station_entries') or []
         station_text = job.get('station_text', '')
-        anomaly_text = _station_anomaly_to_text(station_entries)
 
         text_body = f"[SN: {sn}] FA 분석 결과\n\n{ai_text}"
         if station_text:
             text_body += f"\n\n■ 기지국 정보\n{station_text}"
-            if anomaly_text:
-                text_body += f"\n{anomaly_text}"
 
         payload = {
-            "text":             text_body,
-            "chatRoomId":       chat_room_id,
-            "userId":           user_id,
-            "title":            f"[SN: {sn}] FA 분석 결과",
-            "ai_result":        ai_text,
-            "station_info":     station_text,
-            "station_anomaly":  anomaly_text,
+            "text":         text_body,
+            "chatRoomId":   chat_room_id,
+            "userId":       user_id,
+            "title":        f"[SN: {sn}] FA 분석 결과",
+            "ai_result":    ai_text,
+            "station_info": station_text,
         }
     else:
         text_body = f"[SN: {sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
@@ -979,7 +974,7 @@ def _feature_table_to_vertical_text(feat: str, table) -> str:
 
 
 def _station_entries_to_text(entries: list[dict]) -> str:
-    """기지국 entries를 push용 텍스트로 변환합니다. (이상점수 제외)"""
+    """기지국 entries를 push용 텍스트로 변환합니다."""
     KEY_W = 10
 
     def _kv(key: str, val) -> str:
@@ -1004,25 +999,9 @@ def _station_entries_to_text(entries: list[dict]) -> str:
             lines.append(_kv("단말/호",  f"{r.get('device_cnt','-')} / {r.get('call_cnt','-')}"))
             lines.append(_kv("Drop/RLF", f"{r.get('drop_cnt','-')} / {r.get('rlf_cnt','-')}"))
             lines.append(_kv("HO실패",   r.get('ho_failure_cnt', '-')))
+            lines.append(_kv("이상점수", r.get('anomaly_score', '-')))
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
-
-
-def _station_anomaly_to_text(entries: list[dict]) -> str:
-    """기지국별 이상점수만 별도 텍스트로 반환합니다. (파란색 TextBlock용)"""
-    KEY_W = 10
-
-    def _kv(key: str, val) -> str:
-        return _col_pad(key, KEY_W) + str(val)
-
-    lines = []
-    for e in entries:
-        r = e.get("row")
-        if r:
-            label = e["label"]
-            score = r.get('anomaly_score', '-')
-            lines.append(_kv("이상점수", f"{label}: {score}"))
-    return "\n".join(lines)
 
 
 # (표시명, 실제 컬럼명) - 표시명은 챗봇에 보여줄 짧은 이름

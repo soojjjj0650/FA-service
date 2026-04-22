@@ -34,14 +34,6 @@
       "wrap": true,
       "fontType": "Monospace",
       "spacing": "Small"
-    },
-    {
-      "type": "TextBlock",
-      "text": "${body.station_anomaly}",
-      "wrap": true,
-      "fontType": "Monospace",
-      "color": "Accent",
-      "spacing": "None"
     }
   ]
 }
