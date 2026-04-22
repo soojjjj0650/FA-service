@@ -128,7 +128,17 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
 }
 
 
-# ─── 16진수 → 10진수 변환이 필요한 컬럼 (표시명 기준, 전 feature 공통) ────────
+# ─── feature별 최종 표시 컬럼 (집계 완료 후 이 컬럼만 남김) ─────────────────────
+# 순서도 여기서 지정한 순서대로 유지됩니다.
+FEATURE_KEEP_COLS: dict[str, list[str]] = {
+    "MUTE": ["ACT", "TAC", "PCI", "Band", "ECNT", "RSRP", "SINR", "BLER"],
+    "DROP": ["ACT", "TAC", "PCI", "DLCh", "Drop횟수", "RxP0_avg", "RxP1_avg", "BLER_avg", "SIPR_Counts"],
+    "RLFI": ["ACT", "TAC", "PID", "DCh", "RLFI횟수", "RxP_avg", "CAU_Counts"],
+    "SCGF": ["TAC", "PhID", "Lband", "Nband", "SCGF발생횟수", "Ftype_Counts"],
+}
+
+
+
 HEX_COLUMNS: set[str] = {"TAC", "LAC", "TAC_", "LAC_"}
 
 
@@ -376,6 +386,14 @@ class DataProcessor:
 
                 # 최대 10행 제한
                 agg_rows = agg_rows[:10]
+
+                # 표시 컬럼 필터 (FEATURE_KEEP_COLS 지정 시 해당 컬럼만, 순서 유지)
+                keep = FEATURE_KEEP_COLS.get(feat)
+                if keep:
+                    keep_idx = [i for i, c in enumerate(columns) if c in keep]
+                    keep_idx.sort(key=lambda i: keep.index(columns[i]))
+                    columns  = [columns[i] for i in keep_idx]
+                    agg_rows = [[row[i] for i in keep_idx] for row in agg_rows]
 
                 tables[feat] = FeatureTable(
                     feature=feat,
