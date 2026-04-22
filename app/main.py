@@ -304,6 +304,8 @@ def _strip_markdown(text: str) -> str:
         result,
         flags=re.IGNORECASE | re.MULTILINE,
     )
+    # 연속 빈 줄 2개 이상 → 1개로 축소
+    result = re.sub(r'\n{3,}', '\n\n', result)
     return result
 
 
