@@ -922,6 +922,11 @@ def _feature_table_to_vertical_text(feat: str, table) -> str:
 
 def _station_entries_to_text(entries: list[dict]) -> str:
     """기지국 entries를 push용 텍스트로 변환합니다."""
+    KEY_W = 10  # 키 표시 너비 (한글 포함)
+
+    def _kv(key: str, val: str) -> str:
+        return _col_pad(key, KEY_W) + val
+
     parts = []
     for e in entries:
         r = e.get("row")
@@ -930,14 +935,18 @@ def _station_entries_to_text(entries: list[dict]) -> str:
         if not r:
             lines.append(f"조회 결과 없음 (TAC:{e.get('tac','-')} PCI:{e.get('pci','-')})")
         else:
-            lines.append(f"지역: {r.get('region', '-')}")
-            lines.append(f"사업자: {r.get('operator','-')}")
-            lines.append(f"TAC/PCI: {r.get('tac','-')} / {r.get('pci','-')}  DLCh: {r.get('dlch','-')}")
-            lines.append(f"Vendor: {r.get('vendor', '-')}")
-            lines.append(f"단말/콜수: {r.get('device_cnt','-')} / {r.get('call_cnt','-')}")
-            lines.append(f"Drop/RLF: {r.get('drop_cnt','-')} / {r.get('rlf_cnt','-')}")
-            lines.append(f"HO실패: {r.get('ho_failure_cnt', '-')}")
-            lines.append(f"이상점수: {r.get('anomaly_score', '-')}")
+            operator = r.get('operator', '-')
+            week = r.get('week') or r.get('period') or r.get('date_range') or ''
+            operator_str = f"{operator} | {week}" if week else operator
+
+            lines.append(_kv("지역",     r.get('region', '-')))
+            lines.append(_kv("사업자",   operator_str))
+            lines.append(_kv("TAC/PCI",  f"{r.get('tac','-')} / {r.get('pci','-')}  DLCh:{r.get('dlch','-')}"))
+            lines.append(_kv("Vendor",   r.get('vendor', '-')))
+            lines.append(_kv("단말/호",  f"{r.get('device_cnt','-')} / {r.get('call_cnt','-')}"))
+            lines.append(_kv("Drop/RLF", f"{r.get('drop_cnt','-')} / {r.get('rlf_cnt','-')}"))
+            lines.append(_kv("HO실패",   r.get('ho_failure_cnt', '-')))
+            lines.append(_kv("이상점수", r.get('anomaly_score', '-')))
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
