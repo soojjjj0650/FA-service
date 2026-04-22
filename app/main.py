@@ -360,7 +360,6 @@ async def _push_card_to_chatroom(job: dict) -> None:
         "text": text_body,
         "chatRoomId": chat_room_id,
         "userId": user_id,
-        "appCard": card,  # Samsung chatbot Builder 앱카드 (Adaptive Card JSON)
     }
 
     headers = {"Content-Type": "application/json"}
