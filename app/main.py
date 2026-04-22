@@ -377,33 +377,33 @@ async def _push_card_to_chatroom(job: dict) -> None:
         return
 
     # Samsung chatbot Builder push payload
-    # - text 모드    : ${body.text} 참조
     # - 앱카드 템플릿 : ${body.title} / ${body.ai_result} / ${body.station_info}
     if status == "done":
         ai_text = _strip_markdown(job.get('ai_response', ''))
         station_text = job.get('station_text', '')
-
-        text_body = f"[SN: {sn}] FA 분석 결과\n\n{ai_text}"
-        if station_text:
-            text_body += f"\n\n■ 기지국 정보 (이상점수 100점 이상 시 주의필요)\n{station_text}"
+        station_section = (
+            f"■ 기지국 정보 (이상점수 100점 이상 시 주의필요)\n{station_text}"
+            if station_text else ""
+        )
 
         payload = {
-            "text":         text_body,
-            "chatRoomId":   chat_room_id,
-            "userId":       user_id,
-            "title":        f"[SN: {sn}] FA 분석 결과",
-            "ai_result":    ai_text,
-            "station_info": station_text,
+            "chatRoomId": chat_room_id,
+            "userId":     user_id,
+            "body": {
+                "title":        f"[SN: {sn}] FA 분석 결과",
+                "ai_result":    ai_text,
+                "station_info": station_section,
+            },
         }
     else:
-        text_body = f"[SN: {sn}] FA 분석 오류: {job.get('error', '처리 중 오류가 발생했습니다.')}"
         payload = {
-            "text":         text_body,
-            "chatRoomId":   chat_room_id,
-            "userId":       user_id,
-            "title":        f"[SN: {sn}] FA 분석 오류",
-            "ai_result":    job.get('error', '처리 중 오류가 발생했습니다.'),
-            "station_info": "",
+            "chatRoomId": chat_room_id,
+            "userId":     user_id,
+            "body": {
+                "title":        f"[SN: {sn}] FA 분석 오류",
+                "ai_result":    job.get('error', '처리 중 오류가 발생했습니다.'),
+                "station_info": "",
+            },
         }
 
     headers = {"Content-Type": "application/json"}
