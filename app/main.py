@@ -297,6 +297,13 @@ def _strip_markdown(text: str) -> str:
             lines.append(line)
     result = "\n".join(lines)
     result = result.replace("**", "")
+    # "1. MUTE (설명...)" → "1. MUTE 결과"
+    result = re.sub(
+        r'(\d+\.\s*)(MUTE|DROP|RLFI|SCGF)\b.*',
+        r'\1\2 결과',
+        result,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
     return result
 
 
