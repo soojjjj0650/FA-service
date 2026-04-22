@@ -360,6 +360,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         "text": text_body,
         "chatRoomId": chat_room_id,
         "userId": user_id,
+        "appCard": card,  # Samsung chatbot Builder 앱카드 (Adaptive Card JSON)
     }
 
     headers = {"Content-Type": "application/json"}
@@ -872,6 +873,14 @@ def _trunc(s: str, n: int = 12) -> str:
     return s if len(s) <= n else s[:n - 1] + "…"
 
 
+_WIDE_COLS = {"원인"}  # 원인 계열 컬럼은 width:2 로 넓게 표시
+
+
+def _col_width_card(disp: str) -> int:
+    """Adaptive Card ColumnSet width 값 반환 (원인 컬럼은 2, 나머지 1)."""
+    return 2 if disp in _WIDE_COLS else 1
+
+
 def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
     """MUTE·MUTE_EXTRA·DROP·RLFI·SCGF 집계 테이블을 Adaptive Card 블록으로 변환합니다."""
     blocks = []
@@ -909,7 +918,7 @@ def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
                 "spacing": "Small",
                 "columns": [
                     {
-                        "type": "Column", "width": 1,
+                        "type": "Column", "width": _col_width_card(disp),
                         "items": [{"type": "TextBlock", "text": disp,
                                    "weight": "Bolder", "size": "Small",
                                    "wrap": False, "color": "Accent"}],
@@ -924,12 +933,12 @@ def _build_feature_table_blocks(feature_tables: dict) -> list[dict]:
                     "spacing": "None",
                     "columns": [
                         {
-                            "type": "Column", "width": 1,
+                            "type": "Column", "width": _col_width_card(disp),
                             "items": [{"type": "TextBlock",
                                        "text": _trunc(str(row[table.columns.index(actual)]), 10),
-                                       "size": "Small", "wrap": False}],
+                                       "size": "Small", "wrap": disp in _WIDE_COLS}],
                         }
-                        for _, actual in valid
+                        for disp, actual in valid
                     ],
                 })
 
