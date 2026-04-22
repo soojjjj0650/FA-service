@@ -980,10 +980,10 @@ def _feature_table_to_vertical_text(feat: str, table) -> str:
 
 def _station_entries_to_text(entries: list[dict]) -> str:
     """기지국 entries를 push용 텍스트로 변환합니다. (이상점수 제외)"""
-    KEY_W = 10  # 키 표시 너비 (한글 포함)
+    KEY_W = 10
 
-    def _kv(key: str, val: str) -> str:
-        return _col_pad(key, KEY_W) + val
+    def _kv(key: str, val) -> str:
+        return _col_pad(key, KEY_W) + str(val)
 
     parts = []
     for e in entries:
@@ -1012,8 +1012,8 @@ def _station_anomaly_to_text(entries: list[dict]) -> str:
     """기지국별 이상점수만 별도 텍스트로 반환합니다. (파란색 TextBlock용)"""
     KEY_W = 10
 
-    def _kv(key: str, val: str) -> str:
-        return _col_pad(key, KEY_W) + val
+    def _kv(key: str, val) -> str:
+        return _col_pad(key, KEY_W) + str(val)
 
     lines = []
     for e in entries:
@@ -1021,7 +1021,7 @@ def _station_anomaly_to_text(entries: list[dict]) -> str:
         if r:
             label = e["label"]
             score = r.get('anomaly_score', '-')
-            lines.append(_kv(f"이상점수", f"{label}: {score}"))
+            lines.append(_kv("이상점수", f"{label}: {score}"))
     return "\n".join(lines)
 
 
