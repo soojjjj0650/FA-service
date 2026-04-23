@@ -13,6 +13,9 @@ FA Chatbot Service - FastAPI 메인 애플리케이션
   POST /webhook                   → 챗봇 Builder Adaptive Card 제출 수신 (SN 조회)
   POST /api/test-result           → Mock 결과 카드 즉시 반환 (챗봇 카드 형식 테스트용)
   GET  /api/jobs                  → 현재 활성 Job 목록 (디버그용)
+  POST /api/prefetch/trigger      → 사전 쿼리 수동 실행 (SN 목록 또는 Qings 전체)
+  GET  /api/prefetch/status       → 사전 쿼리 실행 상태 확인
+  GET  /api/prefetch/cache        → 캐시된 SN 목록 조회
 """
 
 import asyncio
@@ -21,6 +24,7 @@ import re
 import sys
 import time
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -115,6 +119,11 @@ async def startup():
         load_code_mappings()
     except Exception as e:
         logger.error(f"코드 매핑 로드 중 오류: {e}", exc_info=True)
+
+    if settings.PREFETCH_ENABLED:
+        asyncio.create_task(_prefetch_scheduler())
+        logger.info("[Scheduler] 사전 쿼리 스케줄러 시작 (평일 09:00)")
+
     logger.info("FA Chatbot Service 시작")
 
 
@@ -199,6 +208,37 @@ async def query_sn(request: SNQueryRequest):
             "sn": request.sn,
         },
     )
+
+
+async def _prefetch_scheduler() -> None:
+    """평일 오전 09:00 자동 사전 쿼리 스케줄러."""
+    while True:
+        now = datetime.now()
+        # 다음 평일 09:00 계산
+        target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        if now >= target or now.weekday() >= 5:
+            # 오늘 9시가 지났거나 주말이면 다음 평일 09:00으로
+            days_ahead = 1
+            while True:
+                candidate = target + timedelta(days=days_ahead)
+                if candidate.weekday() < 5:
+                    target = candidate
+                    break
+                days_ahead += 1
+
+        wait_sec = (target - datetime.now()).total_seconds()
+        logger.info(
+            f"[Scheduler] 다음 사전 쿼리: {target.strftime('%Y-%m-%d %H:%M')} "
+            f"(대기 {wait_sec/3600:.1f}h)"
+        )
+        await asyncio.sleep(max(wait_sec, 1))
+
+        logger.info("[Scheduler] 일일 사전 쿼리 시작")
+        try:
+            from app.prefetch.prefetch_runner import run_daily_prefetch
+            await run_daily_prefetch()
+        except Exception as e:
+            logger.error(f"[Scheduler] 사전 쿼리 오류: {e}", exc_info=True)
 
 
 async def _run_and_push(sn: str) -> None:
@@ -615,6 +655,50 @@ async def get_appcard(sn: str = "", userId: str = ""):
                  "wrap": True, "isSubtle": True},
             ],
         })
+
+
+class PrefetchTriggerRequest(BaseModel):
+    sns: Optional[list[str]] = None  # 비워두면 Qings에서 자동 수집
+
+
+@app.post("/api/prefetch/trigger")
+async def prefetch_trigger(request: PrefetchTriggerRequest):
+    """
+    사전 쿼리를 수동으로 실행합니다.
+    - sns 미지정: Qings 사이트에서 SN 자동 수집 후 쿼리
+    - sns 지정: 해당 SN 목록만 쿼리 (캐시 없는 것만)
+    """
+    from app.prefetch.prefetch_runner import run_daily_prefetch, run_prefetch_for_sns, get_status
+    if get_status()["running"]:
+        return JSONResponse(status_code=409, content={"detail": "이미 사전 쿼리가 실행 중입니다."})
+
+    if request.sns:
+        sns = [s.strip().upper() for s in request.sns if s.strip()]
+        asyncio.create_task(run_prefetch_for_sns(sns))
+        return {"message": f"{len(sns)}개 SN 사전 쿼리 시작", "sns": sns}
+    else:
+        asyncio.create_task(run_daily_prefetch())
+        return {"message": "Qings 수집 → 사전 쿼리 시작 (백그라운드 실행)"}
+
+
+@app.get("/api/prefetch/status")
+async def prefetch_status():
+    """사전 쿼리 실행 상태를 반환합니다."""
+    from app.prefetch.prefetch_runner import get_status
+    return get_status()
+
+
+@app.get("/api/prefetch/cache")
+async def prefetch_cache():
+    """캐시된 SN 목록을 반환합니다."""
+    from app.prefetch.cache_manager import list_cached_sns
+    cached = list_cached_sns()
+    return {
+        "total": len(cached),
+        "fresh": sum(1 for c in cached if c["fresh"]),
+        "cache_max_age_hours": settings.CACHE_MAX_AGE_HOURS,
+        "items": cached,
+    }
 
 
 @app.get("/api/jobs")
@@ -1180,8 +1264,17 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
             await _push_card_to_chatroom(job)
             return
 
-        # 1. SQL 쿼리 실행
-        query_result = await query_runner.run(sn)
+        # 1. SQL 쿼리 실행 (캐시 우선 조회)
+        from app.prefetch.cache_manager import get_cached_csv_path, is_cached
+        cached_path = get_cached_csv_path(sn)
+        if cached_path and is_cached(sn):
+            logger.info(f"[Chatbot Job {job_id}] 캐시 히트 → {cached_path} (쿼리 생략)")
+            from app.scraper.query_runner import QueryResult
+            query_result = QueryResult(sn=sn, success=True, csv_path=cached_path)
+        else:
+            if cached_path:
+                logger.info(f"[Chatbot Job {job_id}] 캐시 만료 → live 쿼리 실행")
+            query_result = await query_runner.run(sn)
 
         if not query_result.success:
             job["status"] = "error"

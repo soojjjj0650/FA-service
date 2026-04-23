@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     # GROUPED_TABLE_DISPLAY=true 시 표를 그룹별(위치/횟수/품질) 형식으로 표시
     GROUPED_TABLE_DISPLAY: bool = False
 
+    # ─── Qings 사전 쿼리 (Pre-fetch) ─────────────────────────────────────────
+    QINGS_URL: str = "qings.sec.samsung.net/qings/index.jsp"
+    QINGS_HEADLESS: bool = False          # SSO 처리 위해 기본 headful
+    QINGS_SN_COLUMN: str = "단말 S/N"    # 엑셀에서 SN이 있는 열 이름 (나중에 확인 후 수정)
+    PREFETCH_ENABLED: bool = True         # 평일 9시 자동 사전 쿼리 활성화
+    CACHE_MAX_AGE_HOURS: int = 48         # 캐시 유효 시간 (시간)
+
     # ─── FastAPI 서버 ────────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"
     PORT: int = 80
