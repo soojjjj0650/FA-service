@@ -24,7 +24,7 @@
     },
     {
       "type": "TextBlock",
-      "text": "■ 기지국 정보",
+      "text": "■ 기지국 정보 (이상점수 100점 이상 시 주의필요)",
       "weight": "Bolder",
       "spacing": "Large"
     },

@@ -381,10 +381,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
     if status == "done":
         ai_text = _strip_markdown(job.get('ai_response', ''))
         station_text = job.get('station_text', '')
-        station_section = (
-            f"■ 기지국 정보 (이상점수 100점 이상 시 주의필요)\n{station_text}"
-            if station_text else ""
-        )
+        station_section = station_text  # 헤더는 앱카드 템플릿에 고정 표시
 
         payload = {
             "chatRoomId":   chat_room_id,
