@@ -343,40 +343,61 @@ async def _js_click(page: Page, element_ids: list[str]) -> bool:
 
 
 async def _nexacro_click(page: Page, component_path: str) -> bool:
-    """Nexacro 컴포넌트의 onclick 핸들러를 직접 호출합니다.
-    VFrameSet 이름을 자동으로 탐색하고, 폼 핸들러 → doClick → click 순서로 시도합니다.
-    """
+    """Nexacro 컴포넌트의 onclick 핸들러를 직접 호출합니다."""
     dot = component_path.rfind(".")
     comp_id = component_path[dot + 1:]   # btn_Apply
     handler = comp_id + "_onclick"
 
-    # VFrameSet 이름을 하드코딩하지 않고 동적으로 탐색
     script = f"""
     () => {{
         try {{
-            // mainframe 확인
-            if (typeof mainframe === 'undefined') return null;
+            if (typeof mainframe === 'undefined') return 'no_mainframe';
 
-            // VFrameSet 자동 탐색 (VFrameSet0, VFrameSet1, ... 또는 다른 이름)
-            let vfs = null;
-            const mKeys = Object.keys(mainframe);
-            for (const k of mKeys) {{
-                const obj = mainframe[k];
-                if (obj && typeof obj === 'object' && obj.WorkFrame) {{
-                    vfs = obj; break;
+            // VFrameSet 탐색: Object.keys 대신 for...in + getOwnPropertyNames 사용
+            let vfs = null, vfsName = '';
+
+            // 1) VFrameSet0 직접 시도
+            try {{
+                if (mainframe.VFrameSet0 && mainframe.VFrameSet0.WorkFrame) {{
+                    vfs = mainframe.VFrameSet0; vfsName = 'VFrameSet0';
                 }}
-            }}
-            if (!vfs) return 'no_vfs:' + mKeys.filter(k => !k.startsWith('_')).join(',');
+            }} catch(e) {{}}
 
-            // WorkFrame → WORK_FRAME_QUA1001 탐색
+            // 2) 직접 안 되면 for...in으로 탐색
+            if (!vfs) {{
+                try {{
+                    for (const k in mainframe) {{
+                        try {{
+                            const obj = mainframe[k];
+                            if (obj && obj.WorkFrame) {{ vfs = obj; vfsName = k; break; }}
+                        }} catch(e) {{}}
+                    }}
+                }} catch(e) {{}}
+            }}
+
+            // 3) getOwnPropertyNames으로 탐색
+            if (!vfs) {{
+                try {{
+                    const allKeys = Object.getOwnPropertyNames(mainframe);
+                    for (const k of allKeys) {{
+                        try {{
+                            const obj = mainframe[k];
+                            if (obj && obj.WorkFrame) {{ vfs = obj; vfsName = k; break; }}
+                        }} catch(e) {{}}
+                    }}
+                    if (!vfs) return 'no_vfs_keys:' + allKeys.slice(0,30).join(',');
+                }} catch(e) {{ return 'no_vfs_err:' + String(e); }}
+            }}
+
+            // WorkFrame → WORK_FRAME_* 탐색
             const wf = vfs.WorkFrame;
-            if (!wf) return 'no_WorkFrame';
+            if (!wf) return 'no_WorkFrame(vfs=' + vfsName + ')';
 
             let wfqa = null;
-            for (const k of Object.keys(wf)) {{
-                if (k.startsWith('WORK_FRAME')) {{ wfqa = wf[k]; break; }}
+            for (const k in wf) {{
+                try {{ if (k.startsWith('WORK_FRAME')) {{ wfqa = wf[k]; break; }} }} catch(e) {{}}
             }}
-            if (!wfqa) return 'no_WORK_FRAME';
+            if (!wfqa) return 'no_WORK_FRAME(vfs=' + vfsName + ')';
 
             const form_dl = wfqa.form && wfqa.form.div_left && wfqa.form.div_left.form;
             if (!form_dl) return 'no_div_left_form';
