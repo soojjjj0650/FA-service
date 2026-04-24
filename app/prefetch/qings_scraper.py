@@ -155,7 +155,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
-            await _click(page, _SEL["btn_all_cols"])
+            await _click_any_frame(page, _SEL["btn_all_cols"])
             await asyncio.sleep(2)
 
             # ── 7. Apply → 엑셀 다운로드 (최대 3분 대기) ─────────────────────
@@ -163,32 +163,34 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             save_path = os.path.join(
                 save_dir, f"qings_{today.strftime('%Y%m%d_%H%M%S')}.xlsx"
             )
+            # Nexacro는 Windows Downloads 폴더에 저장하므로 두 곳 모두 감시
+            win_downloads = str(Path.home() / "Downloads")
+            before_save  = _snapshot_xlsx(save_dir)
+            before_dl    = _snapshot_xlsx(win_downloads)
 
-            # 다운로드 폴더 감시 시작 (Nexacro는 브라우저 다운로드 이벤트가 안 잡힐 수 있음)
-            before_files = _snapshot_xlsx(save_dir)
+            # Apply 버튼: 모든 프레임 순회 + JS 직접 클릭 fallback
+            clicked = await _click_any_frame(page, _SEL["btn_apply_a"])
+            if not clicked:
+                clicked = await _click_any_frame(page, _SEL["btn_apply_b"])
+            if not clicked:
+                logger.warning("[Qings] XPath 실패 → JS 직접 클릭 시도")
+                clicked = await _js_click(page, [
+                    "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext",
+                    "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply",
+                ])
+            if not clicked:
+                raise RuntimeError("Apply 버튼을 찾지 못했습니다. 셀렉터를 확인하세요.")
 
-            try:
-                async with page.expect_download(timeout=180_000) as dl_info:
-                    await _click_fallback(
-                        page,
-                        _SEL["btn_apply_a"],
-                        _SEL["btn_apply_b"],
-                        timeout=15_000,
-                    )
-                download = await dl_info.value
-                await download.save_as(save_path)
-                logger.info(f"[Qings] 브라우저 다운로드 완료: {save_path}")
-
-            except Exception as dl_err:
-                # expect_download 실패 → 폴더에 새 파일이 생겼는지 확인
-                logger.warning(f"[Qings] 브라우저 다운로드 감지 실패 ({dl_err}) → 폴더 감시로 전환")
-                found = await _wait_new_xlsx(save_dir, before_files, timeout=180)
-                if found:
-                    import shutil
-                    shutil.copy2(found, save_path)
-                    logger.info(f"[Qings] 폴더에서 파일 감지: {found} → {save_path}")
-                else:
-                    raise RuntimeError("Apply 후 다운로드 파일을 찾지 못했습니다.") from dl_err
+            logger.info("[Qings] Apply 클릭 완료 — 다운로드 대기 중 (최대 3분)...")
+            # save_dir 먼저, 없으면 Windows Downloads 폴더 감시
+            found = await _wait_new_xlsx(save_dir, before_save, timeout=30)
+            if not found:
+                logger.info(f"[Qings] save_dir에 없음 → Downloads 폴더 감시: {win_downloads}")
+                found = await _wait_new_xlsx(win_downloads, before_dl, timeout=150)
+            if found:
+                import shutil
+                shutil.copy2(found, save_path)
+                logger.info(f"[Qings] 다운로드 완료: {found} → {save_path}")
 
             # auth state 갱신
             await context.storage_state(path=str(_AUTH_STATE_PATH))
@@ -217,24 +219,45 @@ async def _wait_new_xlsx(folder: str, before: set, timeout: int = 180) -> Option
         after = _snapshot_xlsx(folder)
         new = after - before
         if new:
-            return sorted(new)[-1]
+            return sorted(new, key=lambda f: Path(f).stat().st_mtime)[-1]
         await asyncio.sleep(1)
     return None
 
 
 async def _click(page: Page, xpath: str, timeout: int = 10_000):
-    """XPath 셀렉터로 요소를 클릭합니다."""
+    """메인 프레임에서 XPath 클릭."""
     await page.locator(f"xpath={xpath}").click(timeout=timeout)
 
 
-async def _click_fallback(page: Page, xpath_a: str, xpath_b: str, timeout: int = 5_000):
-    """첫 번째 셀렉터 실패 시 두 번째를 시도합니다."""
-    try:
-        await page.locator(f"xpath={xpath_a}").click(timeout=timeout)
-        logger.info(f"[Qings] 클릭 성공 (1번 셀렉터)")
-    except Exception:
-        logger.warning(f"[Qings] 1번 셀렉터 실패 → 2번 셀렉터 시도")
-        await page.locator(f"xpath={xpath_b}").click(timeout=timeout)
+async def _click_any_frame(page: Page, xpath: str, timeout: int = 5_000) -> bool:
+    """메인 프레임 + 모든 자식 프레임에서 XPath 요소를 찾아 클릭합니다."""
+    for frame in page.frames:
+        try:
+            loc = frame.locator(f"xpath={xpath}")
+            if await loc.count() > 0:
+                await loc.first.click(timeout=timeout)
+                logger.info(f"[Qings] 클릭 성공 (frame: {frame.name or frame.url[:40]})")
+                return True
+        except Exception:
+            continue
+    return False
+
+
+async def _js_click(page: Page, element_ids: list[str]) -> bool:
+    """모든 프레임에서 JS getElementById로 클릭 시도."""
+    for frame in page.frames:
+        for eid in element_ids:
+            try:
+                result = await frame.evaluate(
+                    f"() => {{ const el = document.getElementById({repr(eid)}); "
+                    f"if (el) {{ el.click(); return true; }} return false; }}"
+                )
+                if result:
+                    logger.info(f"[Qings] JS 클릭 성공: {eid}")
+                    return True
+            except Exception:
+                continue
+    return False
 
 
 async def _fill_date(page: Page, xpath: str, date_str: str):
