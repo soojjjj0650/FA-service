@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import async_playwright, Playwright, Page
 
 from app.config import settings
 
@@ -62,7 +62,24 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
     os.makedirs(save_dir, exist_ok=True)
     _AUTH_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    async with async_playwright() as pw:
+    pw: Playwright = await async_playwright().start()
+    try:
+        # 기존 browser_pool과 동일한 방식으로 브라우저 실행
+        launch_kwargs: dict = {
+            "headless": settings.QINGS_HEADLESS,
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        }
+        edge_path = settings.EDGE_EXECUTABLE_PATH
+        if edge_path and os.path.exists(edge_path):
+            launch_kwargs["executable_path"] = edge_path
+            logger.info(f"[Qings] Edge 브라우저 사용: {edge_path}")
+
+        browser = await pw.chromium.launch(**launch_kwargs)
+
         ctx_kwargs: dict = {
             "accept_downloads": True,
             "viewport": {"width": 1280, "height": 900},
@@ -70,10 +87,6 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
         if _AUTH_STATE_PATH.exists():
             ctx_kwargs["storage_state"] = str(_AUTH_STATE_PATH)
 
-        browser = await pw.chromium.launch(
-            headless=settings.QINGS_HEADLESS,
-            executable_path=settings.EDGE_EXECUTABLE_PATH if not settings.QINGS_HEADLESS else None,
-        )
         context = await browser.new_context(**ctx_kwargs)
         page = await context.new_page()
 
@@ -163,6 +176,8 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             return None
         finally:
             await browser.close()
+    finally:
+        await pw.stop()
 
 
 async def _click(page: Page, xpath: str, timeout: int = 10_000):
