@@ -343,41 +343,71 @@ async def _js_click(page: Page, element_ids: list[str]) -> bool:
 
 
 async def _nexacro_click(page: Page, component_path: str) -> bool:
-    """Nexacro 컴포넌트의 click/doClick 메서드 + 폼 핸들러 직접 호출."""
-    # component_path 예: "mainframe...form.div_left.form.btn_Apply"
+    """Nexacro 컴포넌트의 onclick 핸들러를 직접 호출합니다.
+    VFrameSet 이름을 자동으로 탐색하고, 폼 핸들러 → doClick → click 순서로 시도합니다.
+    """
     dot = component_path.rfind(".")
-    form_path = component_path[:dot]   # mainframe...form.div_left.form
-    comp_id   = component_path[dot+1:] # btn_Apply
-    handler   = comp_id + "_onclick"
+    comp_id = component_path[dot + 1:]   # btn_Apply
+    handler = comp_id + "_onclick"
 
+    # VFrameSet 이름을 하드코딩하지 않고 동적으로 탐색
     script = f"""
     () => {{
         try {{
-            const form = {form_path};
-            const nc = form ? form[{repr(comp_id)}] : null;
-            // 1) 폼 onclick 핸들러 직접 호출
-            if (form && typeof form[{repr(handler)}] === 'function') {{
-                form[{repr(handler)}].call(form, nc, null);
+            // mainframe 확인
+            if (typeof mainframe === 'undefined') return null;
+
+            // VFrameSet 자동 탐색 (VFrameSet0, VFrameSet1, ... 또는 다른 이름)
+            let vfs = null;
+            const mKeys = Object.keys(mainframe);
+            for (const k of mKeys) {{
+                const obj = mainframe[k];
+                if (obj && typeof obj === 'object' && obj.WorkFrame) {{
+                    vfs = obj; break;
+                }}
+            }}
+            if (!vfs) return 'no_vfs:' + mKeys.filter(k => !k.startsWith('_')).join(',');
+
+            // WorkFrame → WORK_FRAME_QUA1001 탐색
+            const wf = vfs.WorkFrame;
+            if (!wf) return 'no_WorkFrame';
+
+            let wfqa = null;
+            for (const k of Object.keys(wf)) {{
+                if (k.startsWith('WORK_FRAME')) {{ wfqa = wf[k]; break; }}
+            }}
+            if (!wfqa) return 'no_WORK_FRAME';
+
+            const form_dl = wfqa.form && wfqa.form.div_left && wfqa.form.div_left.form;
+            if (!form_dl) return 'no_div_left_form';
+
+            const comp = form_dl[{repr(comp_id)}];
+            if (!comp) return 'no_comp:{comp_id}';
+
+            // 1) 폼 핸들러 직접 호출
+            if (typeof form_dl[{repr(handler)}] === 'function') {{
+                form_dl[{repr(handler)}].call(form_dl, comp, null);
                 return 'form_handler';
             }}
             // 2) doClick
-            if (nc && typeof nc.doClick === 'function') {{
-                nc.doClick(); return 'doClick';
-            }}
-            // 3) click (typeof 체크 없이 직접 시도)
-            if (nc && nc.click) {{
-                nc.click(); return 'click';
-            }}
-            return null;
-        }} catch(e) {{ return String(e); }}
+            if (typeof comp.doClick === 'function') {{ comp.doClick(); return 'doClick'; }}
+            // 3) click
+            if (comp.click) {{ comp.click(); return 'click'; }}
+
+            return 'no_method';
+        }} catch(e) {{ return null; }}
     }}
     """
     for frame in page.frames:
         try:
             result = await frame.evaluate(script)
-            if result and result not in ('null', 'false'):
-                logger.info(f"[Qings] Nexacro 핸들러 성공: {result} (frame: {frame.name or frame.url[:40]})")
+            if result in ('form_handler', 'doClick', 'click'):
+                logger.info(f"[Qings] Nexacro 핸들러 성공: {result} (frame: {frame.name or frame.url[:50]})")
                 return True
+            elif result and not result.startswith('no_') and result != 'null':
+                logger.debug(f"[Qings] Nexacro 핸들러 응답: {result!r} (frame: {frame.name or frame.url[:50]})")
+            elif result and result.startswith('no_'):
+                logger.debug(f"[Qings] Nexacro 탐색 중: {result!r} (frame: {frame.name or frame.url[:50]})")
         except Exception:
             continue
     return False
