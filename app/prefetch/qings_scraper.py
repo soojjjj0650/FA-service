@@ -404,10 +404,8 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
             if result in ('form_handler', 'doClick', 'click'):
                 logger.info(f"[Qings] Nexacro 핸들러 성공: {result} (frame: {frame.name or frame.url[:50]})")
                 return True
-            elif result and not result.startswith('no_') and result != 'null':
-                logger.debug(f"[Qings] Nexacro 핸들러 응답: {result!r} (frame: {frame.name or frame.url[:50]})")
-            elif result and result.startswith('no_'):
-                logger.debug(f"[Qings] Nexacro 탐색 중: {result!r} (frame: {frame.name or frame.url[:50]})")
+            elif result:
+                logger.warning(f"[Qings] Nexacro 탐색결과: {result!r} (frame: {frame.name or frame.url[:50]})")
         except Exception:
             continue
     return False
