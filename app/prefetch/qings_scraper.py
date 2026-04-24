@@ -198,11 +198,31 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
                 logger.warning(f"[Qings] Apply 실패: {label}")
 
             if not clicked:
-                # 마지막 수단: 프레임 목록 출력 후 오류
-                logger.error("[Qings] 감지된 프레임 목록:")
-                for f in page.frames:
-                    logger.error(f"  frame name={f.name!r} url={f.url[:80]}")
-                raise RuntimeError("Apply 버튼을 찾지 못했습니다. 위 프레임 목록을 확인하세요.")
+                # 진단: 모든 프레임에서 btn_Apply / Apply 관련 요소 출력
+                logger.error("[Qings] ── Apply 버튼 진단 시작 ──")
+                for frame in page.frames:
+                    try:
+                        hits = await frame.evaluate("""
+                            () => Array.from(document.querySelectorAll('*'))
+                                .filter(el => el.id && (
+                                    el.id.toLowerCase().includes('apply') ||
+                                    el.id.toLowerCase().includes('btn_')
+                                ))
+                                .slice(0, 20)
+                                .map(el => ({
+                                    id: el.id,
+                                    tag: el.tagName,
+                                    text: el.innerText ? el.innerText.trim().slice(0,20) : ''
+                                }))
+                        """)
+                        if hits:
+                            logger.error(f"  [frame={frame.name or 'main'}] 발견된 요소:")
+                            for h in hits:
+                                logger.error(f"    tag={h['tag']} id={h['id']!r} text={h['text']!r}")
+                    except Exception:
+                        pass
+                logger.error("[Qings] ── 진단 끝 ──")
+                raise RuntimeError("Apply 버튼을 찾지 못했습니다. 위 진단 결과를 확인하세요.")
 
             logger.info("[Qings] Apply 클릭 완료 — 다운로드 대기 중 (최대 3분)...")
             # save_dir 먼저, 없으면 Windows Downloads 폴더 감시
