@@ -173,14 +173,18 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             before_save  = _snapshot_xlsx(save_dir)
             before_dl    = _snapshot_xlsx(win_downloads)
 
-            # Apply 버튼: 여러 방법 순서대로 시도
+            # Nexacro 컴포넌트 경로 (전역 JS 객체)
+            _NX = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
+
+            # Apply 버튼: Nexacro API 우선, DOM fallback 순서로 시도
             apply_attempts = [
-                ("정확한 ID",        lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
-                ("ID(suffix없음)",   lambda: _click_any_frame(page, _SEL["btn_apply_nosuffix"])),
-                ("ID 부분일치",      lambda: _click_any_frame(page, _SEL["btn_apply_contains"])),
-                ("텍스트 Apply",     lambda: _click_any_frame(page, _SEL["btn_apply_text_en"])),
-                ("텍스트 적용",      lambda: _click_any_frame(page, _SEL["btn_apply_text_kr"])),
-                ("JS getElementById",lambda: _js_click(page, [
+                ("Nexacro .click()",       lambda: _nexacro_click(page, _NX)),
+                ("Nexacro fireEvent",      lambda: _nexacro_fire_event(page, _NX)),
+                ("XPath force(icontext)",  lambda: _click_force(page, _SEL["btn_apply_exact"])),
+                ("XPath force(nosuffix)",  lambda: _click_force(page, _SEL["btn_apply_nosuffix"])),
+                ("XPath 모든 프레임",      lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
+                ("ID 부분일치",            lambda: _click_any_frame(page, _SEL["btn_apply_contains"])),
+                ("JS getElementById",      lambda: _js_click(page, [
                     "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext",
                     "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply",
                 ])),
@@ -309,6 +313,58 @@ async def _js_click(page: Page, element_ids: list[str]) -> bool:
                     return True
             except Exception:
                 continue
+    return False
+
+
+async def _nexacro_click(page: Page, component_path: str) -> bool:
+    """Nexacro 컴포넌트 JS API .click() — 표준 DOM click과 달리 Nexacro 이벤트를 발생시킵니다."""
+    script = (
+        "() => { try {"
+        f" const nc = {component_path};"
+        " if (nc && typeof nc.click === 'function') { nc.click(); return true; }"
+        " } catch(e) {} return false; }"
+    )
+    for frame in page.frames:
+        try:
+            result = await frame.evaluate(script)
+            if result:
+                logger.info(f"[Qings] Nexacro .click() 성공 (frame: {frame.name or frame.url[:40]})")
+                return True
+        except Exception:
+            continue
+    return False
+
+
+async def _nexacro_fire_event(page: Page, component_path: str) -> bool:
+    """Nexacro fireEvent('onclick') — 컴포넌트 이벤트 핸들러를 직접 발동합니다."""
+    script = (
+        "() => { try {"
+        f" const nc = {component_path};"
+        " if (nc && typeof nc.fireEvent === 'function') { nc.fireEvent('onclick', null, null); return true; }"
+        " } catch(e) {} return false; }"
+    )
+    for frame in page.frames:
+        try:
+            result = await frame.evaluate(script)
+            if result:
+                logger.info(f"[Qings] Nexacro fireEvent 성공 (frame: {frame.name or frame.url[:40]})")
+                return True
+        except Exception:
+            continue
+    return False
+
+
+async def _click_force(page: Page, xpath: str, timeout: int = 5_000) -> bool:
+    """force=True 클릭 — tabindex=-1 등 interactable 검사를 우회합니다."""
+    for frame in page.frames:
+        try:
+            loc = frame.locator(f"xpath={xpath}")
+            if await loc.count() > 0:
+                await loc.first.click(timeout=timeout, force=True)
+                logger.info(f"[Qings] force 클릭 성공 (frame: {frame.name or frame.url[:40]})")
+                return True
+        except Exception:
+            continue
     return False
 
 
