@@ -37,12 +37,14 @@ _SEL = {
     # 지수산입구분 돋보기 + 체크박스 2개
     "mag_intype":    f'//*[@id="{_BASE}.div_Section1.form.Img_090:icontext"]',
     "chk_intype_0":  f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_0.cell_0_1.cellcheckbox:icontext"]',
-    "chk_intype_1":  f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.checkbox"]',
+    "chk_intype_1a": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.cellcheckbox:icontext"]',
+    "chk_intype_1b": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.checkbox"]',
 
     # 경영유무무상 돋보기 + 체크박스 2개
     "mag_warranty":    f'//*[@id="{_BASE}.div_Section1.form.Img_080:icontext"]',
     "chk_warranty_0":  f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_0.cell_0_1.cellcheckbox:icontext"]',
-    "chk_warranty_1":  f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.checkbox"]',
+    "chk_warranty_1a": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.cellcheckbox:icontext"]',
+    "chk_warranty_1b": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.checkbox"]',
 
     # 다운 컬럼 전체 + Apply
     "btn_all_cols": f'//*[@id="{_BASE}.div_Section1.form.img_Tab3:icontext"]',
@@ -135,20 +137,20 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             # ── 4. 지수산입구분 선택 ──────────────────────────────────────────
             logger.info("[Qings] 지수산입구분 돋보기 클릭")
             await _click(page, _SEL["mag_intype"])
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.5)
             await _click(page, _SEL["chk_intype_0"])
-            await asyncio.sleep(0.3)
-            await _click(page, _SEL["chk_intype_1"])
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1)
+            await _click_fallback(page, _SEL["chk_intype_1a"], _SEL["chk_intype_1b"])
+            await asyncio.sleep(1)
 
             # ── 5. 경영유무무상 선택 ──────────────────────────────────────────
             logger.info("[Qings] 경영유무무상 돋보기 클릭")
             await _click(page, _SEL["mag_warranty"])
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.5)
             await _click(page, _SEL["chk_warranty_0"])
-            await asyncio.sleep(0.3)
-            await _click(page, _SEL["chk_warranty_1"])
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1)
+            await _click_fallback(page, _SEL["chk_warranty_1a"], _SEL["chk_warranty_1b"])
+            await asyncio.sleep(1)
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
@@ -183,6 +185,16 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
 async def _click(page: Page, xpath: str, timeout: int = 10_000):
     """XPath 셀렉터로 요소를 클릭합니다."""
     await page.locator(f"xpath={xpath}").click(timeout=timeout)
+
+
+async def _click_fallback(page: Page, xpath_a: str, xpath_b: str, timeout: int = 5_000):
+    """첫 번째 셀렉터 실패 시 두 번째를 시도합니다."""
+    try:
+        await page.locator(f"xpath={xpath_a}").click(timeout=timeout)
+        logger.info(f"[Qings] 클릭 성공 (1번 셀렉터)")
+    except Exception:
+        logger.warning(f"[Qings] 1번 셀렉터 실패 → 2번 셀렉터 시도")
+        await page.locator(f"xpath={xpath_b}").click(timeout=timeout)
 
 
 async def _fill_date(page: Page, xpath: str, date_str: str):
