@@ -169,6 +169,13 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(2)
 
             # ── 7. Apply → 엑셀 다운로드 (최대 3분 대기) ─────────────────────
+            # 필터 패널이 열려있으면 Escape로 강제 닫기
+            logger.info("[Qings] Escape로 열린 패널 닫기 시도")
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(1)
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(0.5)
+
             logger.info("[Qings] Apply 클릭 시도...")
             save_path = os.path.join(
                 save_dir, f"qings_{today.strftime('%Y%m%d_%H%M%S')}.xlsx"
@@ -220,30 +227,36 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
                         hits = await frame.evaluate("""
                             () => {
                                 const results = [];
-                                // 1) 텍스트에 Apply/적용 포함된 요소
+                                const BTN_ID = 'mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply';
+                                // 1) btn_Apply 위치에 실제로 있는 요소 (overlay 탐지)
+                                const btn = document.getElementById(BTN_ID);
+                                if (btn) {
+                                    const r = btn.getBoundingClientRect();
+                                    const cx = r.left + r.width/2, cy = r.top + r.height/2;
+                                    const top = document.elementFromPoint(cx, cy);
+                                    results.push({reason:'elementFromPoint',
+                                        id: top ? (top.id||'(no-id)') : 'null',
+                                        tag: top ? top.tagName : 'null',
+                                        text: top ? (top.innerText||'').trim().slice(0,40) : '',
+                                        rect: JSON.stringify({x:Math.round(cx),y:Math.round(cy),w:Math.round(r.width),h:Math.round(r.height)})
+                                    });
+                                }
+                                // 2) 텍스트에 Apply/적용 포함된 요소
                                 document.querySelectorAll('*').forEach(el => {
                                     const txt = (el.innerText || el.textContent || '').trim();
                                     if (txt && (txt.includes('Apply') || txt.includes('적용')) && txt.length < 30) {
-                                        results.push({reason:'text', id: el.id||'(no-id)', tag: el.tagName, text: txt});
+                                        const r2 = el.getBoundingClientRect();
+                                        results.push({reason:'text', id: el.id||'(no-id)', tag: el.tagName, text: txt,
+                                            rect: JSON.stringify({x:Math.round(r2.left),y:Math.round(r2.top),w:Math.round(r2.width),h:Math.round(r2.height)})});
                                     }
                                 });
-                                // 2) INPUT / BUTTON 요소 전부
-                                document.querySelectorAll('input, button').forEach(el => {
-                                    results.push({reason:'tag', id: el.id||'(no-id)', tag: el.tagName,
-                                        text: (el.value||el.innerText||'').trim().slice(0,30)});
-                                });
-                                // 3) onclick 속성 가진 요소
-                                document.querySelectorAll('[onclick]').forEach(el => {
-                                    results.push({reason:'onclick', id: el.id||'(no-id)', tag: el.tagName,
-                                        text: (el.innerText||'').trim().slice(0,30)});
-                                });
-                                return results.slice(0, 30);
+                                return results.slice(0, 20);
                             }
                         """)
                         if hits:
                             logger.error(f"  [frame={frame.name or 'main'}]")
                             for h in hits:
-                                logger.error(f"    [{h['reason']}] <{h['tag']}> id={h['id']!r} text={h['text']!r}")
+                                logger.error(f"    [{h['reason']}] <{h['tag']}> id={h['id']!r} text={h.get('text','')!r} rect={h.get('rect','')}")
                     except Exception as e:
                         logger.error(f"  [frame={frame.name or 'main'}] 진단 오류: {e}")
                 logger.error("[Qings] ── 진단 끝 ──")
@@ -450,17 +463,18 @@ async def _mouse_position_click(page: Page, element_id: str) -> bool:
 
 
 async def _focus_and_enter(page: Page, element_id: str) -> bool:
-    """el.focus() 후 Enter 키 전송 — tabindex=-1 버튼도 키보드로 활성화."""
+    """el.focus() 후 Enter/Space 키 전송 — tabindex=-1 버튼도 키보드로 활성화."""
     for frame in page.frames:
         try:
-            focused = await frame.evaluate(
+            exists = await frame.evaluate(
                 f"() => {{ const el = document.getElementById({repr(element_id)});"
-                " if (!el) return false; el.focus(); return document.activeElement === el; }}"
+                " if (!el) return false; el.focus(); return true; }}"
             )
-            if focused:
-                await asyncio.sleep(0.15)
+            if exists:
+                await asyncio.sleep(0.2)
                 await page.keyboard.press("Return")
-                logger.info(f"[Qings] focus+Enter 성공: {element_id}")
+                await asyncio.sleep(0.1)
+                logger.info(f"[Qings] focus+Enter 시도: {element_id}")
                 return True
         except Exception:
             continue
