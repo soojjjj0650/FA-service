@@ -49,12 +49,14 @@ _SEL = {
     # 다운 컬럼 전체
     "btn_all_cols":  f'//*[@id="{_BASE}.div_Section1.form.img_Tab3:icontext"]',
 
-    # Apply 버튼 — 정확한 ID / 부분 일치 / 텍스트 순서로 시도
+    # 필터 패널 내 검색/적용 버튼 — 돋보기 팝업을 닫을 때 클릭
+    "btn_filter_search": '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001'
+                         '.form.div_left.form.div_FormFilter.form.btn_search:icontext"]',
+
+    # Apply 버튼 (메인)
     "btn_apply_exact":   '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"]',
     "btn_apply_nosuffix":'//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"]',
     "btn_apply_contains":'xpath=//*[contains(@id,"btn_Apply")]',
-    "btn_apply_text_en": 'text=Apply',
-    "btn_apply_text_kr": 'text=적용',
 }
 
 _AUTH_STATE_PATH = Path("data") / "sessions" / "qings_auth_state.json"
@@ -139,6 +141,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
             await _click(page, _SEL["chk_product_0"])
             await asyncio.sleep(0.5)
+            await _close_filter_panel(page)
 
             # ── 4. 지수산입구분 선택 ──────────────────────────────────────────
             logger.info("[Qings] 지수산입구분 돋보기 클릭")
@@ -148,6 +151,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
             await _click_any_frame(page, _SEL["chk_intype_1a"]) or await _click_any_frame(page, _SEL["chk_intype_1b"])
             await asyncio.sleep(1)
+            await _close_filter_panel(page)
 
             # ── 5. 경영유무무상 선택 ──────────────────────────────────────────
             logger.info("[Qings] 경영유무무상 돋보기 클릭")
@@ -157,6 +161,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
             await _click_any_frame(page, _SEL["chk_warranty_1a"]) or await _click_any_frame(page, _SEL["chk_warranty_1b"])
             await asyncio.sleep(1)
+            await _close_filter_panel(page)
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
@@ -173,21 +178,26 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             before_save  = _snapshot_xlsx(save_dir)
             before_dl    = _snapshot_xlsx(win_downloads)
 
-            # Nexacro 컴포넌트 경로 (전역 JS 객체)
-            _NX = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
+            # Nexacro 컴포넌트 경로 / 버튼 DOM ID
+            _NX      = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
+            _BTN_ID  = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
+            _ICON_ID = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"
 
-            # Apply 버튼: Nexacro API 우선, DOM fallback 순서로 시도
+            # Apply 버튼: 좌표 클릭 > Nexacro API > dispatch_event > force > fallback 순서로 시도
             apply_attempts = [
-                ("Nexacro .click()",       lambda: _nexacro_click(page, _NX)),
-                ("Nexacro fireEvent",      lambda: _nexacro_fire_event(page, _NX)),
-                ("XPath force(icontext)",  lambda: _click_force(page, _SEL["btn_apply_exact"])),
-                ("XPath force(nosuffix)",  lambda: _click_force(page, _SEL["btn_apply_nosuffix"])),
-                ("XPath 모든 프레임",      lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
-                ("ID 부분일치",            lambda: _click_any_frame(page, _SEL["btn_apply_contains"])),
-                ("JS getElementById",      lambda: _js_click(page, [
-                    "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext",
-                    "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply",
-                ])),
+                ("좌표 마우스클릭(btn)",    lambda: _mouse_position_click(page, _BTN_ID)),
+                ("좌표 마우스클릭(icon)",   lambda: _mouse_position_click(page, _ICON_ID)),
+                ("Nexacro .click()",        lambda: _nexacro_click(page, _NX)),
+                ("Nexacro fireEvent",       lambda: _nexacro_fire_event(page, _NX)),
+                ("dispatch_event(icon)",    lambda: _playwright_dispatch(page, _SEL["btn_apply_exact"])),
+                ("dispatch_event(btn)",     lambda: _playwright_dispatch(page, _SEL["btn_apply_nosuffix"])),
+                ("dispatchEvent JS(btn)",   lambda: _dispatch_event_click(page, _BTN_ID)),
+                ("dispatchEvent JS(icon)",  lambda: _dispatch_event_click(page, _ICON_ID)),
+                ("XPath force(icontext)",   lambda: _click_force(page, _SEL["btn_apply_exact"])),
+                ("XPath force(nosuffix)",   lambda: _click_force(page, _SEL["btn_apply_nosuffix"])),
+                ("XPath 모든 프레임",       lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
+                ("ID 부분일치",             lambda: _click_any_frame(page, _SEL["btn_apply_contains"])),
+                ("JS getElementById",       lambda: _js_click(page, [_ICON_ID, _BTN_ID])),
             ]
             clicked = False
             for label, attempt in apply_attempts:
@@ -366,6 +376,91 @@ async def _click_force(page: Page, xpath: str, timeout: int = 5_000) -> bool:
         except Exception:
             continue
     return False
+
+
+async def _playwright_dispatch(page: Page, xpath: str, timeout: int = 5_000) -> bool:
+    """Playwright dispatch_event('click') — force 없이 이벤트를 직접 발송합니다."""
+    for frame in page.frames:
+        try:
+            loc = frame.locator(f"xpath={xpath}")
+            if await loc.count() > 0:
+                await loc.first.dispatch_event("click", timeout=timeout)
+                logger.info(f"[Qings] dispatch_event 성공 (frame: {frame.name or frame.url[:40]})")
+                return True
+        except Exception:
+            continue
+    return False
+
+
+async def _dispatch_event_click(page: Page, element_id: str) -> bool:
+    """JS로 mousedown+mouseup+click 이벤트를 순서대로 발생시킵니다."""
+    script = (
+        f"() => {{ const el = document.getElementById({repr(element_id)});"
+        " if (!el) return false;"
+        " const r = el.getBoundingClientRect();"
+        " const cx = r.left + r.width/2, cy = r.top + r.height/2;"
+        " ['mousedown','mouseup','click'].forEach(t => {"
+        "   el.dispatchEvent(new MouseEvent(t, {bubbles:true,cancelable:true,clientX:cx,clientY:cy}));"
+        " }); return true; }"
+    )
+    for frame in page.frames:
+        try:
+            result = await frame.evaluate(script)
+            if result:
+                logger.info(f"[Qings] JS dispatchEvent 성공: {element_id}")
+                return True
+        except Exception:
+            continue
+    return False
+
+
+async def _mouse_position_click(page: Page, element_id: str) -> bool:
+    """요소의 화면 좌표를 구해 실제 마우스로 클릭합니다 — tabindex/visibility 우회."""
+    for frame in page.frames:
+        try:
+            pos = await frame.evaluate(
+                f"() => {{ const el = document.getElementById({repr(element_id)});"
+                " if (!el) return null;"
+                " const r = el.getBoundingClientRect();"
+                " if (r.width===0||r.height===0) return null;"
+                " return {x: r.left+r.width/2, y: r.top+r.height/2}; }}"
+            )
+            if not pos:
+                continue
+            x, y = pos["x"], pos["y"]
+            # iframe이면 프레임 오프셋 추가
+            if frame != page.main_frame:
+                try:
+                    fb = await (await frame.frame_element()).bounding_box()
+                    if fb:
+                        x += fb["x"]
+                        y += fb["y"]
+                except Exception:
+                    pass
+            await page.mouse.move(x, y)
+            await asyncio.sleep(0.1)
+            await page.mouse.click(x, y)
+            logger.info(f"[Qings] 좌표 클릭 성공: {element_id} @ ({x:.0f},{y:.0f})")
+            return True
+        except Exception:
+            continue
+    return False
+
+
+async def _close_filter_panel(page: Page):
+    """돋보기 필터 패널을 닫습니다 — btn_search(패널 내 적용 버튼) 클릭 시도."""
+    sel = _SEL["btn_filter_search"]
+    for frame in page.frames:
+        try:
+            loc = frame.locator(f"xpath={sel}")
+            if await loc.count() > 0:
+                await loc.first.click(timeout=3_000)
+                logger.info("[Qings] 필터 패널 닫기 완료 (btn_filter_search)")
+                await asyncio.sleep(0.8)
+                return
+        except Exception:
+            continue
+    logger.debug("[Qings] 필터 패널 닫기 버튼 없음 (이미 닫혔거나 불필요)")
 
 
 async def _fill_date(page: Page, xpath: str, date_str: str):
