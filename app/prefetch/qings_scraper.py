@@ -95,8 +95,10 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
         try:
             url = f"https://{settings.QINGS_URL}"
             logger.info(f"[Qings] 접속 중: {url}")
-            await page.goto(url, wait_until="networkidle", timeout=60_000)
-            await asyncio.sleep(2)
+            # Nexacro는 계속 네트워크 요청을 하므로 domcontentloaded만 대기
+            await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+            # Nexacro 앱 초기화 대기
+            await asyncio.sleep(5)
 
             # SSO 리다이렉트 감지
             if any(kw in page.url.lower() for kw in ("login", "sso", "auth")):
@@ -117,9 +119,9 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
 
             # ── 1. Korea SVC Data(KR) 클릭 ───────────────────────────────────
             logger.info("[Qings] Korea SVC Data(KR) 클릭")
-            await _click(page, _SEL["menu_kr"])
-            await page.wait_for_load_state("networkidle", timeout=30_000)
-            await asyncio.sleep(2)
+            await _click(page, _SEL["menu_kr"], timeout=30_000)
+            # 클릭 후 화면 전환 대기 (networkidle 대신 고정 sleep)
+            await asyncio.sleep(5)
 
             # ── 2. 날짜 입력 ─────────────────────────────────────────────────
             logger.info(f"[Qings] 시작일 입력: {date_from}")
