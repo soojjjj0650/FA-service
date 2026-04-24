@@ -190,8 +190,9 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             _BTN_ID  = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
             _ICON_ID = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"
 
-            # Apply 버튼: focus+Enter 우선, 그다음 좌표/dispatch/Nexacro API/fallback
+            # Apply 버튼: Nexacro 폼 핸들러 우선, 그다음 focus+Enter/좌표/dispatch/fallback
             apply_attempts = [
+                ("Nexacro 폼 핸들러",       lambda: _nexacro_click(page, _NX)),
                 ("focus+Enter(icon)",       lambda: _focus_and_enter(page, _ICON_ID)),
                 ("focus+Enter(btn)",        lambda: _focus_and_enter(page, _BTN_ID)),
                 ("좌표 마우스클릭(btn)",    lambda: _mouse_position_click(page, _BTN_ID)),
@@ -342,13 +343,44 @@ async def _js_click(page: Page, element_ids: list[str]) -> bool:
 
 
 async def _nexacro_click(page: Page, component_path: str) -> bool:
-    """Nexacro 컴포넌트 JS API .click() — 표준 DOM click과 달리 Nexacro 이벤트를 발생시킵니다."""
-    script = (
-        "() => { try {"
-        f" const nc = {component_path};"
-        " if (nc && typeof nc.click === 'function') { nc.click(); return true; }"
-        " } catch(e) {} return false; }"
-    )
+    """Nexacro 컴포넌트의 click/doClick 메서드 + 폼 핸들러 직접 호출."""
+    # component_path 예: "mainframe...form.div_left.form.btn_Apply"
+    dot = component_path.rfind(".")
+    form_path = component_path[:dot]   # mainframe...form.div_left.form
+    comp_id   = component_path[dot+1:] # btn_Apply
+    handler   = comp_id + "_onclick"
+
+    script = f"""
+    () => {{
+        try {{
+            const form = {form_path};
+            const nc = form ? form[{repr(comp_id)}] : null;
+            // 1) 폼 onclick 핸들러 직접 호출
+            if (form && typeof form[{repr(handler)}] === 'function') {{
+                form[{repr(handler)}].call(form, nc, null);
+                return 'form_handler';
+            }}
+            // 2) doClick
+            if (nc && typeof nc.doClick === 'function') {{
+                nc.doClick(); return 'doClick';
+            }}
+            // 3) click (typeof 체크 없이 직접 시도)
+            if (nc && nc.click) {{
+                nc.click(); return 'click';
+            }}
+            return null;
+        }} catch(e) {{ return String(e); }}
+    }}
+    """
+    for frame in page.frames:
+        try:
+            result = await frame.evaluate(script)
+            if result and result not in ('null', 'false'):
+                logger.info(f"[Qings] Nexacro 핸들러 성공: {result} (frame: {frame.name or frame.url[:40]})")
+                return True
+        except Exception:
+            continue
+    return False
     for frame in page.frames:
         try:
             result = await frame.evaluate(script)
@@ -482,31 +514,33 @@ async def _focus_and_enter(page: Page, element_id: str) -> bool:
 
 
 async def _close_filter_panel(page: Page):
-    """돋보기 필터 패널을 닫습니다 — btn_search를 여러 방법으로 클릭 시도."""
-    _SEARCH_ID      = ("mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001"
-                       ".form.div_left.form.div_FormFilter.form.btn_search")
-    _SEARCH_ICON_ID = _SEARCH_ID + ":icontext"
-    _SEARCH_XPATH   = _SEL["btn_filter_search"]
+    """돋보기 필터 패널을 닫습니다.
+    1순위: Nexacro 폼 핸들러로 btn_search 클릭
+    2순위: 날짜 필드 클릭으로 포커스 이동 → 패널 자동 닫힘
+    """
+    _SEARCH_PATH = ("mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001"
+                    ".form.div_left.form.div_FormFilter.form.btn_search")
 
-    methods = [
-        ("focus+Enter(icon)",  lambda: _focus_and_enter(page, _SEARCH_ICON_ID)),
-        ("focus+Enter(btn)",   lambda: _focus_and_enter(page, _SEARCH_ID)),
-        ("좌표클릭(icon)",     lambda: _mouse_position_click(page, _SEARCH_ICON_ID)),
-        ("좌표클릭(btn)",      lambda: _mouse_position_click(page, _SEARCH_ID)),
-        ("dispatch_event",     lambda: _playwright_dispatch(page, _SEARCH_XPATH)),
-        ("JS dispatch(icon)",  lambda: _dispatch_event_click(page, _SEARCH_ICON_ID)),
-    ]
-    for label, fn in methods:
-        try:
-            ok = await fn()
-            if ok:
-                logger.info(f"[Qings] 필터 패널 닫기 완료 ({label})")
-                await asyncio.sleep(0.8)
-                return
-        except Exception:
-            pass
-        logger.debug(f"[Qings] 필터 패널 닫기 실패: {label}")
-    logger.debug("[Qings] 필터 패널 닫기 버튼 없음 (이미 닫혔거나 불필요)")
+    # 1) Nexacro 폼 핸들러로 btn_search 실행
+    try:
+        ok = await _nexacro_click(page, _SEARCH_PATH)
+        if ok:
+            logger.info("[Qings] 필터 패널 닫기: Nexacro 핸들러 성공")
+            await asyncio.sleep(0.8)
+            return
+    except Exception:
+        pass
+
+    # 2) 날짜 필드 클릭으로 포커스 이동 (Nexacro dropdown은 외부 클릭 시 자동 닫힘)
+    try:
+        await _click(page, _SEL["date_from"])
+        logger.info("[Qings] 필터 패널 닫기: 날짜 필드 클릭으로 포커스 이동")
+        await asyncio.sleep(0.5)
+        return
+    except Exception:
+        pass
+
+    logger.debug("[Qings] 필터 패널 닫기 실패 — 계속 진행")
 
 
 async def _fill_date(page: Page, xpath: str, date_str: str):
