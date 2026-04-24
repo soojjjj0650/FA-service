@@ -183,8 +183,10 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             _BTN_ID  = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
             _ICON_ID = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"
 
-            # Apply 버튼: 좌표 클릭 > Nexacro API > dispatch_event > force > fallback 순서로 시도
+            # Apply 버튼: focus+Enter 우선, 그다음 좌표/dispatch/Nexacro API/fallback
             apply_attempts = [
+                ("focus+Enter(icon)",       lambda: _focus_and_enter(page, _ICON_ID)),
+                ("focus+Enter(btn)",        lambda: _focus_and_enter(page, _BTN_ID)),
                 ("좌표 마우스클릭(btn)",    lambda: _mouse_position_click(page, _BTN_ID)),
                 ("좌표 마우스클릭(icon)",   lambda: _mouse_position_click(page, _ICON_ID)),
                 ("Nexacro .click()",        lambda: _nexacro_click(page, _NX)),
@@ -447,19 +449,49 @@ async def _mouse_position_click(page: Page, element_id: str) -> bool:
     return False
 
 
-async def _close_filter_panel(page: Page):
-    """돋보기 필터 패널을 닫습니다 — btn_search(패널 내 적용 버튼) 클릭 시도."""
-    sel = _SEL["btn_filter_search"]
+async def _focus_and_enter(page: Page, element_id: str) -> bool:
+    """el.focus() 후 Enter 키 전송 — tabindex=-1 버튼도 키보드로 활성화."""
     for frame in page.frames:
         try:
-            loc = frame.locator(f"xpath={sel}")
-            if await loc.count() > 0:
-                await loc.first.click(timeout=3_000)
-                logger.info("[Qings] 필터 패널 닫기 완료 (btn_filter_search)")
+            focused = await frame.evaluate(
+                f"() => {{ const el = document.getElementById({repr(element_id)});"
+                " if (!el) return false; el.focus(); return document.activeElement === el; }}"
+            )
+            if focused:
+                await asyncio.sleep(0.15)
+                await page.keyboard.press("Return")
+                logger.info(f"[Qings] focus+Enter 성공: {element_id}")
+                return True
+        except Exception:
+            continue
+    return False
+
+
+async def _close_filter_panel(page: Page):
+    """돋보기 필터 패널을 닫습니다 — btn_search를 여러 방법으로 클릭 시도."""
+    _SEARCH_ID      = ("mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001"
+                       ".form.div_left.form.div_FormFilter.form.btn_search")
+    _SEARCH_ICON_ID = _SEARCH_ID + ":icontext"
+    _SEARCH_XPATH   = _SEL["btn_filter_search"]
+
+    methods = [
+        ("focus+Enter(icon)",  lambda: _focus_and_enter(page, _SEARCH_ICON_ID)),
+        ("focus+Enter(btn)",   lambda: _focus_and_enter(page, _SEARCH_ID)),
+        ("좌표클릭(icon)",     lambda: _mouse_position_click(page, _SEARCH_ICON_ID)),
+        ("좌표클릭(btn)",      lambda: _mouse_position_click(page, _SEARCH_ID)),
+        ("dispatch_event",     lambda: _playwright_dispatch(page, _SEARCH_XPATH)),
+        ("JS dispatch(icon)",  lambda: _dispatch_event_click(page, _SEARCH_ICON_ID)),
+    ]
+    for label, fn in methods:
+        try:
+            ok = await fn()
+            if ok:
+                logger.info(f"[Qings] 필터 패널 닫기 완료 ({label})")
                 await asyncio.sleep(0.8)
                 return
         except Exception:
-            continue
+            pass
+        logger.debug(f"[Qings] 필터 패널 닫기 실패: {label}")
     logger.debug("[Qings] 필터 패널 닫기 버튼 없음 (이미 닫혔거나 불필요)")
 
 
