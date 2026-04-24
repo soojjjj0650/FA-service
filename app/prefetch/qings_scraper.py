@@ -198,29 +198,38 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
                 logger.warning(f"[Qings] Apply 실패: {label}")
 
             if not clicked:
-                # 진단: 모든 프레임에서 btn_Apply / Apply 관련 요소 출력
                 logger.error("[Qings] ── Apply 버튼 진단 시작 ──")
                 for frame in page.frames:
                     try:
                         hits = await frame.evaluate("""
-                            () => Array.from(document.querySelectorAll('*'))
-                                .filter(el => el.id && (
-                                    el.id.toLowerCase().includes('apply') ||
-                                    el.id.toLowerCase().includes('btn_')
-                                ))
-                                .slice(0, 20)
-                                .map(el => ({
-                                    id: el.id,
-                                    tag: el.tagName,
-                                    text: el.innerText ? el.innerText.trim().slice(0,20) : ''
-                                }))
+                            () => {
+                                const results = [];
+                                // 1) 텍스트에 Apply/적용 포함된 요소
+                                document.querySelectorAll('*').forEach(el => {
+                                    const txt = (el.innerText || el.textContent || '').trim();
+                                    if (txt && (txt.includes('Apply') || txt.includes('적용')) && txt.length < 30) {
+                                        results.push({reason:'text', id: el.id||'(no-id)', tag: el.tagName, text: txt});
+                                    }
+                                });
+                                // 2) INPUT / BUTTON 요소 전부
+                                document.querySelectorAll('input, button').forEach(el => {
+                                    results.push({reason:'tag', id: el.id||'(no-id)', tag: el.tagName,
+                                        text: (el.value||el.innerText||'').trim().slice(0,30)});
+                                });
+                                // 3) onclick 속성 가진 요소
+                                document.querySelectorAll('[onclick]').forEach(el => {
+                                    results.push({reason:'onclick', id: el.id||'(no-id)', tag: el.tagName,
+                                        text: (el.innerText||'').trim().slice(0,30)});
+                                });
+                                return results.slice(0, 30);
+                            }
                         """)
                         if hits:
-                            logger.error(f"  [frame={frame.name or 'main'}] 발견된 요소:")
+                            logger.error(f"  [frame={frame.name or 'main'}]")
                             for h in hits:
-                                logger.error(f"    tag={h['tag']} id={h['id']!r} text={h['text']!r}")
-                    except Exception:
-                        pass
+                                logger.error(f"    [{h['reason']}] <{h['tag']}> id={h['id']!r} text={h['text']!r}")
+                    except Exception as e:
+                        logger.error(f"  [frame={frame.name or 'main'}] 진단 오류: {e}")
                 logger.error("[Qings] ── 진단 끝 ──")
                 raise RuntimeError("Apply 버튼을 찾지 못했습니다. 위 진단 결과를 확인하세요.")
 
