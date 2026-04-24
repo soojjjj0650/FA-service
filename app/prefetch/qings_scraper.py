@@ -141,7 +141,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1.5)
             await _click(page, _SEL["chk_intype_0"])
             await asyncio.sleep(1)
-            await _click_fallback(page, _SEL["chk_intype_1a"], _SEL["chk_intype_1b"])
+            await _click_any_frame(page, _SEL["chk_intype_1a"]) or await _click_any_frame(page, _SEL["chk_intype_1b"])
             await asyncio.sleep(1)
 
             # ── 5. 경영유무무상 선택 ──────────────────────────────────────────
@@ -150,7 +150,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1.5)
             await _click(page, _SEL["chk_warranty_0"])
             await asyncio.sleep(1)
-            await _click_fallback(page, _SEL["chk_warranty_1a"], _SEL["chk_warranty_1b"])
+            await _click_any_frame(page, _SEL["chk_warranty_1a"]) or await _click_any_frame(page, _SEL["chk_warranty_1b"])
             await asyncio.sleep(1)
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
