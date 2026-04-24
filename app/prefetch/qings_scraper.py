@@ -348,52 +348,81 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
     comp_id = component_path[dot + 1:]   # btn_Apply
     handler = comp_id + "_onclick"
 
+    # 전체 컴포넌트 경로 (btn_Apply까지)
+    full_path = component_path  # mainframe...form.div_left.form.btn_Apply
+
     script = f"""
     () => {{
-        try {{
-            if (typeof mainframe === 'undefined') return 'no_mainframe';
-
-            // mainframe 구조 상세 진단
-            const vfs0type = typeof mainframe.VFrameSet0;
-            const vfs0      = mainframe.VFrameSet0;
-            const hasWF     = vfs0 ? typeof vfs0.WorkFrame : 'no_vfs0';
-            const wf        = vfs0 ? vfs0.WorkFrame : null;
-            const wfKeys    = wf ? Object.getOwnPropertyNames(wf).slice(0,10).join(',') : 'none';
-            const protoKeys = Object.getOwnPropertyNames(
-                                Object.getPrototypeOf(mainframe) || {{}}).slice(0,15).join(',');
-
-            // 실제 VFrameSet0 → WorkFrame → WORK_FRAME_* 에 접근 가능한지 확인
-            const info = [
-                'vfs0=' + vfs0type,
-                'wf=' + hasWF,
-                'wfKeys=' + wfKeys,
-                'proto=' + protoKeys,
-            ].join('|');
-
-            // 접근 가능하면 핸들러 호출 시도
-            if (!vfs0) return 'diag:' + info;
-            if (!wf)   return 'diag:' + info;
-
-            let wfqa = null;
-            for (const k in wf) {{
-                try {{ if (k.startsWith('WORK_FRAME')) {{ wfqa = wf[k]; break; }} }} catch(e) {{}}
-            }}
-            if (!wfqa) return 'diag:' + info + '|no_WORK_FRAME';
-
-            const form_dl = wfqa.form && wfqa.form.div_left && wfqa.form.div_left.form;
-            if (!form_dl) return 'diag:' + info + '|no_div_left_form';
-
-            const comp = form_dl[{repr(comp_id)}];
-            if (!comp) return 'diag:' + info + '|no_comp:{comp_id}';
-
+        // ── 헬퍼: 컴포넌트로 핸들러 호출 ──────────────────────────────
+        function tryCall(form_dl, comp) {{
+            if (!form_dl || !comp) return null;
             if (typeof form_dl[{repr(handler)}] === 'function') {{
                 form_dl[{repr(handler)}].call(form_dl, comp, null);
                 return 'form_handler';
             }}
             if (typeof comp.doClick === 'function') {{ comp.doClick(); return 'doClick'; }}
             if (comp.click) {{ comp.click(); return 'click'; }}
+            return null;
+        }}
 
-            return 'diag:' + info + '|no_method';
+        try {{
+            // ── 방법 1: DOM 역참조 (가장 단순) ──────────────────────────
+            const el = document.getElementById({repr(full_path)});
+            if (el) {{
+                // Nexacro는 DOM 요소에 컴포넌트 참조를 여러 이름으로 저장
+                for (const p of ['_component','$component','_compObj','linkedcomponent','_linked_comp']) {{
+                    const comp = el[p];
+                    if (comp) {{
+                        const form_dl = comp.parent;
+                        const r = tryCall(form_dl, comp);
+                        if (r) return 'dom_ref_' + r;
+                    }}
+                }}
+                // 없으면 직접 dispatchEvent 시도 (userstatus=pushed 확인됐으므로)
+                el.dispatchEvent(new MouseEvent('mousedown', {{bubbles:true, cancelable:true}}));
+                el.dispatchEvent(new MouseEvent('mouseup',   {{bubbles:true, cancelable:true}}));
+                return 'dom_mouseevt';
+            }}
+
+            // ── 방법 2: nexacro 전역 API ─────────────────────────────────
+            if (typeof nexacro !== 'undefined') {{
+                // nexacro.getObjectById 또는 _currentapplication 탐색
+                const app = (typeof nexacro.getApplication === 'function' && nexacro.getApplication())
+                           || nexacro._currentapplication
+                           || null;
+                if (app) {{
+                    // 경로를 점으로 나눠 순차 탐색
+                    const parts = {repr(full_path)}.split('.');
+                    let obj = app;
+                    for (const p of parts.slice(1)) {{  // 'mainframe' 제외
+                        obj = obj && obj[p];
+                    }}
+                    if (obj) {{
+                        const r = tryCall(obj.parent, obj);
+                        if (r) return 'nexacro_api_' + r;
+                    }}
+                }}
+                return 'nexacro_exists_no_app';
+            }}
+
+            // ── 방법 3: window 전체에서 VFrameSet0 가진 객체 탐색 ───────
+            for (const k of Object.getOwnPropertyNames(window)) {{
+                try {{
+                    const v = window[k];
+                    if (v && v.VFrameSet0 && v.VFrameSet0.WorkFrame) {{
+                        const wf = v.VFrameSet0.WorkFrame;
+                        for (const wk in wf) {{
+                            if (!wk.startsWith('WORK_FRAME')) continue;
+                            const form_dl = wf[wk].form && wf[wk].form.div_left && wf[wk].form.div_left.form;
+                            const comp = form_dl && form_dl[{repr(comp_id)}];
+                            const r = tryCall(form_dl, comp);
+                            if (r) return 'win_scan_' + r + '(key=' + k + ')';
+                        }}
+                    }}
+                }} catch(e) {{}}
+            }}
+
+            return 'all_failed';
         }} catch(e) {{ return null; }}
     }}
     """
