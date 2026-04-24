@@ -353,69 +353,47 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
         try {{
             if (typeof mainframe === 'undefined') return 'no_mainframe';
 
-            // VFrameSet 탐색: Object.keys 대신 for...in + getOwnPropertyNames 사용
-            let vfs = null, vfsName = '';
+            // mainframe 구조 상세 진단
+            const vfs0type = typeof mainframe.VFrameSet0;
+            const vfs0      = mainframe.VFrameSet0;
+            const hasWF     = vfs0 ? typeof vfs0.WorkFrame : 'no_vfs0';
+            const wf        = vfs0 ? vfs0.WorkFrame : null;
+            const wfKeys    = wf ? Object.getOwnPropertyNames(wf).slice(0,10).join(',') : 'none';
+            const protoKeys = Object.getOwnPropertyNames(
+                                Object.getPrototypeOf(mainframe) || {{}}).slice(0,15).join(',');
 
-            // 1) VFrameSet0 직접 시도
-            try {{
-                if (mainframe.VFrameSet0 && mainframe.VFrameSet0.WorkFrame) {{
-                    vfs = mainframe.VFrameSet0; vfsName = 'VFrameSet0';
-                }}
-            }} catch(e) {{}}
+            // 실제 VFrameSet0 → WorkFrame → WORK_FRAME_* 에 접근 가능한지 확인
+            const info = [
+                'vfs0=' + vfs0type,
+                'wf=' + hasWF,
+                'wfKeys=' + wfKeys,
+                'proto=' + protoKeys,
+            ].join('|');
 
-            // 2) 직접 안 되면 for...in으로 탐색
-            if (!vfs) {{
-                try {{
-                    for (const k in mainframe) {{
-                        try {{
-                            const obj = mainframe[k];
-                            if (obj && obj.WorkFrame) {{ vfs = obj; vfsName = k; break; }}
-                        }} catch(e) {{}}
-                    }}
-                }} catch(e) {{}}
-            }}
-
-            // 3) getOwnPropertyNames으로 탐색
-            if (!vfs) {{
-                try {{
-                    const allKeys = Object.getOwnPropertyNames(mainframe);
-                    for (const k of allKeys) {{
-                        try {{
-                            const obj = mainframe[k];
-                            if (obj && obj.WorkFrame) {{ vfs = obj; vfsName = k; break; }}
-                        }} catch(e) {{}}
-                    }}
-                    if (!vfs) return 'no_vfs_keys:' + allKeys.slice(0,30).join(',');
-                }} catch(e) {{ return 'no_vfs_err:' + String(e); }}
-            }}
-
-            // WorkFrame → WORK_FRAME_* 탐색
-            const wf = vfs.WorkFrame;
-            if (!wf) return 'no_WorkFrame(vfs=' + vfsName + ')';
+            // 접근 가능하면 핸들러 호출 시도
+            if (!vfs0) return 'diag:' + info;
+            if (!wf)   return 'diag:' + info;
 
             let wfqa = null;
             for (const k in wf) {{
                 try {{ if (k.startsWith('WORK_FRAME')) {{ wfqa = wf[k]; break; }} }} catch(e) {{}}
             }}
-            if (!wfqa) return 'no_WORK_FRAME(vfs=' + vfsName + ')';
+            if (!wfqa) return 'diag:' + info + '|no_WORK_FRAME';
 
             const form_dl = wfqa.form && wfqa.form.div_left && wfqa.form.div_left.form;
-            if (!form_dl) return 'no_div_left_form';
+            if (!form_dl) return 'diag:' + info + '|no_div_left_form';
 
             const comp = form_dl[{repr(comp_id)}];
-            if (!comp) return 'no_comp:{comp_id}';
+            if (!comp) return 'diag:' + info + '|no_comp:{comp_id}';
 
-            // 1) 폼 핸들러 직접 호출
             if (typeof form_dl[{repr(handler)}] === 'function') {{
                 form_dl[{repr(handler)}].call(form_dl, comp, null);
                 return 'form_handler';
             }}
-            // 2) doClick
             if (typeof comp.doClick === 'function') {{ comp.doClick(); return 'doClick'; }}
-            // 3) click
             if (comp.click) {{ comp.click(); return 'click'; }}
 
-            return 'no_method';
+            return 'diag:' + info + '|no_method';
         }} catch(e) {{ return null; }}
     }}
     """
