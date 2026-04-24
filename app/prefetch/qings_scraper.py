@@ -386,23 +386,30 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
 
             // ── 방법 2: nexacro 전역 API ─────────────────────────────────
             if (typeof nexacro !== 'undefined') {{
-                // nexacro.getObjectById 또는 _currentapplication 탐색
-                const app = (typeof nexacro.getApplication === 'function' && nexacro.getApplication())
-                           || nexacro._currentapplication
-                           || null;
-                if (app) {{
-                    // 경로를 점으로 나눠 순차 탐색
-                    const parts = {repr(full_path)}.split('.');
-                    let obj = app;
-                    for (const p of parts.slice(1)) {{  // 'mainframe' 제외
-                        obj = obj && obj[p];
-                    }}
-                    if (obj) {{
-                        const r = tryCall(obj.parent, obj);
-                        if (r) return 'nexacro_api_' + r;
+                // nexacro 객체의 속성 목록 확인 (진단용)
+                const nxKeys = Object.getOwnPropertyNames(nexacro).slice(0, 40).join(',');
+
+                // nexacro.mainframe 은 window.mainframe(body)과 다를 수 있음
+                const appCandidates = [
+                    nexacro.mainframe,
+                    nexacro['mainframe'],
+                    nexacro._application,
+                    nexacro._app,
+                    nexacro.application,
+                ];
+                for (const app of appCandidates) {{
+                    if (!app || !app.VFrameSet0) continue;
+                    const wf = app.VFrameSet0.WorkFrame;
+                    if (!wf) continue;
+                    for (const wk in wf) {{
+                        if (!wk.startsWith('WORK_FRAME')) continue;
+                        const form_dl = wf[wk].form && wf[wk].form.div_left && wf[wk].form.div_left.form;
+                        const comp = form_dl && form_dl[{repr(comp_id)}];
+                        const r = tryCall(form_dl, comp);
+                        if (r) return 'nexacro_' + r;
                     }}
                 }}
-                return 'nexacro_exists_no_app';
+                return 'nexacro_keys:' + nxKeys;
             }}
 
             // ── 방법 3: window 전체에서 VFrameSet0 가진 객체 탐색 ───────
