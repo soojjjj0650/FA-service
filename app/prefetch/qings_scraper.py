@@ -46,11 +46,10 @@ _SEL = {
     "chk_warranty_1a": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.cellcheckbox:icontext"]',
     "chk_warranty_1b": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.checkbox"]',
 
-    # 다운 컬럼 전체 + Apply
-    "btn_all_cols": f'//*[@id="{_BASE}.div_Section1.form.img_Tab3:icontext"]',
-    "btn_apply":
-        '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001'
-        '.form.div_left.form.btn_Apply:icontext"]',
+    # 다운 컬럼 전체 + Apply (셀렉터 변형 2가지)
+    "btn_all_cols":  f'//*[@id="{_BASE}.div_Section1.form.img_Tab3:icontext"]',
+    "btn_apply_a":   '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"]',
+    "btn_apply_b":   '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"]',
 }
 
 _AUTH_STATE_PATH = Path("data") / "sessions" / "qings_auth_state.json"
@@ -157,19 +156,39 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
             await _click(page, _SEL["btn_all_cols"])
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
 
             # ── 7. Apply → 엑셀 다운로드 (최대 3분 대기) ─────────────────────
-            logger.info("[Qings] Apply 클릭 — 다운로드 대기 중 (최대 3분)...")
+            logger.info("[Qings] Apply 클릭 시도...")
             save_path = os.path.join(
                 save_dir, f"qings_{today.strftime('%Y%m%d_%H%M%S')}.xlsx"
             )
-            async with page.expect_download(timeout=180_000) as dl_info:
-                await _click(page, _SEL["btn_apply"])
 
-            download = await dl_info.value
-            await download.save_as(save_path)
-            logger.info(f"[Qings] 다운로드 완료: {save_path}")
+            # 다운로드 폴더 감시 시작 (Nexacro는 브라우저 다운로드 이벤트가 안 잡힐 수 있음)
+            before_files = _snapshot_xlsx(save_dir)
+
+            try:
+                async with page.expect_download(timeout=180_000) as dl_info:
+                    await _click_fallback(
+                        page,
+                        _SEL["btn_apply_a"],
+                        _SEL["btn_apply_b"],
+                        timeout=15_000,
+                    )
+                download = await dl_info.value
+                await download.save_as(save_path)
+                logger.info(f"[Qings] 브라우저 다운로드 완료: {save_path}")
+
+            except Exception as dl_err:
+                # expect_download 실패 → 폴더에 새 파일이 생겼는지 확인
+                logger.warning(f"[Qings] 브라우저 다운로드 감지 실패 ({dl_err}) → 폴더 감시로 전환")
+                found = await _wait_new_xlsx(save_dir, before_files, timeout=180)
+                if found:
+                    import shutil
+                    shutil.copy2(found, save_path)
+                    logger.info(f"[Qings] 폴더에서 파일 감지: {found} → {save_path}")
+                else:
+                    raise RuntimeError("Apply 후 다운로드 파일을 찾지 못했습니다.") from dl_err
 
             # auth state 갱신
             await context.storage_state(path=str(_AUTH_STATE_PATH))
@@ -182,6 +201,25 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await browser.close()
     finally:
         await pw.stop()
+
+
+def _snapshot_xlsx(folder: str) -> set:
+    """폴더 내 xlsx 파일 목록 스냅샷."""
+    p = Path(folder)
+    if not p.exists():
+        return set()
+    return {str(f) for f in p.glob("*.xlsx")}
+
+
+async def _wait_new_xlsx(folder: str, before: set, timeout: int = 180) -> Optional[str]:
+    """새로 생긴 xlsx 파일이 나타날 때까지 대기."""
+    for _ in range(timeout):
+        after = _snapshot_xlsx(folder)
+        new = after - before
+        if new:
+            return sorted(new)[-1]
+        await asyncio.sleep(1)
+    return None
 
 
 async def _click(page: Page, xpath: str, timeout: int = 10_000):
