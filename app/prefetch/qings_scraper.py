@@ -46,10 +46,15 @@ _SEL = {
     "chk_warranty_1a": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.cellcheckbox:icontext"]',
     "chk_warranty_1b": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.checkbox"]',
 
-    # 다운 컬럼 전체 + Apply (셀렉터 변형 2가지)
+    # 다운 컬럼 전체
     "btn_all_cols":  f'//*[@id="{_BASE}.div_Section1.form.img_Tab3:icontext"]',
-    "btn_apply_a":   '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"]',
-    "btn_apply_b":   '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"]',
+
+    # Apply 버튼 — 정확한 ID / 부분 일치 / 텍스트 순서로 시도
+    "btn_apply_exact":   '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"]',
+    "btn_apply_nosuffix":'//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"]',
+    "btn_apply_contains":'xpath=//*[contains(@id,"btn_Apply")]',
+    "btn_apply_text_en": 'text=Apply',
+    "btn_apply_text_kr": 'text=적용',
 }
 
 _AUTH_STATE_PATH = Path("data") / "sessions" / "qings_auth_state.json"
@@ -168,18 +173,36 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             before_save  = _snapshot_xlsx(save_dir)
             before_dl    = _snapshot_xlsx(win_downloads)
 
-            # Apply 버튼: 모든 프레임 순회 + JS 직접 클릭 fallback
-            clicked = await _click_any_frame(page, _SEL["btn_apply_a"])
-            if not clicked:
-                clicked = await _click_any_frame(page, _SEL["btn_apply_b"])
-            if not clicked:
-                logger.warning("[Qings] XPath 실패 → JS 직접 클릭 시도")
-                clicked = await _js_click(page, [
+            # Apply 버튼: 여러 방법 순서대로 시도
+            apply_attempts = [
+                ("정확한 ID",        lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
+                ("ID(suffix없음)",   lambda: _click_any_frame(page, _SEL["btn_apply_nosuffix"])),
+                ("ID 부분일치",      lambda: _click_any_frame(page, _SEL["btn_apply_contains"])),
+                ("텍스트 Apply",     lambda: _click_any_frame(page, _SEL["btn_apply_text_en"])),
+                ("텍스트 적용",      lambda: _click_any_frame(page, _SEL["btn_apply_text_kr"])),
+                ("JS getElementById",lambda: _js_click(page, [
                     "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext",
                     "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply",
-                ])
+                ])),
+            ]
+            clicked = False
+            for label, attempt in apply_attempts:
+                try:
+                    result = await attempt()
+                    if result:
+                        logger.info(f"[Qings] Apply 클릭 성공 ({label})")
+                        clicked = True
+                        break
+                except Exception:
+                    pass
+                logger.warning(f"[Qings] Apply 실패: {label}")
+
             if not clicked:
-                raise RuntimeError("Apply 버튼을 찾지 못했습니다. 셀렉터를 확인하세요.")
+                # 마지막 수단: 프레임 목록 출력 후 오류
+                logger.error("[Qings] 감지된 프레임 목록:")
+                for f in page.frames:
+                    logger.error(f"  frame name={f.name!r} url={f.url[:80]}")
+                raise RuntimeError("Apply 버튼을 찾지 못했습니다. 위 프레임 목록을 확인하세요.")
 
             logger.info("[Qings] Apply 클릭 완료 — 다운로드 대기 중 (최대 3분)...")
             # save_dir 먼저, 없으면 Windows Downloads 폴더 감시
