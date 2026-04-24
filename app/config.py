@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     GROUPED_TABLE_DISPLAY: bool = False
 
     # ─── Qings 사전 쿼리 (Pre-fetch) ─────────────────────────────────────────
-    QINGS_URL: str = "qings.sec.samsung.net/qings/index.jsp"
+    QINGS_URL: str = "qings.sec.samsung.net"
     QINGS_HEADLESS: bool = False          # SSO 처리 위해 기본 headful
     QINGS_SN_COLUMN: str = "단말 S/N"    # 엑셀에서 SN이 있는 열 이름 (나중에 확인 후 수정)
     PREFETCH_ENABLED: bool = True         # 평일 9시 자동 사전 쿼리 활성화
