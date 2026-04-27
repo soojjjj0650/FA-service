@@ -390,6 +390,8 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
             'linked_parent_handler', 'parentElm_doClick', 'parentElm_fireEvent',
             'par_btn_doClick', 'par_btn_fireEvent', 'par_btn_parent_handler',
             'refform_handler', 'all_doClick', 'all_fireEvent',
+            'rf_all_doClick', 'rf_all_fireEvent', 'rf_all_parent_handler',
+            'rf_btn_doClick', 'rf_btn_fireEvent', 'rf_proto_handler',
         ])
 
     def _make_script(prefix: str, path_expr: str) -> str:
@@ -467,7 +469,36 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
         const rf = par._refform || ctrl._reform;
         if (rf) {{
             if (typeof rf[H] === 'function') {{ rf[H].call(par, ctrl, null); return 'refform_handler'; }}
-            return 'rf_keys:' + Object.keys(rf).slice(0,15).join(',');
+
+            // rf.all['btn_Apply'] — Nexacro form.all 컬렉션
+            const all = rf.all;
+            if (all) {{
+                const btn = all['btn_Apply'] || all.btn_Apply;
+                if (btn) {{
+                    if (typeof btn.doClick === 'function') {{ btn.doClick(); return 'rf_all_doClick'; }}
+                    if (typeof btn.fireEvent === 'function') {{ btn.fireEvent('onclick', null, null); return 'rf_all_fireEvent'; }}
+                    const bp = btn.parent;
+                    if (bp && typeof bp[H] === 'function') {{ bp[H].call(bp, btn, null); return 'rf_all_parent_handler'; }}
+                    return 'rf_all_btn_keys:' + Object.keys(btn).slice(0,15).join(',');
+                }}
+            }}
+
+            // rf['btn_Apply'] 직접 접근
+            const rfBtn = rf['btn_Apply'];
+            if (rfBtn) {{
+                if (typeof rfBtn.doClick === 'function') {{ rfBtn.doClick(); return 'rf_btn_doClick'; }}
+                if (typeof rfBtn.fireEvent === 'function') {{ rfBtn.fireEvent('onclick', null, null); return 'rf_btn_fireEvent'; }}
+                return 'rf_btn_keys:' + Object.keys(rfBtn).slice(0,15).join(',');
+            }}
+
+            // rf 프로토타입 체인에서 btn_Apply_onclick 탐색
+            for (let obj = rf; obj; obj = Object.getPrototypeOf(obj)) {{
+                if (typeof obj[H] === 'function') {{ obj[H].call(rf, ctrl, null); return 'rf_proto_handler'; }}
+                const applyKeys = Object.getOwnPropertyNames(obj).filter(k => k.toLowerCase().includes('apply'));
+                if (applyKeys.length) return 'rf_proto_apply_found:' + applyKeys.join(',');
+            }}
+
+            return 'rf_exhausted:all_type=' + typeof all + ',rfBtn=' + typeof rfBtn;
         }}
 
         // ③ ctrl.parent의 프로토타입 체인에서 Apply 관련 핸들러 검색
