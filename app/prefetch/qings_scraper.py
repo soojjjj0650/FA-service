@@ -498,22 +498,29 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
                 if (typeof obj[H] === 'function') {{ obj[H].call(rf, ctrl, null); return 'rf_proto_handler'; }}
             }}
 
-            // rf.all — Nexacro ComponentCollection 접근 방법 탐색
-            if (all) {{
-                // getObject 메서드 시도 (Nexacro NexaComponentListObject)
-                const methods = ['getObject','findById','find','item'].filter(m => typeof all[m] === 'function');
-                for (const m of methods) {{
-                    const btn = all[m]('btn_Apply');
-                    if (btn) {{
-                        if (typeof btn.doClick === 'function') {{ btn.doClick(); return 'all_' + m + '_doClick'; }}
-                        if (typeof btn.fireEvent === 'function') {{ btn.fireEvent('onclick', null, null); return 'all_' + m + '_fireEvent'; }}
-                        return 'all_' + m + '_btn_keys:' + Object.keys(btn).slice(0,15).join(',');
+            // rf.all — 인덱스로 순회 (length=13, 메서드 없음)
+            if (all && all.length) {{
+                const names = [];
+                for (let i = 0; i < all.length; i++) {{
+                    const comp = all[i];
+                    if (!comp) continue;
+                    names.push(comp.id || comp.name || '?');
+                    if (comp.id === 'btn_Apply' || comp.name === 'btn_Apply') {{
+                        if (typeof comp.doClick === 'function') {{ comp.doClick(); return 'all_idx_doClick'; }}
+                        if (typeof comp.fireEvent === 'function') {{ comp.fireEvent('onclick', null, null); return 'all_idx_fireEvent'; }}
+                        // 버튼의 모든 속성(for..in 포함) 중 onclick 관련 탐색
+                        const evtKeys = [];
+                        for (const k in comp) {{ if (/onclick|click|event|fire/i.test(k)) evtKeys.push(k); }}
+                        const cp = comp.parent;
+                        if (cp && typeof cp[H] === 'function') {{ cp[H].call(cp, comp, null); return 'all_idx_parent_handler'; }}
+                        return 'all_idx_btn_evtkeys:' + evtKeys.join(',') + '|keys:' + Object.keys(comp).slice(0,12).join(',');
                     }}
                 }}
-                return 'rf_all_debug:type=' + (all.constructor ? all.constructor.name : typeof all) + ',methods=' + methods.join(',') + ',len=' + (all.length||'?');
+                // btn_Apply를 못 찾으면 모든 이름 로그
+                return 'all_names:' + names.join(',');
             }}
 
-            // ctrl.parent와 rf에서 for..in으로 Apply/btn_ 함수 찾기
+            // par와 rf에서 for..in으로 Apply/btn_/onclick 함수 탐색
             const parFns = [], rfFns = [];
             for (const k in par) {{ if (typeof par[k]==='function') parFns.push(k); }}
             for (const k in rf)  {{ if (typeof rf[k]==='function')  rfFns.push(k); }}
