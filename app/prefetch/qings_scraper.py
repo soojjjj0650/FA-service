@@ -142,7 +142,9 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
             await _click(page, _SEL["chk_product_0"])
             await asyncio.sleep(0.5)
-            await _close_filter_panel(page)
+            # 돋보기 재클릭 → toggle-close (Nexacro 팝업 닫기 가장 확실한 방법)
+            await _click(page, _SEL["mag_product"])
+            await asyncio.sleep(0.8)
 
             # ── 4. 지수산입구분 선택 ──────────────────────────────────────────
             logger.info("[Qings] 지수산입구분 돋보기 클릭")
@@ -151,8 +153,9 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await _click(page, _SEL["chk_intype_0"])
             await asyncio.sleep(1)
             await _click_any_frame(page, _SEL["chk_intype_1a"]) or await _click_any_frame(page, _SEL["chk_intype_1b"])
-            await asyncio.sleep(1)
-            await _close_filter_panel(page)
+            await asyncio.sleep(0.5)
+            await _click(page, _SEL["mag_intype"])   # toggle-close
+            await asyncio.sleep(0.8)
 
             # ── 5. 경영유무무상 선택 ──────────────────────────────────────────
             logger.info("[Qings] 경영유무무상 돋보기 클릭")
@@ -161,21 +164,14 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await _click(page, _SEL["chk_warranty_0"])
             await asyncio.sleep(1)
             await _click_any_frame(page, _SEL["chk_warranty_1a"]) or await _click_any_frame(page, _SEL["chk_warranty_1b"])
+            await asyncio.sleep(0.5)
+            await _click(page, _SEL["mag_warranty"])  # toggle-close
             await asyncio.sleep(1)
-            await _close_filter_panel(page)
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
             await _click_any_frame(page, _SEL["btn_all_cols"])
             await asyncio.sleep(2)
-
-            # ── 7. Apply → 엑셀 다운로드 (최대 3분 대기) ─────────────────────
-            # 필터 패널이 열려있으면 Escape로 강제 닫기
-            logger.info("[Qings] Escape로 열린 패널 닫기 시도")
-            await page.keyboard.press("Escape")
-            await asyncio.sleep(1)
-            await page.keyboard.press("Escape")
-            await asyncio.sleep(0.5)
 
             logger.info("[Qings] Apply 클릭 시도...")
             save_path = os.path.join(
