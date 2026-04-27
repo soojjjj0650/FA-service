@@ -388,6 +388,8 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
             'dom_form_handler:', 'dom_doClick:', 'fireEvent:',
             'ctrl_doClick', 'ctrl_fireEvent', 'ctrl_parent_handler',
             'linked_parent_handler', 'parentElm_doClick', 'parentElm_fireEvent',
+            'par_btn_doClick', 'par_btn_fireEvent', 'par_btn_parent_handler',
+            'refform_handler', 'all_doClick', 'all_fireEvent',
         ])
 
     def _make_script(prefix: str, path_expr: str) -> str:
@@ -437,41 +439,54 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
         except Exception:
             continue
 
-    # ── 3. class 셀렉터 → _linked_element.linkedcontrol 까지 파고들기 ──────
+    # ── 3. class 셀렉터 → _linked_element.linkedcontrol.parent 파고들기 ───
     dom_script = f"""
     () => {{
         const el = document.querySelector('[class*="btn_WFSA_Apply"]');
         if (!el) return 'no_el';
         const linked = el._linked_element;
         if (!linked) return 'no_linked';
+        const ctrl = linked.linkedcontrol;
+        if (!ctrl) return 'no_ctrl';
+        const par = ctrl.parent;
+        if (!par) return 'no_par';
 
         const H = {repr(handler)};
 
-        // ① linkedcontrol — 실제 Nexacro Button 컴포넌트일 가능성 높음
-        const ctrl = linked.linkedcontrol;
-        if (ctrl) {{
-            if (typeof ctrl.doClick === 'function') {{ ctrl.doClick(); return 'ctrl_doClick'; }}
-            if (typeof ctrl.fireEvent === 'function') {{ ctrl.fireEvent('onclick', null, null); return 'ctrl_fireEvent'; }}
-            const cp = ctrl.parent;
-            if (cp && typeof cp[H] === 'function') {{ cp[H].call(cp, ctrl, null); return 'ctrl_parent_handler'; }}
-            const ctrlKeys = Object.keys(ctrl).slice(0,12).join(',');
-            const cpKeys   = cp ? Object.keys(cp).slice(0,8).join(',') : 'null';
-            return 'ctrl_inspect:' + ctrlKeys + '|parent:' + cpKeys;
+        // ① par['btn_Apply'] — Nexacro 폼에서 자식 컴포넌트 직접 접근
+        const btn = par['btn_Apply'];
+        if (btn) {{
+            if (typeof btn.doClick === 'function') {{ btn.doClick(); return 'par_btn_doClick'; }}
+            if (typeof btn.fireEvent === 'function') {{ btn.fireEvent('onclick', null, null); return 'par_btn_fireEvent'; }}
+            const bp = btn.parent;
+            if (bp && typeof bp[H] === 'function') {{ bp[H].call(bp, btn, null); return 'par_btn_parent_handler'; }}
+            return 'par_btn_keys:' + Object.keys(btn).slice(0,15).join(',');
         }}
 
-        // ② linked.parent — 폼 객체일 수 있음
-        const par = linked.parent;
-        if (par && typeof par[H] === 'function') {{ par[H].call(par, linked, null); return 'linked_parent_handler'; }}
-
-        // ③ parent_elm
-        const pe = linked.parent_elm;
-        if (pe) {{
-            if (typeof pe.doClick === 'function') {{ pe.doClick(); return 'parentElm_doClick'; }}
-            if (typeof pe.fireEvent === 'function') {{ pe.fireEvent('onclick', null, null); return 'parentElm_fireEvent'; }}
-            return 'pe_keys:' + Object.keys(pe).slice(0,12).join(',');
+        // ② par._refform — 이벤트 핸들러가 있는 참조 폼
+        const rf = par._refform || ctrl._reform;
+        if (rf) {{
+            if (typeof rf[H] === 'function') {{ rf[H].call(par, ctrl, null); return 'refform_handler'; }}
+            return 'rf_keys:' + Object.keys(rf).slice(0,15).join(',');
         }}
 
-        return 'dead_end:id=' + linked.id + ',ctrl=' + typeof ctrl + ',par=' + typeof par;
+        // ③ ctrl.parent의 프로토타입 체인에서 Apply 관련 핸들러 검색
+        for (let obj = par; obj; obj = Object.getPrototypeOf(obj)) {{
+            const ns = Object.getOwnPropertyNames(obj);
+            const applyKeys = ns.filter(k => k.toLowerCase().includes('apply'));
+            if (applyKeys.length) return 'proto_apply:' + applyKeys.join(',');
+        }}
+
+        // ④ par.all 컬렉션
+        const all = par.all;
+        if (all && all['btn_Apply']) {{
+            const ab = all['btn_Apply'];
+            if (typeof ab.doClick === 'function') {{ ab.doClick(); return 'all_doClick'; }}
+            if (typeof ab.fireEvent === 'function') {{ ab.fireEvent('onclick', null, null); return 'all_fireEvent'; }}
+            return 'all_btn_keys:' + Object.keys(ab).slice(0,15).join(',');
+        }}
+
+        return 'exhausted:par_id=' + par.id + ',btn_Apply=' + typeof par['btn_Apply'] + ',rf=' + typeof (par._refform||ctrl._reform);
     }}
     """
     for frame in page.frames:
