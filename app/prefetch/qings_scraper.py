@@ -392,6 +392,8 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
             'refform_handler', 'all_doClick', 'all_fireEvent',
             'rf_all_doClick', 'rf_all_fireEvent', 'rf_all_parent_handler',
             'rf_btn_doClick', 'rf_btn_fireEvent', 'rf_proto_handler',
+            'all_getObject_doClick', 'all_getObject_fireEvent',
+            'all_findById_doClick', 'all_find_doClick', 'all_item_doClick',
         ])
 
     def _make_script(prefix: str, path_expr: str) -> str:
@@ -494,11 +496,33 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
             // rf 프로토타입 체인에서 btn_Apply_onclick 탐색
             for (let obj = rf; obj; obj = Object.getPrototypeOf(obj)) {{
                 if (typeof obj[H] === 'function') {{ obj[H].call(rf, ctrl, null); return 'rf_proto_handler'; }}
-                const applyKeys = Object.getOwnPropertyNames(obj).filter(k => k.toLowerCase().includes('apply'));
-                if (applyKeys.length) return 'rf_proto_apply_found:' + applyKeys.join(',');
             }}
 
-            return 'rf_exhausted:all_type=' + typeof all + ',rfBtn=' + typeof rfBtn;
+            // rf.all — Nexacro ComponentCollection 접근 방법 탐색
+            if (all) {{
+                // getObject 메서드 시도 (Nexacro NexaComponentListObject)
+                const methods = ['getObject','findById','find','item'].filter(m => typeof all[m] === 'function');
+                for (const m of methods) {{
+                    const btn = all[m]('btn_Apply');
+                    if (btn) {{
+                        if (typeof btn.doClick === 'function') {{ btn.doClick(); return 'all_' + m + '_doClick'; }}
+                        if (typeof btn.fireEvent === 'function') {{ btn.fireEvent('onclick', null, null); return 'all_' + m + '_fireEvent'; }}
+                        return 'all_' + m + '_btn_keys:' + Object.keys(btn).slice(0,15).join(',');
+                    }}
+                }}
+                return 'rf_all_debug:type=' + (all.constructor ? all.constructor.name : typeof all) + ',methods=' + methods.join(',') + ',len=' + (all.length||'?');
+            }}
+
+            // ctrl.parent와 rf에서 for..in으로 Apply/btn_ 함수 찾기
+            const parFns = [], rfFns = [];
+            for (const k in par) {{ if (typeof par[k]==='function') parFns.push(k); }}
+            for (const k in rf)  {{ if (typeof rf[k]==='function')  rfFns.push(k); }}
+            const parApply = parFns.filter(k => /apply|btn_|onclick/i.test(k));
+            const rfApply  = rfFns.filter(k => /apply|btn_|onclick/i.test(k));
+            if (parApply.length) return 'par_forin_apply:' + parApply.join(',');
+            if (rfApply.length)  return 'rf_forin_apply:'  + rfApply.join(',');
+
+            return 'rf_exhausted:par_id=' + par.id + ',par_fns=' + parFns.length + ',rf_fns=' + rfFns.length;
         }}
 
         // ③ ctrl.parent의 프로토타입 체인에서 Apply 관련 핸들러 검색
