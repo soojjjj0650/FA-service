@@ -343,115 +343,101 @@ async def _js_click(page: Page, element_ids: list[str]) -> bool:
 
 
 async def _nexacro_click(page: Page, component_path: str) -> bool:
-    """Nexacro 컴포넌트의 onclick 핸들러를 직접 호출합니다."""
+    """Nexacro 컴포넌트의 onclick 핸들러를 직접 호출합니다.
+
+    F12 콘솔 기본값은 top 프레임 — 거기서 window.mainframe = qings iframe window.
+    따라서 page.evaluate()(= top 프레임)에서 직접 경로를 실행하고,
+    실패 시 각 자식 프레임에서 window.parent 경유로 시도합니다.
+    """
     dot = component_path.rfind(".")
     comp_id = component_path[dot + 1:]   # btn_Apply
     handler = comp_id + "_onclick"
-
-    # 전체 컴포넌트 경로 (btn_Apply까지)
     full_path = component_path  # mainframe...form.div_left.form.btn_Apply
 
-    script = f"""
-    () => {{
-        // ── 헬퍼: 컴포넌트로 핸들러 호출 ──────────────────────────────
-        function tryCall(form_dl, comp) {{
-            if (!form_dl || !comp) return null;
-            if (typeof form_dl[{repr(handler)}] === 'function') {{
-                form_dl[{repr(handler)}].call(form_dl, comp, null);
-                return 'form_handler';
+    _SUCCESS = frozenset(['form_handler', 'doClick', 'click',
+                          'top_form_handler', 'top_doClick', 'top_click',
+                          'par_form_handler', 'par_doClick', 'par_click',
+                          'dom_mouseevt'])
+
+    def _make_script(prefix: str, path_expr: str) -> str:
+        """path_expr 로 컴포넌트에 접근해 핸들러를 호출하는 JS 반환."""
+        return f"""
+        () => {{
+            function tryCall(form_dl, comp) {{
+                if (!form_dl || !comp) return null;
+                if (typeof form_dl[{repr(handler)}] === 'function') {{
+                    form_dl[{repr(handler)}].call(form_dl, comp, null);
+                    return {repr(prefix + 'form_handler')};
+                }}
+                if (typeof comp.doClick === 'function') {{ comp.doClick(); return {repr(prefix + 'doClick')}; }}
+                if (comp.click) {{ comp.click(); return {repr(prefix + 'click')}; }}
+                return null;
             }}
-            if (typeof comp.doClick === 'function') {{ comp.doClick(); return 'doClick'; }}
-            if (comp.click) {{ comp.click(); return 'click'; }}
-            return null;
+            try {{
+                const form_dl = {path_expr};
+                const comp = form_dl && form_dl[{repr(comp_id)}];
+                return tryCall(form_dl, comp) || 'no_method';
+            }} catch(e) {{ return 'err:' + e.message.slice(0,80); }}
         }}
+        """
 
-        try {{
-            // ── 방법 1: DOM 역참조 (가장 단순) ──────────────────────────
-            const el = document.getElementById({repr(full_path)});
-            if (el) {{
-                // Nexacro는 DOM 요소에 컴포넌트 참조를 여러 이름으로 저장
-                for (const p of ['_component','$component','_compObj','linkedcomponent','_linked_comp']) {{
-                    const comp = el[p];
-                    if (comp) {{
-                        const form_dl = comp.parent;
-                        const r = tryCall(form_dl, comp);
-                        if (r) return 'dom_ref_' + r;
-                    }}
+    # ── 1. top 프레임에서 직접 경로 (F12 콘솔과 동일한 컨텍스트) ────────
+    top_form = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form"
+    try:
+        result = await page.evaluate(_make_script('top_', top_form))
+        logger.warning(f"[Qings] top 프레임 결과: {result!r}")
+        if result in _SUCCESS:
+            logger.info(f"[Qings] Nexacro 핸들러 성공 (top): {result}")
+            return True
+    except Exception as e:
+        logger.warning(f"[Qings] top 프레임 오류: {e}")
+
+    # ── 2. 각 자식 프레임에서 window.parent 경유 ────────────────────────
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue
+        try:
+            result = await frame.evaluate(_make_script('par_', "window.parent." + top_form))
+            if result in _SUCCESS:
+                logger.info(f"[Qings] Nexacro 핸들러 성공 (parent): {result} frame={frame.url[:50]}")
+                return True
+            elif result and not result.startswith('no_method') and not result.startswith('err:SecurityError'):
+                logger.warning(f"[Qings] parent 경유 결과: {result!r} frame={frame.url[:50]}")
+        except Exception:
+            continue
+
+    # ── 3. DOM 역참조 + mousedown/mouseup fallback ───────────────────────
+    dom_script = f"""
+    () => {{
+        const el = document.getElementById({repr(full_path)});
+        if (!el) return 'no_el';
+        for (const p of ['_component','$component','_compObj']) {{
+            const comp = el[p];
+            if (comp && comp.parent) {{
+                const form_dl = comp.parent;
+                if (typeof form_dl[{repr(handler)}] === 'function') {{
+                    form_dl[{repr(handler)}].call(form_dl, comp, null);
+                    return 'dom_form_handler';
                 }}
-                // 없으면 직접 dispatchEvent 시도 (userstatus=pushed 확인됐으므로)
-                el.dispatchEvent(new MouseEvent('mousedown', {{bubbles:true, cancelable:true}}));
-                el.dispatchEvent(new MouseEvent('mouseup',   {{bubbles:true, cancelable:true}}));
-                return 'dom_mouseevt';
+                if (comp.doClick) {{ comp.doClick(); return 'dom_doClick'; }}
             }}
-
-            // ── 방법 2: nexacro 전역 API ─────────────────────────────────
-            if (typeof nexacro !== 'undefined') {{
-                // nexacro 객체의 속성 목록 확인 (진단용)
-                const nxKeys = Object.getOwnPropertyNames(nexacro).slice(0, 40).join(',');
-
-                // nexacro.mainframe 은 window.mainframe(body)과 다를 수 있음
-                const appCandidates = [
-                    nexacro.mainframe,
-                    nexacro['mainframe'],
-                    nexacro._application,
-                    nexacro._app,
-                    nexacro.application,
-                ];
-                for (const app of appCandidates) {{
-                    if (!app || !app.VFrameSet0) continue;
-                    const wf = app.VFrameSet0.WorkFrame;
-                    if (!wf) continue;
-                    for (const wk in wf) {{
-                        if (!wk.startsWith('WORK_FRAME')) continue;
-                        const form_dl = wf[wk].form && wf[wk].form.div_left && wf[wk].form.div_left.form;
-                        const comp = form_dl && form_dl[{repr(comp_id)}];
-                        const r = tryCall(form_dl, comp);
-                        if (r) return 'nexacro_' + r;
-                    }}
-                }}
-                return 'nexacro_keys:' + nxKeys;
-            }}
-
-            // ── 방법 3: window 전체에서 VFrameSet0 가진 객체 탐색 ───────
-            for (const k of Object.getOwnPropertyNames(window)) {{
-                try {{
-                    const v = window[k];
-                    if (v && v.VFrameSet0 && v.VFrameSet0.WorkFrame) {{
-                        const wf = v.VFrameSet0.WorkFrame;
-                        for (const wk in wf) {{
-                            if (!wk.startsWith('WORK_FRAME')) continue;
-                            const form_dl = wf[wk].form && wf[wk].form.div_left && wf[wk].form.div_left.form;
-                            const comp = form_dl && form_dl[{repr(comp_id)}];
-                            const r = tryCall(form_dl, comp);
-                            if (r) return 'win_scan_' + r + '(key=' + k + ')';
-                        }}
-                    }}
-                }} catch(e) {{}}
-            }}
-
-            return 'all_failed';
-        }} catch(e) {{ return null; }}
+        }}
+        el.dispatchEvent(new MouseEvent('mousedown', {{bubbles:true,cancelable:true}}));
+        el.dispatchEvent(new MouseEvent('mouseup',   {{bubbles:true,cancelable:true}}));
+        return 'dom_mouseevt';
     }}
     """
     for frame in page.frames:
         try:
-            result = await frame.evaluate(script)
-            if result in ('form_handler', 'doClick', 'click'):
-                logger.info(f"[Qings] Nexacro 핸들러 성공: {result} (frame: {frame.name or frame.url[:50]})")
+            result = await frame.evaluate(dom_script)
+            if result in _SUCCESS:
+                logger.info(f"[Qings] DOM fallback 성공: {result}")
                 return True
             elif result:
-                logger.warning(f"[Qings] Nexacro 탐색결과: {result!r} (frame: {frame.name or frame.url[:50]})")
+                logger.warning(f"[Qings] DOM fallback: {result!r} frame={frame.url[:50]}")
         except Exception:
             continue
-    return False
-    for frame in page.frames:
-        try:
-            result = await frame.evaluate(script)
-            if result:
-                logger.info(f"[Qings] Nexacro .click() 성공 (frame: {frame.name or frame.url[:40]})")
-                return True
-        except Exception:
-            continue
+
     return False
 
 
