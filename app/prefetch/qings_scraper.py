@@ -142,9 +142,6 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
             await _click(page, _SEL["chk_product_0"])
             await asyncio.sleep(0.5)
-            # 돋보기 재클릭 → toggle-close (Nexacro 팝업 닫기 가장 확실한 방법)
-            await _click(page, _SEL["mag_product"])
-            await asyncio.sleep(0.8)
 
             # ── 4. 지수산입구분 선택 ──────────────────────────────────────────
             logger.info("[Qings] 지수산입구분 돋보기 클릭")
@@ -153,9 +150,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await _click(page, _SEL["chk_intype_0"])
             await asyncio.sleep(1)
             await _click_any_frame(page, _SEL["chk_intype_1a"]) or await _click_any_frame(page, _SEL["chk_intype_1b"])
-            await asyncio.sleep(0.5)
-            await _click(page, _SEL["mag_intype"])   # toggle-close
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(1)
 
             # ── 5. 경영유무무상 선택 ──────────────────────────────────────────
             logger.info("[Qings] 경영유무무상 돋보기 클릭")
@@ -164,14 +159,19 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await _click(page, _SEL["chk_warranty_0"])
             await asyncio.sleep(1)
             await _click_any_frame(page, _SEL["chk_warranty_1a"]) or await _click_any_frame(page, _SEL["chk_warranty_1b"])
-            await asyncio.sleep(0.5)
-            await _click(page, _SEL["mag_warranty"])  # toggle-close
             await asyncio.sleep(1)
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
             await _click_any_frame(page, _SEL["btn_all_cols"])
             await asyncio.sleep(2)
+
+            # ── 6.5 열린 팝업/필터 패널 닫기 ────────────────────────────────
+            # 마그니파이어 팝업이 열려 있으면 Apply 버튼을 가릴 수 있음
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(0.5)
+            await _close_filter_panel(page)
+            await asyncio.sleep(1)
 
             logger.info("[Qings] Apply 클릭 시도...")
             save_path = os.path.join(
@@ -187,14 +187,15 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             _BTN_ID  = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
             _ICON_ID = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"
 
-            # Apply 버튼: class 속성 기반 우선 (id 속성은 Nexacro가 설정 안 함)
+            # Apply 버튼: page.mouse.click() 우선 — Nexacro 문서 레벨 이벤트 리스너를 통과
+            # force=True 계열은 Nexacro 이벤트 시스템을 우회해 onclick이 발화되지 않음
             apply_attempts = [
-                ("class 클릭(force)",       lambda: _click_force(page, _SEL["btn_apply_class"])),
-                ("class 클릭(any frame)",   lambda: _click_any_frame(page, _SEL["btn_apply_class"])),
-                ("class dispatch_event",    lambda: _playwright_dispatch(page, _SEL["btn_apply_class"])),
                 ("class 좌표클릭",          lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
+                ("class 클릭(no force)",    lambda: _click_any_frame(page, _SEL["btn_apply_class"])),
+                ("class dispatch_event",    lambda: _playwright_dispatch(page, _SEL["btn_apply_class"])),
                 ("Nexacro 폼 핸들러",       lambda: _nexacro_click(page, _NX)),
                 ("focus+Enter(class)",      lambda: _focus_and_enter_xpath(page, _SEL["btn_apply_class"])),
+                ("class 클릭(force)",       lambda: _click_force(page, _SEL["btn_apply_class"])),
                 ("XPath force(icontext)",   lambda: _click_force(page, _SEL["btn_apply_exact"])),
                 ("XPath force(nosuffix)",   lambda: _click_force(page, _SEL["btn_apply_nosuffix"])),
                 ("XPath 모든 프레임",       lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
@@ -534,7 +535,12 @@ async def _mouse_position_click(page: Page, element_id: str) -> bool:
 
 
 async def _mouse_position_click_xpath(page: Page, xpath: str, timeout: int = 5_000) -> bool:
-    """XPath로 요소를 찾아 좌표를 구한 뒤 page.mouse.click()으로 클릭합니다."""
+    """XPath로 요소를 찾아 좌표를 구한 뒤 page.mouse.click()으로 클릭합니다.
+
+    page.mouse.click()은 실제 마우스 이벤트를 브라우저에 전달하므로
+    Nexacro 문서 레벨 이벤트 리스너를 통과해 onclick이 발화됩니다.
+    force=True와 달리 Nexacro 이벤트 시스템을 우회하지 않습니다.
+    """
     for frame in page.frames:
         try:
             loc = frame.locator(f"xpath={xpath}")
@@ -542,6 +548,7 @@ async def _mouse_position_click_xpath(page: Page, xpath: str, timeout: int = 5_0
                 continue
             bb = await loc.first.bounding_box()
             if not bb or bb["width"] == 0 or bb["height"] == 0:
+                logger.warning(f"[Qings] 좌표클릭: bounding_box 없음 (frame={frame.url[:50]})")
                 continue
             x = bb["x"] + bb["width"] / 2
             y = bb["y"] + bb["height"] / 2
@@ -554,12 +561,14 @@ async def _mouse_position_click_xpath(page: Page, xpath: str, timeout: int = 5_0
                         y += fb["y"]
                 except Exception:
                     pass
+            logger.info(f"[Qings] XPath 좌표클릭 시도: ({x:.0f},{y:.0f}) frame={frame.url[:50]}")
             await page.mouse.move(x, y)
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.15)
             await page.mouse.click(x, y)
-            logger.info(f"[Qings] XPath 좌표클릭 성공: ({x:.0f},{y:.0f})")
+            logger.info(f"[Qings] XPath 좌표클릭 완료: ({x:.0f},{y:.0f})")
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[Qings] 좌표클릭 예외: {e}")
             continue
     return False
 
