@@ -49,14 +49,15 @@ _SEL = {
     # 다운 컬럼 전체
     "btn_all_cols":  f'//*[@id="{_BASE}.div_Section1.form.img_Tab3:icontext"]',
 
-    # 필터 패널 내 검색/적용 버튼 — 돋보기 팝업을 닫을 때 클릭
+    # 필터 패널 내 검색/적용 버튼
     "btn_filter_search": '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001'
                          '.form.div_left.form.div_FormFilter.form.btn_search:icontext"]',
 
-    # Apply 버튼 (메인)
-    "btn_apply_exact":   '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"]',
-    "btn_apply_nosuffix":'//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"]',
-    "btn_apply_contains":'xpath=//*[contains(@id,"btn_Apply")]',
+    # Apply 버튼 — id 속성이 없으므로 class 속성으로 탐색 (btn_WFSA_Apply)
+    "btn_apply_class":    '//*[contains(@class,"btn_WFSA_Apply")]',
+    "btn_apply_exact":    '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"]',
+    "btn_apply_nosuffix": '//*[@id="mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"]',
+    "btn_apply_contains": 'xpath=//*[contains(@id,"btn_Apply")]',
 }
 
 _AUTH_STATE_PATH = Path("data") / "sessions" / "qings_auth_state.json"
@@ -190,24 +191,17 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             _BTN_ID  = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
             _ICON_ID = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"
 
-            # Apply 버튼: Nexacro 폼 핸들러 우선, 그다음 focus+Enter/좌표/dispatch/fallback
+            # Apply 버튼: class 속성 기반 우선 (id 속성은 Nexacro가 설정 안 함)
             apply_attempts = [
+                ("class 클릭(force)",       lambda: _click_force(page, _SEL["btn_apply_class"])),
+                ("class 클릭(any frame)",   lambda: _click_any_frame(page, _SEL["btn_apply_class"])),
+                ("class dispatch_event",    lambda: _playwright_dispatch(page, _SEL["btn_apply_class"])),
+                ("class 좌표클릭",          lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
                 ("Nexacro 폼 핸들러",       lambda: _nexacro_click(page, _NX)),
-                ("focus+Enter(icon)",       lambda: _focus_and_enter(page, _ICON_ID)),
-                ("focus+Enter(btn)",        lambda: _focus_and_enter(page, _BTN_ID)),
-                ("좌표 마우스클릭(btn)",    lambda: _mouse_position_click(page, _BTN_ID)),
-                ("좌표 마우스클릭(icon)",   lambda: _mouse_position_click(page, _ICON_ID)),
-                ("Nexacro .click()",        lambda: _nexacro_click(page, _NX)),
-                ("Nexacro fireEvent",       lambda: _nexacro_fire_event(page, _NX)),
-                ("dispatch_event(icon)",    lambda: _playwright_dispatch(page, _SEL["btn_apply_exact"])),
-                ("dispatch_event(btn)",     lambda: _playwright_dispatch(page, _SEL["btn_apply_nosuffix"])),
-                ("dispatchEvent JS(btn)",   lambda: _dispatch_event_click(page, _BTN_ID)),
-                ("dispatchEvent JS(icon)",  lambda: _dispatch_event_click(page, _ICON_ID)),
+                ("focus+Enter(class)",      lambda: _focus_and_enter_xpath(page, _SEL["btn_apply_class"])),
                 ("XPath force(icontext)",   lambda: _click_force(page, _SEL["btn_apply_exact"])),
                 ("XPath force(nosuffix)",   lambda: _click_force(page, _SEL["btn_apply_nosuffix"])),
                 ("XPath 모든 프레임",       lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
-                ("ID 부분일치",             lambda: _click_any_frame(page, _SEL["btn_apply_contains"])),
-                ("JS getElementById",       lambda: _js_click(page, [_ICON_ID, _BTN_ID])),
             ]
             clicked = False
             for label, attempt in apply_attempts:
@@ -537,6 +531,54 @@ async def _mouse_position_click(page: Page, element_id: str) -> bool:
             await asyncio.sleep(0.1)
             await page.mouse.click(x, y)
             logger.info(f"[Qings] 좌표 클릭 성공: {element_id} @ ({x:.0f},{y:.0f})")
+            return True
+        except Exception:
+            continue
+    return False
+
+
+async def _mouse_position_click_xpath(page: Page, xpath: str, timeout: int = 5_000) -> bool:
+    """XPath로 요소를 찾아 좌표를 구한 뒤 page.mouse.click()으로 클릭합니다."""
+    for frame in page.frames:
+        try:
+            loc = frame.locator(f"xpath={xpath}")
+            if await loc.count() == 0:
+                continue
+            bb = await loc.first.bounding_box()
+            if not bb or bb["width"] == 0 or bb["height"] == 0:
+                continue
+            x = bb["x"] + bb["width"] / 2
+            y = bb["y"] + bb["height"] / 2
+            # iframe이면 오프셋 보정
+            if frame != page.main_frame:
+                try:
+                    fb = await (await frame.frame_element()).bounding_box()
+                    if fb:
+                        x += fb["x"]
+                        y += fb["y"]
+                except Exception:
+                    pass
+            await page.mouse.move(x, y)
+            await asyncio.sleep(0.1)
+            await page.mouse.click(x, y)
+            logger.info(f"[Qings] XPath 좌표클릭 성공: ({x:.0f},{y:.0f})")
+            return True
+        except Exception:
+            continue
+    return False
+
+
+async def _focus_and_enter_xpath(page: Page, xpath: str) -> bool:
+    """XPath로 요소를 찾아 focus() 후 Enter를 보냅니다."""
+    for frame in page.frames:
+        try:
+            loc = frame.locator(f"xpath={xpath}")
+            if await loc.count() == 0:
+                continue
+            await loc.first.focus()
+            await asyncio.sleep(0.2)
+            await page.keyboard.press("Return")
+            logger.info(f"[Qings] XPath focus+Enter 성공")
             return True
         except Exception:
             continue
