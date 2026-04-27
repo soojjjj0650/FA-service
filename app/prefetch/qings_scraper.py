@@ -186,6 +186,15 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             _BTN_ID  = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
             _ICON_ID = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"
 
+            # 페이지 포커스 확보 및 스크린샷
+            await page.bring_to_front()
+            await asyncio.sleep(0.3)
+            try:
+                await page.screenshot(path="/tmp/qings_before_apply.png")
+                logger.info("[Qings] 스크린샷 저장: /tmp/qings_before_apply.png")
+            except Exception:
+                pass
+
             # Apply 버튼 좌표 사전 진단 — 해당 좌표에 실제로 뭐가 있는지 확인
             for frame in page.frames:
                 try:
@@ -366,6 +375,11 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
                           'top_form_handler', 'top_doClick', 'top_click',
                           'par_form_handler', 'par_doClick', 'par_click',
                           'dom_mouseevt'])
+    # dom_script는 접두사 포함 반환이므로 startswith로도 체크
+    def _is_success(r: str) -> bool:
+        return r in _SUCCESS or any(r.startswith(p) for p in [
+            'dom_form_handler:', 'dom_doClick:', 'fireEvent:', 'found_no_method:',
+        ])
 
     def _make_script(prefix: str, path_expr: str) -> str:
         """path_expr 로 컴포넌트에 접근해 핸들러를 호출하는 JS 반환."""
@@ -414,35 +428,41 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
         except Exception:
             continue
 
-    # ── 3. DOM 역참조 + mousedown/mouseup fallback ───────────────────────
+    # ── 3. class 셀렉터로 DOM 요소 찾기 + _component 역참조 ────────────────
+    # getElementById는 Nexacro가 HTML id 속성을 설정 안 해서 항상 null
+    # querySelector('[class*="btn_WFSA_Apply"]')로 요소를 찾아 _component 접근
     dom_script = f"""
     () => {{
-        const el = document.getElementById({repr(full_path)});
+        const el = document.querySelector('[class*="btn_WFSA_Apply"]');
         if (!el) return 'no_el';
-        for (const p of ['_component','$component','_compObj']) {{
+        // _component 등 Nexacro 내부 속성 시도
+        for (const p of ['_component','$component','_compObj','_nexacrocomp','_linked_element']) {{
             const comp = el[p];
-            if (comp && comp.parent) {{
-                const form_dl = comp.parent;
-                if (typeof form_dl[{repr(handler)}] === 'function') {{
-                    form_dl[{repr(handler)}].call(form_dl, comp, null);
-                    return 'dom_form_handler';
-                }}
-                if (comp.doClick) {{ comp.doClick(); return 'dom_doClick'; }}
+            if (!comp) continue;
+            const parent = comp.parent || comp._parent;
+            if (parent && typeof parent[{repr(handler)}] === 'function') {{
+                parent[{repr(handler)}].call(parent, comp, null);
+                return 'dom_form_handler:' + p;
             }}
+            if (typeof comp.doClick === 'function') {{ comp.doClick(); return 'dom_doClick:' + p; }}
+            if (typeof comp.fireEvent === 'function') {{ comp.fireEvent('onclick', null, null); return 'fireEvent:' + p; }}
+            return 'found_no_method:' + p + ':' + Object.keys(comp).slice(0,8).join(',');
         }}
+        // 어떤 _ 속성이 있는지 로그
+        const own = [];
+        try {{ for (const k of Object.getOwnPropertyNames(el)) {{ if (k[0]==='_') own.push(k); }} }} catch(e) {{}}
         el.dispatchEvent(new MouseEvent('mousedown', {{bubbles:true,cancelable:true}}));
         el.dispatchEvent(new MouseEvent('mouseup',   {{bubbles:true,cancelable:true}}));
-        return 'dom_mouseevt';
+        return 'dom_mouseevt:el_props=' + own.slice(0,15).join(',');
     }}
     """
     for frame in page.frames:
         try:
             result = await frame.evaluate(dom_script)
-            if result in _SUCCESS:
-                logger.info(f"[Qings] DOM fallback 성공: {result}")
+            logger.warning(f"[Qings] DOM(class) 결과: {result!r} frame={frame.url[:50]}")
+            if result in _SUCCESS or _is_success(result):
+                logger.info(f"[Qings] DOM(class) 성공: {result}")
                 return True
-            elif result:
-                logger.warning(f"[Qings] DOM fallback: {result!r} frame={frame.url[:50]}")
         except Exception:
             continue
 
