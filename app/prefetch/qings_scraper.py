@@ -385,6 +385,7 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
     # _is_success: found_no_method는 진단값이지 성공이 아님
     def _is_success(r: str) -> bool:
         return r in _SUCCESS or any(r.startswith(p) for p in [
+            'chain_doClick', 'chain_fireEvent', 'chain_handler',
             'dom_form_handler:', 'dom_doClick:', 'fireEvent:',
             'ctrl_doClick', 'ctrl_fireEvent', 'ctrl_parent_handler',
             'linked_parent_handler', 'parentElm_doClick', 'parentElm_fireEvent',
@@ -394,6 +395,7 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
             'rf_btn_doClick', 'rf_btn_fireEvent', 'rf_proto_handler',
             'all_getObject_doClick', 'all_getObject_fireEvent',
             'all_findById_doClick', 'all_find_doClick', 'all_item_doClick',
+            'all_idx_doClick', 'all_idx_fireEvent', 'all_idx_parent_handler',
         ])
 
     def _make_script(prefix: str, path_expr: str) -> str:
@@ -443,7 +445,7 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
         except Exception:
             continue
 
-    # ── 3. class 셀렉터 → _linked_element.linkedcontrol.parent 파고들기 ───
+    # ── 3. class 셀렉터 → _linked_element → 부모 체인 타고 div_left.form 찾기 ──
     dom_script = f"""
     () => {{
         const el = document.querySelector('[class*="btn_WFSA_Apply"]');
@@ -454,8 +456,32 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
         if (!ctrl) return 'no_ctrl';
         const par = ctrl.parent;
         if (!par) return 'no_par';
-
+        // ctrl의 실제 id/name 확인 — div_FormFilter.form 내부 컴포넌트를 가리키는지 체크
+        const ctrlId = ctrl.id || ctrl.name || '?';
         const H = {repr(handler)};
+
+        // ── 부모 체인 탐색: div_FormFilter.form → div_FormFilter → div_left.form ──
+        // ctrl.parent = div_FormFilter.form (필터 패널), par.parent = div_FormFilter,
+        // par.parent.parent = div_left.form (btn_Apply 가 있는 곳)
+        const divLeft = par.parent && par.parent.parent;
+        if (divLeft) {{
+            const chainBtn = divLeft['btn_Apply'];
+            if (chainBtn) {{
+                if (typeof chainBtn.doClick === 'function') {{ chainBtn.doClick(); return 'chain_doClick'; }}
+                if (typeof chainBtn.fireEvent === 'function') {{ chainBtn.fireEvent('onclick', null, null); return 'chain_fireEvent'; }}
+                const cbp = chainBtn.parent;
+                if (cbp && typeof cbp[H] === 'function') {{ cbp[H].call(cbp, chainBtn, null); return 'chain_handler'; }}
+                return 'chain_btn_keys:' + Object.keys(chainBtn).slice(0,15).join(',');
+            }}
+            // btn_Apply 없으면 divLeft.all 이름 덤프
+            const dlAll = divLeft.all;
+            if (dlAll && dlAll.length) {{
+                const dlNames = Array.from({{length: dlAll.length}}, (_, i) => dlAll[i] ? (dlAll[i].id || dlAll[i].name || '?') : '?');
+                return 'divleft_all_names:' + dlNames.join(',');
+            }}
+            return 'divleft_keys:' + Object.keys(divLeft).slice(0,15).join(',');
+        }}
+        // divLeft 없으면 par 에서 직접 시도 (구 로직 fallback)
 
         // ① par['btn_Apply'] — Nexacro 폼에서 자식 컴포넌트 직접 접근
         const btn = par['btn_Apply'];
