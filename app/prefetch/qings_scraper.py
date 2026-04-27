@@ -198,24 +198,24 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
                         cx, cy = bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2
                         top_el = await frame.evaluate(
                             f"() => {{ const el = document.elementFromPoint({cx},{cy});"
-                            " return el ? {tag:el.tagName,cls:el.className.slice(0,60),id:(el.id||'').slice(0,60)} : null; }}"
+                            " return el ? {tag:el.tagName,cls:el.className.slice(0,60),id:(el.id||'').slice(0,60)} : null; }"
                         )
                         logger.info(f"[Qings] elementFromPoint({cx:.0f},{cy:.0f}): {top_el}")
                 except Exception as _e:
                     logger.info(f"[Qings] Apply 진단 오류: {_e}")
 
             # Apply 버튼 클릭 시도
+            # JS dispatch는 isTrusted=false → Nexacro가 무시하므로 맨 뒤로 이동
             apply_attempts = [
-                ("JS coords dispatch",      lambda: _dispatch_apply_js(page)),
                 ("class 좌표클릭",          lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
                 ("class 클릭(no force)",    lambda: _click_any_frame(page, _SEL["btn_apply_class"])),
-                ("class dispatch_event",    lambda: _playwright_dispatch(page, _SEL["btn_apply_class"])),
                 ("Nexacro 폼 핸들러",       lambda: _nexacro_click(page, _NX)),
                 ("focus+Enter(class)",      lambda: _focus_and_enter_xpath(page, _SEL["btn_apply_class"])),
                 ("class 클릭(force)",       lambda: _click_force(page, _SEL["btn_apply_class"])),
                 ("XPath force(icontext)",   lambda: _click_force(page, _SEL["btn_apply_exact"])),
                 ("XPath force(nosuffix)",   lambda: _click_force(page, _SEL["btn_apply_nosuffix"])),
                 ("XPath 모든 프레임",       lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
+                ("JS coords dispatch",      lambda: _dispatch_apply_js(page)),
             ]
             clicked = False
             for label, attempt in apply_attempts:
@@ -554,9 +554,9 @@ async def _mouse_position_click(page: Page, element_id: str) -> bool:
 async def _mouse_position_click_xpath(page: Page, xpath: str, timeout: int = 5_000) -> bool:
     """XPath로 요소를 찾아 좌표를 구한 뒤 page.mouse.click()으로 클릭합니다.
 
-    page.mouse.click()은 실제 마우스 이벤트를 브라우저에 전달하므로
-    Nexacro 문서 레벨 이벤트 리스너를 통과해 onclick이 발화됩니다.
-    force=True와 달리 Nexacro 이벤트 시스템을 우회하지 않습니다.
+    Playwright bounding_box()는 이미 main frame viewport 기준 좌표를 반환하므로
+    iframe offset을 추가하면 이중 계산이 됩니다. offset 보정 없이 사용합니다.
+    page.mouse.click()은 isTrusted=true 이벤트를 발생시켜 Nexacro가 처리합니다.
     """
     for frame in page.frames:
         try:
@@ -567,17 +567,9 @@ async def _mouse_position_click_xpath(page: Page, xpath: str, timeout: int = 5_0
             if not bb or bb["width"] == 0 or bb["height"] == 0:
                 logger.warning(f"[Qings] 좌표클릭: bounding_box 없음 (frame={frame.url[:50]})")
                 continue
+            # bounding_box()는 viewport 기준 좌표 — iframe offset 추가 불필요
             x = bb["x"] + bb["width"] / 2
             y = bb["y"] + bb["height"] / 2
-            # iframe이면 오프셋 보정
-            if frame != page.main_frame:
-                try:
-                    fb = await (await frame.frame_element()).bounding_box()
-                    if fb:
-                        x += fb["x"]
-                        y += fb["y"]
-                except Exception:
-                    pass
             logger.info(f"[Qings] XPath 좌표클릭 시도: ({x:.0f},{y:.0f}) frame={frame.url[:50]}")
             await page.mouse.move(x, y)
             await asyncio.sleep(0.15)
