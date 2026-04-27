@@ -214,17 +214,17 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
                     logger.info(f"[Qings] Apply 진단 오류: {_e}")
 
             # Apply 버튼 클릭 시도
-            # JS dispatch는 isTrusted=false → Nexacro가 무시하므로 맨 뒤로 이동
+            # 1순위: Nexacro 컴포넌트 직접 접근 (class 셀렉터 → _component → onclick 호출)
             apply_attempts = [
-                ("class 좌표클릭",          lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
-                ("class 클릭(no force)",    lambda: _click_any_frame(page, _SEL["btn_apply_class"])),
-                ("Nexacro 폼 핸들러",       lambda: _nexacro_click(page, _NX)),
-                ("focus+Enter(class)",      lambda: _focus_and_enter_xpath(page, _SEL["btn_apply_class"])),
-                ("class 클릭(force)",       lambda: _click_force(page, _SEL["btn_apply_class"])),
-                ("XPath force(icontext)",   lambda: _click_force(page, _SEL["btn_apply_exact"])),
-                ("XPath force(nosuffix)",   lambda: _click_force(page, _SEL["btn_apply_nosuffix"])),
-                ("XPath 모든 프레임",       lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
-                ("JS coords dispatch",      lambda: _dispatch_apply_js(page)),
+                ("Nexacro 컴포넌트(class)",  lambda: _nexacro_click(page, _NX)),
+                ("class 좌표클릭",           lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
+                ("class 클릭(no force)",     lambda: _click_any_frame(page, _SEL["btn_apply_class"])),
+                ("focus+Enter(class)",       lambda: _focus_and_enter_xpath(page, _SEL["btn_apply_class"])),
+                ("class 클릭(force)",        lambda: _click_force(page, _SEL["btn_apply_class"])),
+                ("XPath force(icontext)",    lambda: _click_force(page, _SEL["btn_apply_exact"])),
+                ("XPath force(nosuffix)",    lambda: _click_force(page, _SEL["btn_apply_nosuffix"])),
+                ("XPath 모든 프레임",        lambda: _click_any_frame(page, _SEL["btn_apply_exact"])),
+                ("JS coords dispatch",       lambda: _dispatch_apply_js(page)),
             ]
             clicked = False
             for label, attempt in apply_attempts:
@@ -234,9 +234,16 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
                         logger.info(f"[Qings] Apply 클릭 성공 ({label})")
                         clicked = True
                         break
-                except Exception:
-                    pass
+                except Exception as _ex:
+                    logger.warning(f"[Qings] Apply 예외 ({label}): {_ex}")
                 logger.warning(f"[Qings] Apply 실패: {label}")
+
+            # 클릭 직후 스크린샷
+            try:
+                await page.screenshot(path="/tmp/qings_after_apply.png")
+                logger.info("[Qings] 클릭 후 스크린샷: /tmp/qings_after_apply.png")
+            except Exception:
+                pass
 
             if not clicked:
                 logger.error("[Qings] ── Apply 버튼 진단 시작 ──")
