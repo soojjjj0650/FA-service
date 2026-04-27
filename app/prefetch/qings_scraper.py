@@ -204,9 +204,9 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
                 except Exception as _e:
                     logger.info(f"[Qings] Apply 진단 오류: {_e}")
 
-            # Apply 버튼: page.mouse.click() 우선 — Nexacro 문서 레벨 이벤트 리스너를 통과
-            # force=True 계열은 Nexacro 이벤트 시스템을 우회해 onclick이 발화되지 않음
+            # Apply 버튼 클릭 시도
             apply_attempts = [
+                ("JS coords dispatch",      lambda: _dispatch_apply_js(page)),
                 ("class 좌표클릭",          lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
                 ("class 클릭(no force)",    lambda: _click_any_frame(page, _SEL["btn_apply_class"])),
                 ("class dispatch_event",    lambda: _playwright_dispatch(page, _SEL["btn_apply_class"])),
@@ -654,6 +654,41 @@ async def _close_filter_panel(page: Page):
         pass
 
     logger.debug("[Qings] 필터 패널 닫기 실패 — 계속 진행")
+
+
+async def _dispatch_apply_js(page: Page) -> bool:
+    """Apply 버튼에 JS로 올바른 좌표의 마우스 이벤트를 dispatch합니다.
+
+    el에 직접 dispatch → target=el, bubbles=true로 document까지 전파.
+    clientX/clientY = getBoundingClientRect 기준이므로 Nexacro 좌표 라우팅에 부합.
+    """
+    script = """
+    () => {
+        const el = document.querySelector('[class*="btn_WFSA_Apply"]');
+        if (!el) return 'no_el';
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return 'zero:' + JSON.stringify({x:Math.round(r.left),y:Math.round(r.top),w:Math.round(r.width),h:Math.round(r.height)});
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        const base = {bubbles:true, cancelable:true, view:window, clientX:cx, clientY:cy, screenX:cx, screenY:cy};
+        el.dispatchEvent(new MouseEvent('mouseover',  base));
+        el.dispatchEvent(new MouseEvent('mousemove',  base));
+        el.dispatchEvent(new MouseEvent('mouseenter', {bubbles:false, cancelable:true, view:window, clientX:cx, clientY:cy}));
+        el.dispatchEvent(new MouseEvent('mousedown',  Object.assign({button:0, buttons:1}, base)));
+        el.dispatchEvent(new MouseEvent('mouseup',    Object.assign({button:0, buttons:0}, base)));
+        el.dispatchEvent(new MouseEvent('click',      Object.assign({button:0, buttons:0}, base)));
+        return 'ok:' + Math.round(cx) + ',' + Math.round(cy);
+    }
+    """
+    for frame in page.frames:
+        try:
+            result = await frame.evaluate(script)
+            logger.info(f"[Qings] JS dispatch 결과: {result!r} frame={frame.url[:60]}")
+            if isinstance(result, str) and result.startswith("ok:"):
+                return True
+        except Exception as e:
+            logger.debug(f"[Qings] JS dispatch 오류: {e}")
+    return False
 
 
 async def _fill_date(page: Page, xpath: str, date_str: str):
