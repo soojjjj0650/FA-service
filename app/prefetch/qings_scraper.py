@@ -382,10 +382,12 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
                           'top_form_handler', 'top_doClick', 'top_click',
                           'par_form_handler', 'par_doClick', 'par_click',
                           'dom_mouseevt'])
-    # dom_script는 접두사 포함 반환이므로 startswith로도 체크
+    # _is_success: found_no_method는 진단값이지 성공이 아님
     def _is_success(r: str) -> bool:
         return r in _SUCCESS or any(r.startswith(p) for p in [
-            'dom_form_handler:', 'dom_doClick:', 'fireEvent:', 'found_no_method:',
+            'dom_form_handler:', 'dom_doClick:', 'fireEvent:',
+            'ctrl_doClick', 'ctrl_fireEvent', 'ctrl_parent_handler',
+            'linked_parent_handler', 'parentElm_doClick', 'parentElm_fireEvent',
         ])
 
     def _make_script(prefix: str, path_expr: str) -> str:
@@ -435,32 +437,41 @@ async def _nexacro_click(page: Page, component_path: str) -> bool:
         except Exception:
             continue
 
-    # ── 3. class 셀렉터로 DOM 요소 찾기 + _component 역참조 ────────────────
-    # getElementById는 Nexacro가 HTML id 속성을 설정 안 해서 항상 null
-    # querySelector('[class*="btn_WFSA_Apply"]')로 요소를 찾아 _component 접근
+    # ── 3. class 셀렉터 → _linked_element.linkedcontrol 까지 파고들기 ──────
     dom_script = f"""
     () => {{
         const el = document.querySelector('[class*="btn_WFSA_Apply"]');
         if (!el) return 'no_el';
-        // _component 등 Nexacro 내부 속성 시도
-        for (const p of ['_component','$component','_compObj','_nexacrocomp','_linked_element']) {{
-            const comp = el[p];
-            if (!comp) continue;
-            const parent = comp.parent || comp._parent;
-            if (parent && typeof parent[{repr(handler)}] === 'function') {{
-                parent[{repr(handler)}].call(parent, comp, null);
-                return 'dom_form_handler:' + p;
-            }}
-            if (typeof comp.doClick === 'function') {{ comp.doClick(); return 'dom_doClick:' + p; }}
-            if (typeof comp.fireEvent === 'function') {{ comp.fireEvent('onclick', null, null); return 'fireEvent:' + p; }}
-            return 'found_no_method:' + p + ':' + Object.keys(comp).slice(0,8).join(',');
+        const linked = el._linked_element;
+        if (!linked) return 'no_linked';
+
+        const H = {repr(handler)};
+
+        // ① linkedcontrol — 실제 Nexacro Button 컴포넌트일 가능성 높음
+        const ctrl = linked.linkedcontrol;
+        if (ctrl) {{
+            if (typeof ctrl.doClick === 'function') {{ ctrl.doClick(); return 'ctrl_doClick'; }}
+            if (typeof ctrl.fireEvent === 'function') {{ ctrl.fireEvent('onclick', null, null); return 'ctrl_fireEvent'; }}
+            const cp = ctrl.parent;
+            if (cp && typeof cp[H] === 'function') {{ cp[H].call(cp, ctrl, null); return 'ctrl_parent_handler'; }}
+            const ctrlKeys = Object.keys(ctrl).slice(0,12).join(',');
+            const cpKeys   = cp ? Object.keys(cp).slice(0,8).join(',') : 'null';
+            return 'ctrl_inspect:' + ctrlKeys + '|parent:' + cpKeys;
         }}
-        // 어떤 _ 속성이 있는지 로그
-        const own = [];
-        try {{ for (const k of Object.getOwnPropertyNames(el)) {{ if (k[0]==='_') own.push(k); }} }} catch(e) {{}}
-        el.dispatchEvent(new MouseEvent('mousedown', {{bubbles:true,cancelable:true}}));
-        el.dispatchEvent(new MouseEvent('mouseup',   {{bubbles:true,cancelable:true}}));
-        return 'dom_mouseevt:el_props=' + own.slice(0,15).join(',');
+
+        // ② linked.parent — 폼 객체일 수 있음
+        const par = linked.parent;
+        if (par && typeof par[H] === 'function') {{ par[H].call(par, linked, null); return 'linked_parent_handler'; }}
+
+        // ③ parent_elm
+        const pe = linked.parent_elm;
+        if (pe) {{
+            if (typeof pe.doClick === 'function') {{ pe.doClick(); return 'parentElm_doClick'; }}
+            if (typeof pe.fireEvent === 'function') {{ pe.fireEvent('onclick', null, null); return 'parentElm_fireEvent'; }}
+            return 'pe_keys:' + Object.keys(pe).slice(0,12).join(',');
+        }}
+
+        return 'dead_end:id=' + linked.id + ',ctrl=' + typeof ctrl + ',par=' + typeof par;
     }}
     """
     for frame in page.frames:
