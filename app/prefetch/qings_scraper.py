@@ -166,12 +166,11 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await _click_any_frame(page, _SEL["btn_all_cols"])
             await asyncio.sleep(2)
 
-            # ── 6.5 열린 팝업/필터 패널 닫기 ────────────────────────────────
-            # 마그니파이어 팝업이 열려 있으면 Apply 버튼을 가릴 수 있음
-            await page.keyboard.press("Escape")
+            # ── 6.5 팝업 닫기 (Escape만 — date_from 클릭하면 달력이 열려 Apply를 가림)
+            for _ in range(3):
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(0.3)
             await asyncio.sleep(0.5)
-            await _close_filter_panel(page)
-            await asyncio.sleep(1)
 
             logger.info("[Qings] Apply 클릭 시도...")
             save_path = os.path.join(
@@ -186,6 +185,24 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             _NX      = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
             _BTN_ID  = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
             _ICON_ID = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply:icontext"
+
+            # Apply 버튼 좌표 사전 진단 — 해당 좌표에 실제로 뭐가 있는지 확인
+            for frame in page.frames:
+                try:
+                    loc = frame.locator(f"xpath={_SEL['btn_apply_class']}")
+                    if await loc.count() == 0:
+                        continue
+                    bb = await loc.first.bounding_box()
+                    logger.info(f"[Qings] Apply bounding_box={bb} frame={frame.url[:60]}")
+                    if bb and bb["width"] > 0:
+                        cx, cy = bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2
+                        top_el = await frame.evaluate(
+                            f"() => {{ const el = document.elementFromPoint({cx},{cy});"
+                            " return el ? {tag:el.tagName,cls:el.className.slice(0,60),id:(el.id||'').slice(0,60)} : null; }}"
+                        )
+                        logger.info(f"[Qings] elementFromPoint({cx:.0f},{cy:.0f}): {top_el}")
+                except Exception as _e:
+                    logger.info(f"[Qings] Apply 진단 오류: {_e}")
 
             # Apply 버튼: page.mouse.click() 우선 — Nexacro 문서 레벨 이벤트 리스너를 통과
             # force=True 계열은 Nexacro 이벤트 시스템을 우회해 onclick이 발화되지 않음
