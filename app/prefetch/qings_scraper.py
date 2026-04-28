@@ -489,26 +489,25 @@ async def _click_force(page: Page, xpath: str, timeout: int = 5_000) -> bool:
 
 
 async def _mouse_click_apply_visible(page: Page) -> bool:
-    """Apply 버튼을 실제 마우스 클릭 (isTrusted=true).
+    """Apply 버튼을 Playwright force 클릭 (isTrusted=true, overlay 우회).
 
-    is_visible()로 visible btn_WFSA_Apply만 선택.
-    전체 frame에서 overlay 비활성화 후 mouse.down()/up() 명시적 시퀀스.
+    class 기반 셀렉터는 숨김 버튼도 잡을 수 있으므로 ID 기반으로 탐색.
+    force=True 로 overlay hit-test 건너뛰고 element 중앙 직접 클릭.
     """
+    # btn_Apply ID를 포함하는 요소를 전체 frame에서 탐색
+    id_sel = '[id*="btn_Apply"]'
     for frame in page.frames:
         try:
-            loc = frame.locator('[class*="btn_WFSA_Apply"]')
+            loc = frame.locator(id_sel)
             for i in range(await loc.count()):
                 item = loc.nth(i)
                 if not await item.is_visible():
                     continue
-                bb = await item.bounding_box()
-                if not bb:
+                el_id = await item.get_attribute('id') or ''
+                # btn_search 는 제외 (같은 class 를 공유하는 숨겨진 버튼)
+                if 'btn_search' in el_id.lower():
                     continue
-                x = bb["x"] + bb["width"] / 2
-                y = bb["y"] + bb["height"] / 2
-                logger.info(f"[Qings] Apply visible 버튼 발견: ({x:.0f},{y:.0f}), id={await item.get_attribute('id')}")
-
-                # 전체 frame overlay 비활성화
+                # overlay 비활성화 (전체 frame)
                 for f in page.frames:
                     try:
                         await f.evaluate(
@@ -517,17 +516,12 @@ async def _mouse_click_apply_visible(page: Page) -> bool:
                         )
                     except Exception:
                         pass
-
-                # mousedown → mouseup 명시적 시퀀스 (isTrusted=true, 버튼 색 변화 유발)
-                await page.mouse.move(x, y)
-                await asyncio.sleep(0.1)
-                await page.mouse.down()
-                await asyncio.sleep(0.1)
-                await page.mouse.up()
-                logger.info(f"[Qings] Apply mouse.down/up 완료: ({x:.0f},{y:.0f})")
+                logger.info(f"[Qings] Apply 버튼 클릭 시도: id={el_id}")
+                await item.click(force=True, timeout=5_000)
+                logger.info(f"[Qings] Apply force 클릭 성공: {el_id}")
                 return True
         except Exception as e:
-            logger.debug(f"[Qings] Apply 마우스 클릭 오류: {e}")
+            logger.debug(f"[Qings] Apply force 클릭 오류: {e}")
             continue
     return False
 
