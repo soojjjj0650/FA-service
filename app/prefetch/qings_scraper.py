@@ -67,19 +67,22 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
     """
     Qings에서 엑셀을 다운받아 save_dir에 저장하고 파일 경로를 반환합니다.
     실패 시 None 반환.
+
+    접속 흐름: Qings URL 접속 → SSO 로그인(자동 ID/PW + Bio 대기) → Qings 화면 자동화
+    저장된 세션이 있으면 로그인 생략, 만료됐으면 재로그인 후 세션 저장.
     """
     os.makedirs(save_dir, exist_ok=True)
     _AUTH_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     pw: Playwright = await async_playwright().start()
     try:
-        # 기존 browser_pool과 동일한 방식으로 브라우저 실행
         launch_kwargs: dict = {
-            "headless": settings.QINGS_HEADLESS,
+            "headless": False,   # SSO Bio 인증은 headful 필수
             "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
+                "--start-maximized",
             ],
         }
         edge_path = settings.EDGE_EXECUTABLE_PATH
@@ -91,10 +94,17 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
 
         ctx_kwargs: dict = {
             "accept_downloads": True,
-            "viewport": {"width": 1280, "height": 900},
+            "viewport": None,   # --start-maximized와 함께 사용
+            "user_agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0"
+            ),
         }
+        # 저장된 세션이 있으면 로드 (만료됐으면 자동으로 로그인 페이지로 리다이렉트됨)
         if _AUTH_STATE_PATH.exists():
             ctx_kwargs["storage_state"] = str(_AUTH_STATE_PATH)
+            logger.info(f"[Qings] 저장된 세션 로드: {_AUTH_STATE_PATH}")
 
         context = await browser.new_context(**ctx_kwargs)
         page = await context.new_page()
@@ -102,22 +112,20 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
         try:
             url = f"https://{settings.QINGS_URL}"
             logger.info(f"[Qings] 접속 중: {url}")
-            # Nexacro는 계속 네트워크 요청을 하므로 domcontentloaded만 대기
             await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-            # Nexacro 앱 초기화 대기
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
 
-            # SSO 리다이렉트 감지
-            if any(kw in page.url.lower() for kw in ("login", "sso", "auth")):
-                if not settings.QINGS_HEADLESS:
-                    logger.warning("[Qings] SSO 로그인 필요 — 브라우저에서 로그인 후 Enter를 누르세요.")
-                    input("[Qings] 로그인 완료 후 Enter 입력...")
-                    await context.storage_state(path=str(_AUTH_STATE_PATH))
-                    logger.info(f"[Qings] Auth state 저장 완료: {_AUTH_STATE_PATH}")
-                else:
-                    raise RuntimeError(
-                        "SSO 로그인 필요. QINGS_HEADLESS=false 설정 후 수동 로그인하세요."
-                    )
+            # ── 로그인 필요 여부 감지 ─────────────────────────────────────────
+            if any(kw in page.url.lower() for kw in ("login", "sso", "auth", "singlesignon")):
+                logger.info(f"[Qings] 로그인 페이지 감지: {page.url}")
+                await _do_sso_login(page, context)
+                # 로그인 완료 후 Qings 메인으로 이동
+                logger.info("[Qings] 로그인 완료 — Qings 메인 이동")
+                await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                await asyncio.sleep(5)
+            else:
+                logger.info("[Qings] 저장된 세션으로 접속 완료")
+                await asyncio.sleep(3)
 
             # 날짜 계산
             today = datetime.now()
@@ -230,6 +238,66 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await browser.close()
     finally:
         await pw.stop()
+
+
+async def _do_sso_login(page, context) -> None:
+    """Samsung SingleID SSO 로그인을 처리합니다.
+
+    1. ID/PW 자동 입력
+    2. Bio 인증 버튼 클릭
+    3. 핸드폰 생체인증 완료 대기 (사용자가 Enter 입력)
+    4. 세션 저장
+    """
+    from playwright.async_api import TimeoutError as PWTimeout
+
+    # ① ID / PW 자동 입력
+    id_selectors = ["#userNameInput", 'input[name="username"]', 'input[type="text"]']
+    pw_selectors = ["#passwordInput", 'input[name="password"]', 'input[type="password"]']
+
+    filled = False
+    for id_sel, pw_sel in zip(id_selectors, pw_selectors):
+        try:
+            await page.wait_for_selector(id_sel, timeout=10_000)
+            await page.fill(id_sel, settings.PORTAL_USERNAME)
+            await page.fill(pw_sel, settings.PORTAL_PASSWORD)
+            await page.keyboard.press("Enter")
+            logger.info(f"[Qings] ID/PW 입력 완료 (sel={id_sel})")
+            filled = True
+            break
+        except PWTimeout:
+            continue
+
+    if not filled:
+        logger.warning("[Qings] ID/PW 자동 입력 실패 — 브라우저에서 직접 입력해 주세요.")
+
+    # ② Bio 인증 버튼 자동 클릭
+    bio_selectors = [
+        'span:has-text("SingleID Authenticator - Bio")',
+        'text="SingleID Authenticator - Bio"',
+        'button:has-text("Bio")',
+    ]
+    await asyncio.sleep(2)
+    for bio_sel in bio_selectors:
+        try:
+            await page.wait_for_selector(bio_sel, timeout=10_000)
+            await page.click(bio_sel)
+            logger.info("[Qings] Bio 인증 버튼 클릭 완료")
+            break
+        except PWTimeout:
+            continue
+    else:
+        logger.warning("[Qings] Bio 버튼 자동 클릭 실패 — 브라우저에서 직접 선택해 주세요.")
+
+    # ③ 핸드폰 생체인증 완료 대기
+    print("\n" + "=" * 60)
+    print("  [Qings] 핸드폰에서 생체인증(지문/Face ID)을 완료해 주세요.")
+    print("  완료 후 Enter를 누르면 자동화가 계속됩니다.")
+    print("=" * 60)
+    await asyncio.get_event_loop().run_in_executor(None, input, "  Enter: ")
+
+    # ④ 세션 저장
+    await context.storage_state(path=str(_AUTH_STATE_PATH))
+    logger.info(f"[Qings] 세션 저장 완료: {_AUTH_STATE_PATH}")
 
 
 async def _handle_pledge_popup(page: Page):
