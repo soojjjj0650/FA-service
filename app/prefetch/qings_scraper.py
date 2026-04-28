@@ -168,19 +168,10 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
             await _click_any_frame(page, _SEL["chk_warranty_1a"]) or await _click_any_frame(page, _SEL["chk_warranty_1b"])
             await asyncio.sleep(1)
-            # 경영유무무상 팝업 닫기 — Tab으로 포커스 이동하면 팝업 자동 닫힘
-            await page.keyboard.press("Tab")
-            await asyncio.sleep(0.5)
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
-            _all_cols_xpath = _SEL["btn_all_cols"]
-            if not (
-                await _nexacro_click_by_xpath(page, _all_cols_xpath)
-                or await _click_force(page, _all_cols_xpath)
-                or await _click_any_frame(page, _all_cols_xpath)
-            ):
-                logger.warning("[Qings] 다운 컬럼 전체 클릭 실패 — 계속 진행")
+            await _click_any_frame(page, _SEL["btn_all_cols"])
             await asyncio.sleep(1)
 
             logger.info("[Qings] Apply 클릭 시도...")
