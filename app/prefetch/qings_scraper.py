@@ -164,13 +164,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
             await _click_any_frame(page, _SEL["btn_all_cols"])
-            await asyncio.sleep(2)
-
-            # ── 6.5 팝업 닫기 (Escape만 — date_from 클릭하면 달력이 열려 Apply를 가림)
-            for _ in range(3):
-                await page.keyboard.press("Escape")
-                await asyncio.sleep(0.3)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1)
 
             logger.info("[Qings] Apply 클릭 시도...")
             save_path = os.path.join(
