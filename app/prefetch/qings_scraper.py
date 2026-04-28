@@ -260,67 +260,46 @@ async def _do_sso_login(page, context) -> None:
 async def _handle_pledge_popup(page: Page):
     """Apply 후 나타나는 서약 팝업을 처리합니다.
 
-    linkedcontrol.click()은 Nexacro 내부 상태를 제대로 업데이트하지 못해
-    "no data available"이 발생합니다. page.mouse.click() (isTrusted=true)을
-    사용해 실제 마우스 클릭과 동일하게 처리합니다.
+    is_visible() 필터 + locator.click() 사용 (isTrusted=true, iframe offset 자동 보정).
     """
-    # ① 서약함 라디오 버튼 — bounding_box + page.mouse.click() (isTrusted=true)
+    # ① 서약함 라디오 버튼
     pledge_ok = False
     for frame in page.frames:
         try:
             loc = frame.locator('[id*="rdo_pledge"]')
-            if await loc.count() == 0:
-                continue
-            bb = await loc.first.bounding_box()
-            if not bb or bb["width"] == 0:
-                continue
-            x = bb["x"] + bb["width"] / 2
-            y = bb["y"] + bb["height"] / 2
-            await page.mouse.move(x, y)
-            await asyncio.sleep(0.1)
-            await page.mouse.click(x, y)
-            logger.info(f"[Qings] 서약 라디오 마우스 클릭: ({x:.0f},{y:.0f})")
-            pledge_ok = True
-            break
+            for i in range(await loc.count()):
+                item = loc.nth(i)
+                if not await item.is_visible():
+                    continue
+                await item.click(timeout=5_000)
+                logger.info("[Qings] 서약 라디오 클릭 성공")
+                pledge_ok = True
+                break
         except Exception as e:
             logger.debug(f"[Qings] 서약 라디오 오류: {e}")
-            continue
+        if pledge_ok:
+            break
 
     if not pledge_ok:
         logger.warning("[Qings] 서약 라디오 버튼을 찾지 못했습니다 — 팝업이 없을 수 있음")
         return
 
-    # Nexacro가 라디오 상태를 처리할 시간
     await asyncio.sleep(1)
 
-    # ② 확인 버튼 — bounding_box + page.mouse.click() (isTrusted=true)
+    # ② 확인 버튼
     for frame in page.frames:
         try:
-            loc = frame.locator('[id*="Apply Reason"][id*="btn_OK"]')
-            if await loc.count() == 0:
-                continue
-            # visibility:hidden 건너뜀
-            visible = None
+            loc = frame.locator('[id*="btn_OK"]')
             for i in range(await loc.count()):
                 item = loc.nth(i)
-                bb = await item.bounding_box()
-                if bb and bb["width"] > 0 and bb["height"] > 0:
-                    visible = item
-                    break
-            if not visible:
-                continue
-            bb = await visible.bounding_box()
-            x = bb["x"] + bb["width"] / 2
-            y = bb["y"] + bb["height"] / 2
-            await page.mouse.move(x, y)
-            await asyncio.sleep(0.1)
-            await page.mouse.click(x, y)
-            logger.info(f"[Qings] 서약 확인 버튼 마우스 클릭: ({x:.0f},{y:.0f})")
-            await asyncio.sleep(1)
-            return
+                if not await item.is_visible():
+                    continue
+                await item.click(timeout=5_000)
+                logger.info("[Qings] 서약 확인 버튼 클릭 성공")
+                await asyncio.sleep(1)
+                return
         except Exception as e:
             logger.debug(f"[Qings] 서약 확인 버튼 오류: {e}")
-            continue
 
     logger.warning("[Qings] 서약 확인 버튼 클릭 실패")
 
