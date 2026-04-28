@@ -189,10 +189,10 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
                 except Exception:
                     pass
 
-            # Apply 버튼 클릭 시도 — isTrusted=true 방식 우선
+            # Apply 버튼 클릭 시도
             apply_attempts = [
-                ("좌표클릭 (isTrusted=true)",      lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
                 ("Nexacro linkedcontrol.click()", lambda: _nexacro_click(page, _NX)),
+                ("좌표클릭 (isTrusted=true)",      lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
                 ("force 클릭",                     lambda: _click_force(page, _SEL["btn_apply_class"])),
             ]
             clicked = False
