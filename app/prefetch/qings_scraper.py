@@ -241,63 +241,30 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
 
 
 async def _do_sso_login(page, context) -> None:
-    """Samsung SingleID SSO 로그인을 처리합니다.
+    """Samsung SSO 로그인 — ID/PW 자동 입력 후 Enter (Bio 없음).
 
-    1. ID/PW 자동 입력
-    2. Bio 인증 버튼 클릭
-    3. 핸드폰 생체인증 완료 대기 (사용자가 Enter 입력)
-    4. 세션 저장
+    로그인 완료 후 세션을 저장합니다.
     """
     from playwright.async_api import TimeoutError as PWTimeout
 
-    # ① ID / PW 자동 입력
     id_selectors = ["#userNameInput", 'input[name="username"]', 'input[type="text"]']
     pw_selectors = ["#passwordInput", 'input[name="password"]', 'input[type="password"]']
 
-    filled = False
     for id_sel, pw_sel in zip(id_selectors, pw_selectors):
         try:
             await page.wait_for_selector(id_sel, timeout=10_000)
             await page.fill(id_sel, settings.PORTAL_USERNAME)
             await page.fill(pw_sel, settings.PORTAL_PASSWORD)
             await page.keyboard.press("Enter")
-            logger.info(f"[Qings] ID/PW 입력 완료 (sel={id_sel})")
-            filled = True
-            break
+            logger.info(f"[Qings] ID/PW 입력 완료 → Qings 로딩 대기")
+            await asyncio.sleep(5)
+            await context.storage_state(path=str(_AUTH_STATE_PATH))
+            logger.info(f"[Qings] 세션 저장: {_AUTH_STATE_PATH}")
+            return
         except PWTimeout:
             continue
 
-    if not filled:
-        logger.warning("[Qings] ID/PW 자동 입력 실패 — 브라우저에서 직접 입력해 주세요.")
-
-    # ② Bio 인증 버튼 자동 클릭
-    bio_selectors = [
-        'span:has-text("SingleID Authenticator - Bio")',
-        'text="SingleID Authenticator - Bio"',
-        'button:has-text("Bio")',
-    ]
-    await asyncio.sleep(2)
-    for bio_sel in bio_selectors:
-        try:
-            await page.wait_for_selector(bio_sel, timeout=10_000)
-            await page.click(bio_sel)
-            logger.info("[Qings] Bio 인증 버튼 클릭 완료")
-            break
-        except PWTimeout:
-            continue
-    else:
-        logger.warning("[Qings] Bio 버튼 자동 클릭 실패 — 브라우저에서 직접 선택해 주세요.")
-
-    # ③ 핸드폰 생체인증 완료 대기
-    print("\n" + "=" * 60)
-    print("  [Qings] 핸드폰에서 생체인증(지문/Face ID)을 완료해 주세요.")
-    print("  완료 후 Enter를 누르면 자동화가 계속됩니다.")
-    print("=" * 60)
-    await asyncio.get_event_loop().run_in_executor(None, input, "  Enter: ")
-
-    # ④ 세션 저장
-    await context.storage_state(path=str(_AUTH_STATE_PATH))
-    logger.info(f"[Qings] 세션 저장 완료: {_AUTH_STATE_PATH}")
+    raise RuntimeError("SSO 로그인 페이지에서 ID 입력란을 찾지 못했습니다.")
 
 
 async def _handle_pledge_popup(page: Page):
