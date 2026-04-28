@@ -68,8 +68,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
     Qings에서 엑셀을 다운받아 save_dir에 저장하고 파일 경로를 반환합니다.
     실패 시 None 반환.
 
-    접속 흐름: Qings URL 접속 → SSO 로그인(자동 ID/PW + Bio 대기) → Qings 화면 자동화
-    저장된 세션이 있으면 로그인 생략, 만료됐으면 재로그인 후 세션 저장.
+    접속 흐름: www.samsung.net 로그인 → Qings URL로 이동 → 화면 자동화
     """
     os.makedirs(save_dir, exist_ok=True)
     _AUTH_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -77,7 +76,7 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
     pw: Playwright = await async_playwright().start()
     try:
         launch_kwargs: dict = {
-            "headless": False,   # SSO Bio 인증은 headful 필수
+            "headless": False,
             "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
@@ -94,38 +93,28 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
 
         ctx_kwargs: dict = {
             "accept_downloads": True,
-            "viewport": None,   # --start-maximized와 함께 사용
+            "viewport": None,
             "user_agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0"
             ),
         }
-        # 저장된 세션이 있으면 로드 (만료됐으면 자동으로 로그인 페이지로 리다이렉트됨)
         if _AUTH_STATE_PATH.exists():
             ctx_kwargs["storage_state"] = str(_AUTH_STATE_PATH)
-            logger.info(f"[Qings] 저장된 세션 로드: {_AUTH_STATE_PATH}")
 
         context = await browser.new_context(**ctx_kwargs)
         page = await context.new_page()
 
         try:
-            url = f"https://{settings.QINGS_URL}"
-            logger.info(f"[Qings] 접속 중: {url}")
-            await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-            await asyncio.sleep(3)
+            # ── www.samsung.net 로그인 ────────────────────────────────────────
+            await _do_sso_login(page, context)
 
-            # ── 로그인 필요 여부 감지 ─────────────────────────────────────────
-            if any(kw in page.url.lower() for kw in ("login", "sso", "auth", "singlesignon")):
-                logger.info(f"[Qings] 로그인 페이지 감지: {page.url}")
-                await _do_sso_login(page, context)
-                # 로그인 완료 후 Qings 메인으로 이동
-                logger.info("[Qings] 로그인 완료 — Qings 메인 이동")
-                await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-                await asyncio.sleep(5)
-            else:
-                logger.info("[Qings] 저장된 세션으로 접속 완료")
-                await asyncio.sleep(3)
+            # ── Qings 이동 ────────────────────────────────────────────────────
+            qings_url = f"https://{settings.QINGS_URL}"
+            logger.info(f"[Qings] Qings 접속: {qings_url}")
+            await page.goto(qings_url, wait_until="domcontentloaded", timeout=60_000)
+            await asyncio.sleep(5)
 
             # 날짜 계산
             today = datetime.now()
@@ -239,30 +228,28 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
 
 
 async def _do_sso_login(page, context) -> None:
-    """Samsung SSO 로그인 — ID/PW 자동 입력 후 Enter (Bio 없음).
+    """www.samsung.net 로그인 처리.
 
-    로그인 완료 후 세션을 저장합니다.
+    ID는 브라우저에 저장돼 있으므로 비밀번호(.login-pw input)만 입력합니다.
+    이미 로그인된 경우(비밀번호 창 없음)는 그냥 통과합니다.
     """
-    from playwright.async_api import TimeoutError as PWTimeout
+    SAMSUNG_NET = "https://www.samsung.net"
+    logger.info(f"[Qings] www.samsung.net 접속")
+    await page.goto(SAMSUNG_NET, wait_until="domcontentloaded", timeout=30_000)
+    await asyncio.sleep(2)
 
-    id_selectors = ["#userNameInput", 'input[name="username"]', 'input[type="text"]']
-    pw_selectors = ["#passwordInput", 'input[name="password"]', 'input[type="password"]']
+    # 비밀번호 입력창 감지
+    pw_loc = page.locator(".login-pw input")
+    if await pw_loc.count() > 0:
+        logger.info("[Qings] 비밀번호 입력 중...")
+        await pw_loc.first.fill(settings.PORTAL_PASSWORD)
+        await pw_loc.first.press("Enter")
+        await asyncio.sleep(4)
+        logger.info("[Qings] samsung.net 로그인 완료")
+    else:
+        logger.info("[Qings] samsung.net 이미 로그인됨")
 
-    for id_sel, pw_sel in zip(id_selectors, pw_selectors):
-        try:
-            await page.wait_for_selector(id_sel, timeout=10_000)
-            await page.fill(id_sel, settings.PORTAL_USERNAME)
-            await page.fill(pw_sel, settings.PORTAL_PASSWORD)
-            await page.keyboard.press("Enter")
-            logger.info(f"[Qings] ID/PW 입력 완료 → Qings 로딩 대기")
-            await asyncio.sleep(5)
-            await context.storage_state(path=str(_AUTH_STATE_PATH))
-            logger.info(f"[Qings] 세션 저장: {_AUTH_STATE_PATH}")
-            return
-        except PWTimeout:
-            continue
-
-    raise RuntimeError("SSO 로그인 페이지에서 ID 입력란을 찾지 못했습니다.")
+    await context.storage_state(path=str(_AUTH_STATE_PATH))
 
 
 async def _handle_pledge_popup(page: Page):
