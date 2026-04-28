@@ -177,10 +177,10 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await page.bring_to_front()
             await asyncio.sleep(0.3)
 
-            # Apply 버튼 클릭 시도
+            # Apply 버튼 클릭 시도 — isTrusted=true 마우스 클릭 우선
             apply_attempts = [
+                ("마우스클릭 (isTrusted=true)",    lambda: _mouse_click_apply_visible(page)),
                 ("Nexacro linkedcontrol.click()", lambda: _nexacro_click(page, _NX)),
-                ("좌표클릭 (isTrusted=true)",      lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
                 ("force 클릭",                     lambda: _click_force(page, _SEL["btn_apply_class"])),
             ]
             clicked = False
@@ -486,6 +486,42 @@ async def _click_force(page: Page, xpath: str, timeout: int = 5_000) -> bool:
     return False
 
 
+
+
+async def _mouse_click_apply_visible(page: Page) -> bool:
+    """Apply 버튼을 실제 마우스 클릭 (isTrusted=true).
+
+    visibility:visible인 btn_WFSA_Apply 요소만 선택 → overlay 비활성화 → page.mouse.click().
+    linkedcontrol.click()은 버튼 색 변화 없이 Nexacro 내부 이벤트가 무시되므로 사용하지 않음.
+    """
+    for frame in page.frames:
+        try:
+            loc = frame.locator('[class*="btn_WFSA_Apply"]')
+            count = await loc.count()
+            for i in range(count):
+                item = loc.nth(i)
+                bb = await item.bounding_box()
+                if not bb or bb["width"] == 0 or bb["height"] == 0:
+                    continue
+                # overlay 비활성화 (클릭 직전에만)
+                try:
+                    await frame.evaluate(
+                        "() => { document.querySelectorAll('.nexacontentsbox')"
+                        ".forEach(o => { if (o.style) o.style.pointerEvents = 'none'; }); }"
+                    )
+                except Exception:
+                    pass
+                x = bb["x"] + bb["width"] / 2
+                y = bb["y"] + bb["height"] / 2
+                await page.mouse.move(x, y)
+                await asyncio.sleep(0.15)
+                await page.mouse.click(x, y)
+                logger.info(f"[Qings] Apply 마우스 클릭: ({x:.0f},{y:.0f})")
+                return True
+        except Exception as e:
+            logger.debug(f"[Qings] Apply 마우스 클릭 오류: {e}")
+            continue
+    return False
 
 
 async def _mouse_position_click_xpath(page: Page, xpath: str, timeout: int = 5_000) -> bool:
