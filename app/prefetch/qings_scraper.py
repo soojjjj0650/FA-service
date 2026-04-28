@@ -244,8 +244,8 @@ async def _do_sso_login(page, context) -> None:
         logger.info("[Qings] ID/비밀번호 입력 중...")
         id_loc = page.locator(".login-id input")
         if await id_loc.count() > 0:
-            await id_loc.first.fill(settings.PORTAL_USERNAME)
-        await pw_loc.first.fill(settings.PORTAL_PASSWORD)
+            await id_loc.first.fill(settings.QINGS_USERNAME)
+        await pw_loc.first.fill(settings.QINGS_PASSWORD)
         await pw_loc.first.press("Enter")
         await asyncio.sleep(4)
         logger.info("[Qings] samsung.net 로그인 완료")
@@ -333,10 +333,6 @@ async def _handle_pledge_popup(page: Page):
             return
         except Exception:
             continue
-
-    logger.warning("[Qings] 서약 확인 버튼 클릭 실패")
-
-
 
     logger.warning("[Qings] 서약 확인 버튼 클릭 실패")
 
