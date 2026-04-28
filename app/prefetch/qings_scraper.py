@@ -241,7 +241,10 @@ async def _do_sso_login(page, context) -> None:
     # 비밀번호 입력창 감지
     pw_loc = page.locator(".login-pw input")
     if await pw_loc.count() > 0:
-        logger.info("[Qings] 비밀번호 입력 중...")
+        logger.info("[Qings] ID/비밀번호 입력 중...")
+        id_loc = page.locator(".login-id input")
+        if await id_loc.count() > 0:
+            await id_loc.first.fill(settings.PORTAL_USERNAME)
         await pw_loc.first.fill(settings.PORTAL_PASSWORD)
         await pw_loc.first.press("Enter")
         await asyncio.sleep(4)
