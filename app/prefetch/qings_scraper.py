@@ -239,21 +239,46 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
 async def _handle_pledge_popup(page: Page):
     """Apply 후 나타나는 서약 팝업을 처리합니다.
 
-    1. rdo_pledge 라디오 버튼 → linkedcontrol.set_index(0)
-    2. btn_OK 버튼 → Playwright locator 클릭
+    1. "서약함" 텍스트를 직접 찾아 linkedcontrol.click() 호출
+       (set_index(0/1) 인덱스 오류 방지 — "서약 안함"을 선택하면 no data 발생)
+    2. btn_OK 버튼 → linkedcontrol.click() 또는 Playwright locator 클릭
     """
-    # ① 서약함 라디오 버튼 선택
+    # ① "서약함" 텍스트로 라디오 항목을 직접 찾아 클릭
     pledge_script = """
     () => {
-        const el = document.querySelector('[id*="rdo_pledge"]');
-        if (!el) return 'no_rdo';
-        const linked = el._linked_element;
+        // "서약함" 텍스트를 가진 DOM 요소를 찾아 Nexacro 컴포넌트로 클릭
+        for (const el of document.querySelectorAll('*')) {
+            const txt = (el.innerText || el.textContent || '').trim();
+            if (txt !== '서약함') continue;
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) continue;
+            const linked = el._linked_element;
+            if (linked && linked.linkedcontrol) {
+                const ctrl = linked.linkedcontrol;
+                if (typeof ctrl.click === 'function') { ctrl.click(); return 'text_linkedclick'; }
+            }
+            el.click();
+            return 'text_domclick';
+        }
+        // fallback: rdo_pledge 컴포넌트 set_index로 시도 (0, 1 순서)
+        const rdoEl = document.querySelector('[id*="rdo_pledge"]');
+        if (!rdoEl) return 'no_rdo';
+        const linked = rdoEl._linked_element;
         if (!linked) return 'no_linked';
         const ctrl = linked.linkedcontrol;
         if (!ctrl) return 'no_ctrl';
-        if (typeof ctrl.set_index === 'function') { ctrl.set_index(0); return 'set_index_ok'; }
-        if (typeof ctrl.click === 'function') { ctrl.click(); return 'click_ok'; }
-        return 'no_method';
+        if (typeof ctrl.set_index !== 'function') return 'no_set_index';
+        // 항목 수 확인 후 올바른 인덱스 선택
+        const count = ctrl.getItemCount ? ctrl.getItemCount() : 2;
+        for (let i = 0; i < count; i++) {
+            const label = ctrl.getItemData ? ctrl.getItemData(i) : '';
+            if (String(label).includes('서약함')) {
+                ctrl.set_index(i);
+                return 'set_index_ok:' + i;
+            }
+        }
+        ctrl.set_index(0);
+        return 'set_index_fallback:0';
     }
     """
     pledge_ok = False
@@ -261,7 +286,7 @@ async def _handle_pledge_popup(page: Page):
         try:
             result = await frame.evaluate(pledge_script)
             logger.info(f"[Qings] 서약 라디오 결과: {result!r} frame={frame.url[:50]}")
-            if result in ('set_index_ok', 'click_ok'):
+            if result and result not in ('no_rdo', 'no_linked', 'no_ctrl', 'no_set_index'):
                 pledge_ok = True
                 break
         except Exception:
@@ -273,7 +298,37 @@ async def _handle_pledge_popup(page: Page):
 
     await asyncio.sleep(0.5)
 
-    # ② 확인 버튼 클릭 — Playwright locator 우선, 실패 시 JS 좌표 클릭
+    # ② 확인 버튼 클릭 — linkedcontrol.click() 우선, Playwright locator 차선
+    ok_script = """
+    () => {
+        // visibility:hidden이 아닌 btn_OK 선택 (btn_Apply와 같은 패턴 적용)
+        const els = document.querySelectorAll('[id*="Apply Reason"][id*="btn_OK"]');
+        for (const el of els) {
+            const cs = window.getComputedStyle(el);
+            if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+            const linked = el._linked_element;
+            if (linked && linked.linkedcontrol) {
+                const ctrl = linked.linkedcontrol;
+                if (typeof ctrl.click === 'function') { ctrl.click(); return 'linkedcontrol_click'; }
+            }
+            el.click();
+            return 'dom_click';
+        }
+        return 'no_ok_btn';
+    }
+    """
+    for frame in page.frames:
+        try:
+            result = await frame.evaluate(ok_script)
+            logger.info(f"[Qings] 서약 확인 버튼 결과: {result!r} frame={frame.url[:50]}")
+            if result in ('linkedcontrol_click', 'dom_click'):
+                logger.info("[Qings] 서약 확인 버튼 클릭 완료")
+                await asyncio.sleep(1)
+                return
+        except Exception:
+            continue
+
+    # fallback: Playwright locator
     ok_xpath = '//*[contains(@id,"Apply Reason") and contains(@id,"btn_OK")]'
     for frame in page.frames:
         try:
@@ -281,32 +336,14 @@ async def _handle_pledge_popup(page: Page):
             if await loc.count() == 0:
                 continue
             await loc.first.click(delay=100)
-            logger.info("[Qings] 서약 확인 버튼 클릭 완료")
+            logger.info("[Qings] 서약 확인 버튼 locator 클릭 완료")
             await asyncio.sleep(1)
             return
         except Exception:
             continue
 
-    # fallback: JS 좌표 클릭
-    for frame in page.frames:
-        try:
-            pos = await frame.evaluate("""
-            () => {
-                const el = document.querySelector('[id*="Apply Reason"][id*="btn_OK"]');
-                if (!el) return null;
-                const r = el.getBoundingClientRect();
-                if (r.width === 0) return null;
-                return {x: r.left + r.width / 2, y: r.top + r.height / 2};
-            }
-            """)
-            if not pos:
-                continue
-            await page.mouse.click(pos["x"], pos["y"])
-            logger.info(f"[Qings] 서약 확인 버튼 좌표 클릭: ({pos['x']:.0f},{pos['y']:.0f})")
-            await asyncio.sleep(1)
-            return
-        except Exception:
-            continue
+    logger.warning("[Qings] 서약 확인 버튼 클릭 실패")
+
 
     logger.warning("[Qings] 서약 확인 버튼 클릭 실패")
 
