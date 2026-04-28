@@ -491,8 +491,8 @@ async def _click_force(page: Page, xpath: str, timeout: int = 5_000) -> bool:
 async def _mouse_click_apply_visible(page: Page) -> bool:
     """Apply 버튼을 실제 마우스 클릭 (isTrusted=true).
 
-    visibility:visible인 btn_WFSA_Apply 요소만 선택 → overlay 비활성화 → page.mouse.click().
-    linkedcontrol.click()은 버튼 색 변화 없이 Nexacro 내부 이벤트가 무시되므로 사용하지 않음.
+    visibility:hidden인 btn_search와 구분하기 위해 is_visible()로 필터링.
+    overlay 비활성화 후 Playwright locator.click() 사용 (isTrusted=true + iframe offset 자동 보정).
     """
     for frame in page.frames:
         try:
@@ -500,8 +500,7 @@ async def _mouse_click_apply_visible(page: Page) -> bool:
             count = await loc.count()
             for i in range(count):
                 item = loc.nth(i)
-                bb = await item.bounding_box()
-                if not bb or bb["width"] == 0 or bb["height"] == 0:
+                if not await item.is_visible():
                     continue
                 # overlay 비활성화 (클릭 직전에만)
                 try:
@@ -511,12 +510,10 @@ async def _mouse_click_apply_visible(page: Page) -> bool:
                     )
                 except Exception:
                     pass
-                x = bb["x"] + bb["width"] / 2
-                y = bb["y"] + bb["height"] / 2
-                await page.mouse.move(x, y)
-                await asyncio.sleep(0.15)
-                await page.mouse.click(x, y)
-                logger.info(f"[Qings] Apply 마우스 클릭: ({x:.0f},{y:.0f})")
+                bb = await item.bounding_box()
+                logger.info(f"[Qings] Apply visible 버튼 발견: ({bb['x']+bb['width']/2:.0f},{bb['y']+bb['height']/2:.0f})")
+                await item.click(timeout=5_000)
+                logger.info("[Qings] Apply locator 클릭 성공")
                 return True
         except Exception as e:
             logger.debug(f"[Qings] Apply 마우스 클릭 오류: {e}")
