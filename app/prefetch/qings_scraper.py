@@ -116,10 +116,17 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await page.goto(qings_url, wait_until="domcontentloaded", timeout=60_000)
             await asyncio.sleep(5)
 
-            # 날짜 계산
+            # 날짜 계산 — 직전 영업일 2개 (주말 건너뜀)
             today = datetime.now()
-            date_from = (today - timedelta(days=2)).strftime("%Y%m%d")
-            date_to   = (today - timedelta(days=1)).strftime("%Y%m%d")
+            biz_days: list[datetime] = []
+            d = today - timedelta(days=1)
+            while len(biz_days) < 2:
+                if d.weekday() < 5:   # 0=월 … 4=금
+                    biz_days.append(d)
+                d -= timedelta(days=1)
+            date_from = biz_days[-1].strftime("%Y%m%d")   # 더 과거 영업일
+            date_to   = biz_days[0].strftime("%Y%m%d")    # 더 최근 영업일
+            logger.info(f"[Qings] 조회 기간: {date_from} ~ {date_to}")
 
             # ── 1. Korea SVC Data(KR) 클릭 ───────────────────────────────────
             logger.info("[Qings] Korea SVC Data(KR) 클릭")
