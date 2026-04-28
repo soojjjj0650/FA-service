@@ -489,12 +489,11 @@ async def _click_force(page: Page, xpath: str, timeout: int = 5_000) -> bool:
 
 
 async def _mouse_click_apply_visible(page: Page) -> bool:
-    """Apply 버튼을 Playwright force 클릭 (isTrusted=true, overlay 우회).
+    """Apply 버튼을 키보드로 활성화 (isTrusted=true, overlay 무관).
 
-    class 기반 셀렉터는 숨김 버튼도 잡을 수 있으므로 ID 기반으로 탐색.
-    force=True 로 overlay hit-test 건너뛰고 element 중앙 직접 클릭.
+    마우스 클릭은 Nexacro 자동화 감지로 무시되므로,
+    focus() → Space 키로 버튼을 활성화합니다.
     """
-    # btn_Apply ID를 포함하는 요소를 전체 frame에서 탐색
     id_sel = '[id*="btn_Apply"]'
     for frame in page.frames:
         try:
@@ -504,24 +503,17 @@ async def _mouse_click_apply_visible(page: Page) -> bool:
                 if not await item.is_visible():
                     continue
                 el_id = await item.get_attribute('id') or ''
-                # btn_search 는 제외 (같은 class 를 공유하는 숨겨진 버튼)
                 if 'btn_search' in el_id.lower():
                     continue
-                # overlay 비활성화 (전체 frame)
-                for f in page.frames:
-                    try:
-                        await f.evaluate(
-                            "() => { document.querySelectorAll('.nexacontentsbox')"
-                            ".forEach(o => { if (o.style) o.style.pointerEvents = 'none'; }); }"
-                        )
-                    except Exception:
-                        pass
-                logger.info(f"[Qings] Apply 버튼 클릭 시도: id={el_id}")
-                await item.click(force=True, timeout=5_000)
-                logger.info(f"[Qings] Apply force 클릭 성공: {el_id}")
+                logger.info(f"[Qings] Apply 버튼 focus+Space: id={el_id}")
+                await item.focus()
+                await asyncio.sleep(0.1)
+                await page.keyboard.press("Space")
+                await asyncio.sleep(0.1)
+                logger.info("[Qings] Apply Space 키 입력 완료")
                 return True
         except Exception as e:
-            logger.debug(f"[Qings] Apply force 클릭 오류: {e}")
+            logger.debug(f"[Qings] Apply 키보드 클릭 오류: {e}")
             continue
     return False
 
