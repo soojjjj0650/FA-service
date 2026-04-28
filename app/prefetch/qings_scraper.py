@@ -260,80 +260,66 @@ async def _do_sso_login(page, context) -> None:
 async def _handle_pledge_popup(page: Page):
     """Apply 후 나타나는 서약 팝업을 처리합니다.
 
-    1. rdo_pledge → linkedcontrol.click() (set_index(0) 확인됨)
-    2. btn_OK → CSS 셀렉터로 linkedcontrol.click() 또는 Playwright locator
+    linkedcontrol.click()은 Nexacro 내부 상태를 제대로 업데이트하지 못해
+    "no data available"이 발생합니다. page.mouse.click() (isTrusted=true)을
+    사용해 실제 마우스 클릭과 동일하게 처리합니다.
     """
-    # ① 서약함 라디오 버튼 — rdo_pledge의 linkedcontrol.click()
-    pledge_script = """
-    () => {
-        const el = document.querySelector('[id*="rdo_pledge"]');
-        if (!el) return 'no_rdo';
-        const linked = el._linked_element;
-        if (!linked) return 'no_linked';
-        const ctrl = linked.linkedcontrol;
-        if (!ctrl) return 'no_ctrl';
-        if (typeof ctrl.click === 'function') { ctrl.click(); return 'click_ok'; }
-        if (typeof ctrl.set_index === 'function') { ctrl.set_index(0); return 'set_index_ok'; }
-        return 'no_method';
-    }
-    """
+    # ① 서약함 라디오 버튼 — bounding_box + page.mouse.click() (isTrusted=true)
     pledge_ok = False
     for frame in page.frames:
         try:
-            result = await frame.evaluate(pledge_script)
-            logger.info(f"[Qings] 서약 라디오 결과: {result!r} frame={frame.url[:50]}")
-            if result in ('click_ok', 'set_index_ok'):
-                pledge_ok = True
-                break
-        except Exception:
+            loc = frame.locator('[id*="rdo_pledge"]')
+            if await loc.count() == 0:
+                continue
+            bb = await loc.first.bounding_box()
+            if not bb or bb["width"] == 0:
+                continue
+            x = bb["x"] + bb["width"] / 2
+            y = bb["y"] + bb["height"] / 2
+            await page.mouse.move(x, y)
+            await asyncio.sleep(0.1)
+            await page.mouse.click(x, y)
+            logger.info(f"[Qings] 서약 라디오 마우스 클릭: ({x:.0f},{y:.0f})")
+            pledge_ok = True
+            break
+        except Exception as e:
+            logger.debug(f"[Qings] 서약 라디오 오류: {e}")
             continue
 
     if not pledge_ok:
         logger.warning("[Qings] 서약 라디오 버튼을 찾지 못했습니다 — 팝업이 없을 수 있음")
         return
 
-    await asyncio.sleep(0.5)
+    # Nexacro가 라디오 상태를 처리할 시간
+    await asyncio.sleep(1)
 
-    # ② 확인 버튼 — CSS '[id*="Apply Reason"][id*="btn_OK"]' → linkedcontrol.click()
-    ok_script = """
-    () => {
-        const els = document.querySelectorAll('[id*="Apply Reason"][id*="btn_OK"]');
-        for (const el of els) {
-            const cs = window.getComputedStyle(el);
-            if (cs.visibility === 'hidden' || cs.display === 'none') continue;
-            const linked = el._linked_element;
-            if (linked && linked.linkedcontrol) {
-                const ctrl = linked.linkedcontrol;
-                if (typeof ctrl.click === 'function') { ctrl.click(); return 'linkedcontrol_click'; }
-            }
-            el.click();
-            return 'dom_click';
-        }
-        return 'no_ok_btn';
-    }
-    """
-    for frame in page.frames:
-        try:
-            result = await frame.evaluate(ok_script)
-            logger.info(f"[Qings] 서약 확인 버튼 결과: {result!r} frame={frame.url[:50]}")
-            if result in ('linkedcontrol_click', 'dom_click'):
-                logger.info("[Qings] 서약 확인 버튼 클릭 완료")
-                await asyncio.sleep(1)
-                return
-        except Exception:
-            continue
-
-    # fallback: Playwright locator (CSS selector)
+    # ② 확인 버튼 — bounding_box + page.mouse.click() (isTrusted=true)
     for frame in page.frames:
         try:
             loc = frame.locator('[id*="Apply Reason"][id*="btn_OK"]')
             if await loc.count() == 0:
                 continue
-            await loc.first.click(delay=100)
-            logger.info("[Qings] 서약 확인 버튼 locator 클릭 완료")
+            # visibility:hidden 건너뜀
+            visible = None
+            for i in range(await loc.count()):
+                item = loc.nth(i)
+                bb = await item.bounding_box()
+                if bb and bb["width"] > 0 and bb["height"] > 0:
+                    visible = item
+                    break
+            if not visible:
+                continue
+            bb = await visible.bounding_box()
+            x = bb["x"] + bb["width"] / 2
+            y = bb["y"] + bb["height"] / 2
+            await page.mouse.move(x, y)
+            await asyncio.sleep(0.1)
+            await page.mouse.click(x, y)
+            logger.info(f"[Qings] 서약 확인 버튼 마우스 클릭: ({x:.0f},{y:.0f})")
             await asyncio.sleep(1)
             return
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[Qings] 서약 확인 버튼 오류: {e}")
             continue
 
     logger.warning("[Qings] 서약 확인 버튼 클릭 실패")
