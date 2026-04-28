@@ -207,6 +207,11 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             if not clicked:
                 raise RuntimeError("Apply 버튼 클릭 실패 — 로그를 확인하세요.")
 
+            # ── 7. 서약 팝업 처리 ─────────────────────────────────────────────
+            logger.info("[Qings] 서약 팝업 대기 중...")
+            await asyncio.sleep(2)
+            await _handle_pledge_popup(page)
+
             logger.info("[Qings] Apply 클릭 완료 — 다운로드 대기 중 (최대 3분)...")
             # save_dir 먼저, 없으면 Windows Downloads 폴더 감시
             found = await _wait_new_xlsx(save_dir, before_save, timeout=30)
@@ -229,6 +234,81 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await browser.close()
     finally:
         await pw.stop()
+
+
+async def _handle_pledge_popup(page: Page):
+    """Apply 후 나타나는 서약 팝업을 처리합니다.
+
+    1. rdo_pledge 라디오 버튼 → linkedcontrol.set_index(0)
+    2. btn_OK 버튼 → Playwright locator 클릭
+    """
+    # ① 서약함 라디오 버튼 선택
+    pledge_script = """
+    () => {
+        const el = document.querySelector('[id*="rdo_pledge"]');
+        if (!el) return 'no_rdo';
+        const linked = el._linked_element;
+        if (!linked) return 'no_linked';
+        const ctrl = linked.linkedcontrol;
+        if (!ctrl) return 'no_ctrl';
+        if (typeof ctrl.set_index === 'function') { ctrl.set_index(0); return 'set_index_ok'; }
+        if (typeof ctrl.click === 'function') { ctrl.click(); return 'click_ok'; }
+        return 'no_method';
+    }
+    """
+    pledge_ok = False
+    for frame in page.frames:
+        try:
+            result = await frame.evaluate(pledge_script)
+            logger.info(f"[Qings] 서약 라디오 결과: {result!r} frame={frame.url[:50]}")
+            if result in ('set_index_ok', 'click_ok'):
+                pledge_ok = True
+                break
+        except Exception:
+            continue
+
+    if not pledge_ok:
+        logger.warning("[Qings] 서약 라디오 버튼을 찾지 못했습니다 — 팝업이 없을 수 있음")
+        return
+
+    await asyncio.sleep(0.5)
+
+    # ② 확인 버튼 클릭 — Playwright locator 우선, 실패 시 JS 좌표 클릭
+    ok_xpath = '//*[contains(@id,"Apply Reason") and contains(@id,"btn_OK")]'
+    for frame in page.frames:
+        try:
+            loc = frame.locator(f"xpath={ok_xpath}")
+            if await loc.count() == 0:
+                continue
+            await loc.first.click(delay=100)
+            logger.info("[Qings] 서약 확인 버튼 클릭 완료")
+            await asyncio.sleep(1)
+            return
+        except Exception:
+            continue
+
+    # fallback: JS 좌표 클릭
+    for frame in page.frames:
+        try:
+            pos = await frame.evaluate("""
+            () => {
+                const el = document.querySelector('[id*="Apply Reason"][id*="btn_OK"]');
+                if (!el) return null;
+                const r = el.getBoundingClientRect();
+                if (r.width === 0) return null;
+                return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+            }
+            """)
+            if not pos:
+                continue
+            await page.mouse.click(pos["x"], pos["y"])
+            logger.info(f"[Qings] 서약 확인 버튼 좌표 클릭: ({pos['x']:.0f},{pos['y']:.0f})")
+            await asyncio.sleep(1)
+            return
+        except Exception:
+            continue
+
+    logger.warning("[Qings] 서약 확인 버튼 클릭 실패")
 
 
 def _snapshot_xlsx(folder: str) -> set:
