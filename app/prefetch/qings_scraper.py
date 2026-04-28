@@ -244,9 +244,9 @@ async def _do_sso_login(page, context) -> None:
         logger.info("[Qings] ID/비밀번호 입력 중...")
         id_loc = page.locator(".login-id input")
         if await id_loc.count() > 0:
-            await id_loc.first.triple_click()
+            await id_loc.first.click(click_count=3)
             await id_loc.first.type(settings.QINGS_USERNAME, delay=50)
-        await pw_loc.first.triple_click()
+        await pw_loc.first.click(click_count=3)
         await pw_loc.first.type(settings.QINGS_PASSWORD, delay=50)
         await pw_loc.first.press("Enter")
         await asyncio.sleep(4)
