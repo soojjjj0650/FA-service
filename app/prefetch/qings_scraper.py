@@ -162,8 +162,10 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
+            # 경영유무무상 팝업이 열린 채로 클릭하면 overlay가 가로막으므로
+            # Apply 버튼과 동일한 방식(overlay 숨김 + linkedcontrol.click)으로 클릭
             logger.info("[Qings] 다운 컬럼 전체 클릭")
-            await _click_any_frame(page, _SEL["btn_all_cols"])
+            await _nexacro_click_by_xpath(page, _SEL["btn_all_cols"])
             await asyncio.sleep(1)
 
             logger.info("[Qings] Apply 클릭 시도...")
@@ -380,6 +382,56 @@ async def _click_any_frame(page: Page, xpath: str, timeout: int = 5_000) -> bool
     return False
 
 
+
+
+async def _nexacro_click_by_xpath(page: Page, xpath: str) -> bool:
+    """XPath로 요소를 찾아 overlay를 숨기고 linkedcontrol.click()으로 클릭합니다.
+
+    Apply 버튼과 동일한 방식 — 열려 있는 magnifier 팝업 overlay가 가로막는 경우도 처리.
+    visibility:hidden인 요소는 건너뜁니다.
+    """
+    id_hint = xpath.split('"')[-2] if '"' in xpath else xpath  # 로그용
+    script = f"""
+    () => {{
+        // overlay 숨기기
+        document.querySelectorAll('.nexacontentsbox').forEach(o => {{
+            if (o.style) o.style.pointerEvents = 'none';
+        }});
+        try {{
+            if (typeof nexacro !== 'undefined' && typeof nexacro._hide_overlays === 'function')
+                nexacro._hide_overlays();
+        }} catch(_) {{}}
+
+        // xpath 대신 id 포함 조건으로 탐색
+        const xpath = {repr(xpath.replace('xpath=', ''))};
+        const result = document.evaluate(xpath, document, null,
+            XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        for (let i = 0; i < result.snapshotLength; i++) {{
+            const el = result.snapshotItem(i);
+            if (!el) continue;
+            const cs = window.getComputedStyle(el);
+            if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+            const linked = el._linked_element;
+            if (linked && linked.linkedcontrol) {{
+                const ctrl = linked.linkedcontrol;
+                if (typeof ctrl.click === 'function') {{ ctrl.click(); return 'linkedcontrol_click'; }}
+            }}
+            el.click();
+            return 'dom_click';
+        }}
+        return 'not_found';
+    }}
+    """
+    for frame in page.frames:
+        try:
+            result = await frame.evaluate(script)
+            logger.info(f"[Qings] nexacro_click_by_xpath: {result!r} ({id_hint[-40:]})")
+            if result in ('linkedcontrol_click', 'dom_click'):
+                return True
+        except Exception as e:
+            logger.debug(f"[Qings] nexacro_click_by_xpath 오류: {e}")
+            continue
+    return False
 
 
 async def _nexacro_click(page: Page, component_path: str) -> bool:
