@@ -139,6 +139,8 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
             await _click(page, _SEL["chk_product_0"])
             await asyncio.sleep(0.5)
+            await page.keyboard.press("Escape")  # 팝업 닫기
+            await asyncio.sleep(0.5)
 
             # ── 4. 지수산입구분 선택 ──────────────────────────────────────────
             logger.info("[Qings] 지수산입구분 돋보기 클릭")
@@ -148,6 +150,8 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
             await _click_any_frame(page, _SEL["chk_intype_1a"]) or await _click_any_frame(page, _SEL["chk_intype_1b"])
             await asyncio.sleep(1)
+            await page.keyboard.press("Escape")  # 팝업 닫기
+            await asyncio.sleep(0.5)
 
             # ── 5. 경영유무무상 선택 ──────────────────────────────────────────
             logger.info("[Qings] 경영유무무상 돋보기 클릭")
@@ -157,11 +161,21 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             await asyncio.sleep(1)
             await _click_any_frame(page, _SEL["chk_warranty_1a"]) or await _click_any_frame(page, _SEL["chk_warranty_1b"])
             await asyncio.sleep(1)
+            await page.keyboard.press("Escape")  # 팝업 닫기
+            await asyncio.sleep(0.5)
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
             await _click_any_frame(page, _SEL["btn_all_cols"])
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
+
+            # Apply 직전 스크린샷 (필터 상태 확인용)
+            try:
+                ss_path = str(Path(save_dir) / f"debug_before_apply_{today.strftime('%H%M%S')}.png")
+                await page.screenshot(path=ss_path)
+                logger.info(f"[Qings] Apply 직전 스크린샷: {ss_path}")
+            except Exception:
+                pass
 
             logger.info("[Qings] Apply 클릭 시도...")
             save_path = os.path.join(
