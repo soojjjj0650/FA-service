@@ -176,11 +176,23 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             _NX      = "mainframe.VFrameSet0.WorkFrame.WORK_FRAME_QUA1001.form.div_left.form.btn_Apply"
             await page.bring_to_front()
             await asyncio.sleep(0.3)
+            # 마우스 클릭 전 nexacontentsbox overlay 비활성화
+            for frame in page.frames:
+                try:
+                    await frame.evaluate("""
+                    () => {
+                        document.querySelectorAll('.nexacontentsbox').forEach(o => {
+                            if (o.style) o.style.pointerEvents = 'none';
+                        });
+                    }
+                    """)
+                except Exception:
+                    pass
 
-            # Apply 버튼 클릭 시도
+            # Apply 버튼 클릭 시도 — isTrusted=true 방식 우선
             apply_attempts = [
-                ("Nexacro linkedcontrol.click()", lambda: _nexacro_click(page, _NX)),
                 ("좌표클릭 (isTrusted=true)",      lambda: _mouse_position_click_xpath(page, _SEL["btn_apply_class"])),
+                ("Nexacro linkedcontrol.click()", lambda: _nexacro_click(page, _NX)),
                 ("force 클릭",                     lambda: _click_force(page, _SEL["btn_apply_class"])),
             ]
             clicked = False
