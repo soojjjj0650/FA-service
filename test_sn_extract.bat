@@ -20,9 +20,15 @@ if errorlevel 1 (
     pip install openpyxl
 )
 
+python -c "import xlrd" > nul 2>&1
+if errorlevel 1 (
+    echo [설치] xlrd 설치 중...
+    pip install xlrd
+)
+
 echo.
 if "%~1"=="" (
-    echo CSV_DOWNLOAD_PATH 폴더에서 최신 xlsx 자동 탐색...
+    echo CSV_DOWNLOAD_PATH 폴더에서 최신 xls/xlsx 자동 탐색...
     python test_sn_extract.py
 ) else (
     echo 파일: %~1

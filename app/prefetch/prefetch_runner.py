@@ -26,31 +26,44 @@ def get_status() -> dict:
 
 
 # ── SN 추출 ───────────────────────────────────────────────────────────────────
+def _iter_excel_rows(excel_path: str):
+    """xls/xlsx 모두 지원하는 행 이터레이터. (headers, row_iter) 반환."""
+    ext = str(excel_path).lower()
+    if ext.endswith(".xls"):
+        import xlrd
+        wb = xlrd.open_workbook(excel_path)
+        ws = wb.sheet_by_index(0)
+        headers = [str(ws.cell_value(0, c)).strip() for c in range(ws.ncols)]
+        def row_iter():
+            for r in range(1, ws.nrows):
+                yield tuple(ws.cell_value(r, c) for c in range(ws.ncols))
+        return headers, row_iter()
+    else:
+        import openpyxl
+        wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+        ws = wb.active
+        rows = ws.iter_rows(values_only=True)
+        header_row = next(rows)
+        headers = [str(v).strip() if v is not None else "" for v in header_row]
+        return headers, rows
+
+
 def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> list[str]:
-    """Qings 엑셀에서 SN 목록을 추출합니다.
+    """Qings 엑셀에서 SN 목록을 추출합니다 (xls/xlsx 모두 지원).
 
     증상명(CV열) 필터: 통화/수화/송화/데이터 접속 관련 행만 포함.
     SN 추출: 제조번호(단축)(AS열), 중복 제거.
     """
-    import openpyxl
-
     if sn_column is None:
         sn_column = settings.QINGS_SN_COLUMN
 
-    symptom_col  = settings.QINGS_SYMPTOM_COLUMN
-    keywords     = settings.QINGS_SYMPTOM_KEYWORDS
+    symptom_col = settings.QINGS_SYMPTOM_COLUMN
+    keywords    = settings.QINGS_SYMPTOM_KEYWORDS
 
-    wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
-    ws = wb.active
-
-    headers = [
-        str(cell.value).strip() if cell.value is not None else ""
-        for cell in next(ws.iter_rows(max_row=1))
-    ]
+    headers, row_iter = _iter_excel_rows(excel_path)
 
     if sn_column not in headers:
         logger.warning(f"[Prefetch] SN 열 '{sn_column}' 없음. 헤더: {headers[:10]}")
-        wb.close()
         return []
 
     sn_idx      = headers.index(sn_column)
@@ -63,8 +76,7 @@ def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> lis
     sns:  list[str] = []
     skipped = 0
 
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        # 증상명 필터
+    for row in row_iter:
         if symptom_idx is not None:
             symptom = str(row[symptom_idx]).strip() if symptom_idx < len(row) and row[symptom_idx] else ""
             if not any(kw in symptom for kw in keywords):
@@ -78,7 +90,6 @@ def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> lis
                 seen.add(sn)
                 sns.append(sn)
 
-    wb.close()
     logger.info(f"[Prefetch] SN {len(sns)}개 추출 (증상 필터 통과 / {skipped}개 제외)")
     return sns
 

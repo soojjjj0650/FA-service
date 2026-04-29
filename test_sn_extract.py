@@ -3,7 +3,7 @@ SN 추출 테스트 스크립트
 
 실행:
   python test_sn_extract.py                        # CSV_DOWNLOAD_PATH 에서 최신 xlsx 자동 탐색
-  python test_sn_extract.py C:/path/to/file.xlsx   # 파일 직접 지정
+  python test_sn_extract.py C:/path/to/file.xls    # 파일 직접 지정
 """
 import sys
 import os
@@ -15,9 +15,9 @@ from app.config import settings
 from app.prefetch.prefetch_runner import extract_sns_from_excel
 
 
-def find_latest_xlsx(folder: str) -> str | None:
+def find_latest_excel(folder: str) -> str | None:
     p = Path(folder)
-    files = list(p.glob("*.xlsx"))
+    files = list(p.glob("*.xlsx")) + list(p.glob("*.xls"))
     if not files:
         return None
     return str(max(files, key=lambda f: f.stat().st_mtime))
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         excel_path = sys.argv[1]
     else:
-        excel_path = find_latest_xlsx(settings.CSV_DOWNLOAD_PATH)
+        excel_path = find_latest_excel(settings.CSV_DOWNLOAD_PATH)
 
     if not excel_path or not Path(excel_path).exists():
         print(f"❌ 엑셀 파일을 찾을 수 없습니다.")
