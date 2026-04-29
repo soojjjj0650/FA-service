@@ -60,8 +60,10 @@ class Settings(BaseSettings):
     QINGS_HEADLESS: bool = False          # SSO 처리 위해 기본 headful
     QINGS_USERNAME: str = "sujin06.bae"
     QINGS_PASSWORD: str = "tnwls1094!"
-    QINGS_SN_COLUMN: str = "제조번호(단축)"    # AS열 — SN 컬럼명
-    QINGS_SYMPTOM_COLUMN: str = "증상명"        # CV열 — 증상 필터 컬럼명
+    QINGS_SN_COLUMN: str = "SER_NO"           # E열 — SN 컬럼명
+    QINGS_DATE_COLUMN: str = "SEQ_NO"          # A열 — 날짜 컬럼명 (앞 8자리 YYYYMMDD)
+    QINGS_DATE_LOOKBACK_DAYS: int = 7          # 오늘로부터 몇 일 전까지 포함
+    QINGS_SYMPTOM_COLUMN: str = "증상명"        # (미사용 — 날짜 필터로 대체)
     QINGS_SYMPTOM_KEYWORDS: list[str] = ["통화", "수화", "송화", "데이터 접속"]
     PREFETCH_ENABLED: bool = True         # 평일 9시 자동 사전 쿼리 활성화
     CACHE_MAX_AGE_HOURS: int = 48         # 캐시 유효 시간 (시간)

@@ -35,10 +35,13 @@ if __name__ == "__main__":
         print(f"   또는 직접 지정: python test_sn_extract.py 파일경로.xlsx")
         sys.exit(1)
 
+    from datetime import date, timedelta
+    cutoff = (date.today() - timedelta(days=settings.QINGS_DATE_LOOKBACK_DAYS)).strftime("%Y%m%d")
+
     print(f"파일: {excel_path}")
     print(f"SN 열: {settings.QINGS_SN_COLUMN}")
-    print(f"증상 열: {settings.QINGS_SYMPTOM_COLUMN}")
-    print(f"키워드: {settings.QINGS_SYMPTOM_KEYWORDS}")
+    print(f"날짜 열: {settings.QINGS_DATE_COLUMN}")
+    print(f"기준일: {cutoff} 이후 ({settings.QINGS_DATE_LOOKBACK_DAYS}일)")
     print()
 
     import logging

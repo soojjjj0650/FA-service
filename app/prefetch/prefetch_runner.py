@@ -126,16 +126,19 @@ def _iter_excel_rows(excel_path: str):
 
 
 def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> list[str]:
-    """Qings 엑셀에서 SN 목록을 추출합니다 (xls/xlsx 모두 지원).
+    """xlsx/xls에서 SN 목록을 추출합니다.
 
-    증상명(CV열) 필터: 통화/수화/송화/데이터 접속 관련 행만 포함.
-    SN 추출: 제조번호(단축)(AS열), 중복 제거.
+    날짜 필터: SEQ_NO 앞 8자리(YYYYMMDD) 기준 오늘로부터 QINGS_DATE_LOOKBACK_DAYS 이내 행만 포함.
+    SN 추출: SER_NO(E열), 중복 제거.
     """
+    from datetime import date, timedelta
+
     if sn_column is None:
         sn_column = settings.QINGS_SN_COLUMN
 
-    symptom_col = settings.QINGS_SYMPTOM_COLUMN
-    keywords    = settings.QINGS_SYMPTOM_KEYWORDS
+    date_col     = settings.QINGS_DATE_COLUMN
+    lookback     = settings.QINGS_DATE_LOOKBACK_DAYS
+    cutoff       = (date.today() - timedelta(days=lookback)).strftime("%Y%m%d")
 
     headers, row_iter = _iter_excel_rows(excel_path)
 
@@ -143,20 +146,22 @@ def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> lis
         logger.warning(f"[Prefetch] SN 열 '{sn_column}' 없음. 헤더: {headers[:10]}")
         return []
 
-    sn_idx      = headers.index(sn_column)
-    symptom_idx = headers.index(symptom_col) if symptom_col in headers else None
+    sn_idx   = headers.index(sn_column)
+    date_idx = headers.index(date_col) if date_col in headers else None
 
-    if symptom_idx is None:
-        logger.warning(f"[Prefetch] 증상명 열 없음 — 필터 없이 전체 SN 추출")
+    if date_idx is None:
+        logger.warning(f"[Prefetch] 날짜 열 '{date_col}' 없음 — 날짜 필터 없이 전체 SN 추출")
 
     seen: set[str] = set()
     sns:  list[str] = []
     skipped = 0
 
     for row in row_iter:
-        if symptom_idx is not None:
-            symptom = str(row[symptom_idx]).strip() if symptom_idx < len(row) and row[symptom_idx] else ""
-            if not any(kw in symptom for kw in keywords):
+        # 날짜 필터: SEQ_NO 앞 8자리 >= cutoff
+        if date_idx is not None:
+            raw_date = str(row[date_idx]).strip() if date_idx < len(row) and row[date_idx] else ""
+            row_date = raw_date[:8]
+            if len(row_date) < 8 or row_date < cutoff:
                 skipped += 1
                 continue
 
@@ -167,7 +172,7 @@ def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> lis
                 seen.add(sn)
                 sns.append(sn)
 
-    logger.info(f"[Prefetch] SN {len(sns)}개 추출 (증상 필터 통과 / {skipped}개 제외)")
+    logger.info(f"[Prefetch] SN {len(sns)}개 추출 (기준일 {cutoff} 이후 / {skipped}개 제외)")
     return sns
 
 
