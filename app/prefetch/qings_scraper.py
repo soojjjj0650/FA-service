@@ -530,10 +530,43 @@ async def _fill_date(page: Page, xpath: str, date_str: str):
 
 
 async def _fill_filter(page: Page, xpath: str, value: str):
-    """필터 입력 필드에 값을 직접 입력합니다 (돋보기 팝업 불필요).
+    """필터 입력 필드에 값을 입력합니다.
 
-    :input suffix 있는 경우와 없는 경우 모두 시도하고 모든 frame 탐색합니다.
+    1차: Nexacro JS API (set_value) — DOM 탐색 없이 컴포넌트 직접 접근
+    2차: DOM locator (전체 frame 탐색, :input suffix 포함)
     """
+    # Nexacro 컴포넌트 경로 추출 (//*[@id="..."] → "...")
+    import re
+    id_match = re.search(r'@id="([^"]+)"', xpath)
+    if id_match:
+        comp_path = id_match.group(1)
+        js_script = f"""
+        () => {{
+            try {{
+                let obj = nexacro;
+                for (const p of {repr(comp_path.split('.'))}) {{
+                    obj = obj[p];
+                    if (!obj) return 'not_found:' + p;
+                }}
+                if (typeof obj.set_value === 'function') {{
+                    obj.set_value({repr(value)});
+                    return 'set_value_ok';
+                }}
+                return 'no_set_value';
+            }} catch(e) {{ return 'error:' + e; }}
+        }}
+        """
+        for frame in page.frames:
+            try:
+                result = await frame.evaluate(js_script)
+                logger.info(f"[Qings] nexacro set_value: {result} ({comp_path.split('.')[-1]}={value})")
+                if result == 'set_value_ok':
+                    await asyncio.sleep(0.3)
+                    return
+            except Exception:
+                continue
+
+    # fallback: DOM locator (전체 frame, :input suffix 포함)
     for suffix in [":input", ""]:
         xpath_try = xpath.replace('"]', f'{suffix}"]') if suffix else xpath
         for frame in page.frames:
@@ -547,8 +580,9 @@ async def _fill_filter(page: Page, xpath: str, value: str):
                 await loc.first.type(value, delay=50)
                 await page.keyboard.press("Tab")
                 await asyncio.sleep(0.3)
-                logger.info(f"[Qings] 필터 입력 완료: {value} (suffix='{suffix}')")
+                logger.info(f"[Qings] DOM 필터 입력 완료: {value}")
                 return
             except Exception:
                 continue
+
     logger.warning(f"[Qings] 필터 입력 실패: {xpath} = {value}")
