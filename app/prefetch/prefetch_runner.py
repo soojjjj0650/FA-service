@@ -29,15 +29,81 @@ def get_status() -> dict:
 def _iter_excel_rows(excel_path: str):
     """xls/xlsx 모두 지원하는 행 이터레이터. (headers, row_iter) 반환."""
     ext = str(excel_path).lower()
+
     if ext.endswith(".xls"):
-        import xlrd
-        wb = xlrd.open_workbook(excel_path)
-        ws = wb.sheet_by_index(0)
-        headers = [str(ws.cell_value(0, c)).strip() for c in range(ws.ncols)]
-        def row_iter():
-            for r in range(1, ws.nrows):
-                yield tuple(ws.cell_value(r, c) for c in range(ws.ncols))
-        return headers, row_iter()
+        # 1) xlrd (진짜 BIFF 포맷)
+        try:
+            import xlrd
+            wb = xlrd.open_workbook(excel_path)
+            ws = wb.sheet_by_index(0)
+            headers = [str(ws.cell_value(0, c)).strip() for c in range(ws.ncols)]
+            def _xlrd_rows():
+                for r in range(1, ws.nrows):
+                    yield tuple(ws.cell_value(r, c) for c in range(ws.ncols))
+            return headers, _xlrd_rows()
+        except Exception as e:
+            logger.warning(f"[Prefetch] xlrd 실패({e}), openpyxl 시도...")
+
+        # 2) openpyxl (xlsx 확장자를 .xls로 저장한 경우)
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+            ws = wb.active
+            rows = ws.iter_rows(values_only=True)
+            header_row = next(rows)
+            headers = [str(v).strip() if v is not None else "" for v in header_row]
+            return headers, rows
+        except Exception as e:
+            logger.warning(f"[Prefetch] openpyxl 실패({e}), HTML 파싱 시도...")
+
+        # 3) HTML 테이블 (한국 기업 시스템에서 흔한 HTML-as-XLS)
+        import html.parser, pathlib
+
+        class _TableParser(html.parser.HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.rows: list[list[str]] = []
+                self._row: list[str] = []
+                self._cell = False
+                self._data: list[str] = []
+            def handle_starttag(self, tag, attrs):
+                if tag in ("tr",):
+                    self._row = []
+                elif tag in ("td", "th"):
+                    self._cell = True
+                    self._data = []
+            def handle_endtag(self, tag):
+                if tag in ("td", "th"):
+                    self._row.append("".join(self._data).strip())
+                    self._cell = False
+                elif tag == "tr" and self._row:
+                    self.rows.append(self._row)
+            def handle_data(self, data):
+                if self._cell:
+                    self._data.append(data)
+
+        raw = pathlib.Path(excel_path).read_bytes()
+        for enc in ("utf-8", "euc-kr", "cp949"):
+            try:
+                text = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            text = raw.decode("utf-8", errors="replace")
+
+        parser = _TableParser()
+        parser.feed(text)
+        if not parser.rows:
+            raise ValueError("HTML 파싱 결과 없음")
+
+        headers = [c.strip() for c in parser.rows[0]]
+        data_rows = parser.rows[1:]
+        def _html_rows():
+            for r in data_rows:
+                yield tuple(r)
+        return headers, _html_rows()
+
     else:
         import openpyxl
         wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
