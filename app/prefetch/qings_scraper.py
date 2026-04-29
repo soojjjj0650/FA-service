@@ -543,11 +543,16 @@ async def _fill_filter(page: Page, xpath: str, value: str):
         js_script = f"""
         () => {{
             try {{
-                // nexacro._cur_application 에서 시작 (mainframe은 그 하위)
-                const app = (typeof nexacro !== 'undefined') &&
-                            (nexacro._cur_application ||
-                             (nexacro._applications && nexacro._applications[0]));
-                if (!app) return 'no_app';
+                if (typeof nexacro === 'undefined') return 'nexacro_undefined';
+                // nexacro 객체에서 application 접근 (버전별 다양한 경로 시도)
+                let app = nexacro._cur_application
+                    || (nexacro._applications && (nexacro._applications[0] || Object.values(nexacro._applications)[0]))
+                    || (nexacro._apps && Object.values(nexacro._apps)[0])
+                    || (typeof nexacro.getApplication === 'function' && nexacro.getApplication());
+                if (!app) {{
+                    const keys = Object.getOwnPropertyNames(nexacro).slice(0, 30).join(',');
+                    return 'no_app_keys:' + keys;
+                }}
                 let obj = app;
                 for (const p of {repr(comp_path.split('.'))}) {{
                     obj = obj[p];
