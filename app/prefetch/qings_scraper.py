@@ -554,9 +554,15 @@ async def _fill_filter(page: Page, xpath: str, value: str):
                     return 'no_app_keys:' + keys;
                 }}
                 let obj = app;
-                for (const p of {repr(comp_path.split('.'))}) {{
+                const parts = {repr(comp_path.split('.'))};
+                for (let i = 0; i < parts.length; i++) {{
+                    const p = parts[i];
+                    const prev = obj;
                     obj = obj[p];
-                    if (obj === undefined || obj === null) return 'not_found:' + p;
+                    if (obj === undefined || obj === null) {{
+                        const avail = Object.keys(prev).filter(k => !k.startsWith('_')).slice(0, 20).join(',');
+                        return 'not_found:' + p + '|avail:' + avail;
+                    }}
                 }}
                 if (typeof obj.set_value === 'function') {{
                     obj.set_value({repr(value)});
