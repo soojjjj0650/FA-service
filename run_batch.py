@@ -73,7 +73,7 @@ async def main():
     print(f"  실패  : {result.get('failed', 0)}개")
     if result.get("failed_sns"):
         print(f"  실패 SN: {result['failed_sns']}")
-    print(f"결과 파일: {settings.CSV_DOWNLOAD_PATH}\\{{SN}}_inputdata.xlsx")
+    print(f"결과 파일: {settings.CSV_DOWNLOAD_PATH}\\{{SN}}_inputdata.csv")
     print("=" * 60)
 
 

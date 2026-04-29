@@ -25,29 +25,6 @@ def get_status() -> dict:
     return dict(_status)
 
 
-# ── CSV → Excel 변환 ──────────────────────────────────────────────────────────
-def _csv_to_xlsx(csv_path: str) -> str | None:
-    """CSV 파일을 같은 경로에 xlsx로 저장합니다."""
-    import csv as csv_mod
-    import openpyxl
-    from pathlib import Path
-
-    p = Path(csv_path)
-    xlsx_path = p.with_suffix(".xlsx")
-    try:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        with open(p, encoding="utf-8-sig", newline="") as f:
-            for row in csv_mod.reader(f):
-                ws.append(row)
-        wb.save(xlsx_path)
-        logger.info(f"[Prefetch] Excel 저장 완료 → {xlsx_path}")
-        return str(xlsx_path)
-    except Exception as e:
-        logger.warning(f"[Prefetch] Excel 변환 실패({csv_path}): {e}")
-        return None
-
-
 # ── SN 추출 ───────────────────────────────────────────────────────────────────
 def _iter_excel_rows(excel_path: str):
     """xls/xlsx 모두 지원하는 행 이터레이터. (headers, row_iter) 반환."""
@@ -234,8 +211,6 @@ async def run_prefetch_for_sns(sns: list[str]) -> dict:
                 if qr.success:
                     result["queried"] += 1
                     logger.info(f"[Prefetch] [{sn}] 완료 → {qr.csv_path}")
-                    if qr.csv_path:
-                        _csv_to_xlsx(qr.csv_path)
                 else:
                     result["failed"] += 1
                     result["failed_sns"].append(sn)
