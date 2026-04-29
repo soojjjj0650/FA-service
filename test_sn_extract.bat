@@ -17,13 +17,13 @@ if errorlevel 1 (
 python -c "import openpyxl" > nul 2>&1
 if errorlevel 1 (
     echo [์„ค์น˜] openpyxl ์„ค์น˜ ์ค'...
-    pip install openpyxl
+    python -m pip install openpyxl
 )
 
 python -c "import xlrd" > nul 2>&1
 if errorlevel 1 (
     echo [์„ค์น˜] xlrd ์„ค์น˜ ์ค'...
-    pip install xlrd
+    python -m pip install xlrd
 )
 
 echo.
