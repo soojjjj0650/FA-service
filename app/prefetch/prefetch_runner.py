@@ -97,8 +97,19 @@ def _iter_excel_rows(excel_path: str):
         if not parser.rows:
             raise ValueError("HTML 파싱 결과 없음")
 
-        headers = [c.strip() for c in parser.rows[0]]
-        data_rows = parser.rows[1:]
+        # 첫 행이 제목일 수 있으므로 sn_column이 있는 행을 헤더로 사용
+        sn_col = settings.QINGS_SN_COLUMN
+        header_idx = 0
+        for i, row in enumerate(parser.rows):
+            if sn_col in [c.strip() for c in row]:
+                header_idx = i
+                logger.info(f"[Prefetch] HTML 헤더 행: {i}번째 행")
+                break
+        else:
+            logger.warning(f"[Prefetch] '{sn_col}' 헤더 못 찾음 — 첫 행 사용. 실제 헤더: {parser.rows[0][:5]}")
+
+        headers = [c.strip() for c in parser.rows[header_idx]]
+        data_rows = parser.rows[header_idx + 1:]
         def _html_rows():
             for r in data_rows:
                 yield tuple(r)
