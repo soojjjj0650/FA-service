@@ -7,6 +7,7 @@ SN 배치 쿼리 실행기
 """
 import sys
 import os
+import csv
 import asyncio
 import logging
 from pathlib import Path
@@ -64,6 +65,16 @@ async def main():
 
     result = await run_prefetch_for_sns(sns)
 
+    # 결과 요약 CSV 저장
+    summary_path = Path(settings.CSV_DOWNLOAD_PATH) / f"batch_result_{date.today().strftime('%Y%m%d')}.csv"
+    sn_results = result.get("sn_results", [])
+    if sn_results:
+        with open(summary_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=["sn", "status", "detail"])
+            writer.writeheader()
+            writer.writerows(sn_results)
+        logger.info(f"결과 요약 저장 → {summary_path}")
+
     print()
     print("=" * 60)
     print(f"완료")
@@ -73,7 +84,8 @@ async def main():
     print(f"  실패  : {result.get('failed', 0)}개")
     if result.get("failed_sns"):
         print(f"  실패 SN: {result['failed_sns']}")
-    print(f"결과 파일: {settings.CSV_DOWNLOAD_PATH}\\{{SN}}_inputdata.csv")
+    print(f"결과 요약: {summary_path}")
+    print(f"CSV 파일 : {settings.CSV_DOWNLOAD_PATH}\\{{SN}}_inputdata.csv")
     print("=" * 60)
 
 

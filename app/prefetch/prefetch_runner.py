@@ -196,7 +196,13 @@ async def run_prefetch_for_sns(sns: list[str]) -> dict:
         "queried": 0,
         "failed": 0,
         "failed_sns": [],
+        "sn_results": [],   # [{"sn": ..., "status": ..., "detail": ...}]
     }
+
+    # 캐시된 SN은 미리 결과에 추가
+    for sn in sns:
+        if is_cached(sn):
+            result["sn_results"].append({"sn": sn, "status": "캐시", "detail": ""})
 
     logger.info(
         f"[Prefetch] 시작 — 전체 {len(sns)}개 | 캐시 {cached_count}개 | "
@@ -209,17 +215,24 @@ async def run_prefetch_for_sns(sns: list[str]) -> dict:
             try:
                 qr = await query_runner.run(sn)
                 if qr.success:
+                    if qr.csv_path:
+                        status, detail = "성공", ""
+                    else:
+                        status, detail = "데이터없음", qr.error or ""
                     result["queried"] += 1
                     logger.info(f"[Prefetch] [{sn}] 완료 → {qr.csv_path}")
                 else:
+                    status, detail = "실패", qr.error or ""
                     result["failed"] += 1
                     result["failed_sns"].append(sn)
                     logger.warning(f"[Prefetch] [{sn}] 실패: {qr.error}")
             except Exception as e:
+                status, detail = "오류", str(e)
                 result["failed"] += 1
                 result["failed_sns"].append(sn)
                 logger.error(f"[Prefetch] [{sn}] 오류: {e}")
 
+            result["sn_results"].append({"sn": sn, "status": status, "detail": detail})
             await asyncio.sleep(3)  # 서버 부하 분산
 
         _status["last_result"] = result
