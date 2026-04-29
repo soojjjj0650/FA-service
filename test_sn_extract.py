@@ -3,7 +3,7 @@ SN 추출 테스트 스크립트
 
 실행:
   python test_sn_extract.py                        # CSV_DOWNLOAD_PATH 에서 최신 xlsx 자동 탐색
-  python test_sn_extract.py C:\path\to\file.xlsx   # 파일 직접 지정
+  python test_sn_extract.py C:/path/to/file.xlsx   # 파일 직접 지정
 """
 import sys
 import os
