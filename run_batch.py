@@ -15,6 +15,21 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+
+def _prevent_sleep():
+    """Windows 절전 모드 방지 (화면은 꺼져도 됨)."""
+    if sys.platform == "win32":
+        import ctypes
+        # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+
+
+def _allow_sleep():
+    """절전 방지 해제."""
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+
 from app.config import settings
 from app.prefetch.prefetch_runner import extract_sns_from_excel, run_prefetch_for_sns
 
@@ -63,7 +78,11 @@ async def main():
     print(f"저장 경로: {settings.CSV_DOWNLOAD_PATH}")
     print()
 
-    result = await run_prefetch_for_sns(sns)
+    _prevent_sleep()
+    try:
+        result = await run_prefetch_for_sns(sns)
+    finally:
+        _allow_sleep()
 
     # 결과 요약 CSV 저장
     summary_path = Path(settings.CSV_DOWNLOAD_PATH) / f"batch_result_{date.today().strftime('%Y%m%d')}.csv"
