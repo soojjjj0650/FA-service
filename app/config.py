@@ -60,7 +60,9 @@ class Settings(BaseSettings):
     QINGS_HEADLESS: bool = False          # SSO 처리 위해 기본 headful
     QINGS_USERNAME: str = "sujin06.bae"
     QINGS_PASSWORD: str = "tnwls1094!"
-    QINGS_SN_COLUMN: str = "단말 S/N"    # 엑셀에서 SN이 있는 열 이름 (나중에 확인 후 수정)
+    QINGS_SN_COLUMN: str = "제조번호(단축)"    # AS열 — SN 컬럼명
+    QINGS_SYMPTOM_COLUMN: str = "증상명"        # CV열 — 증상 필터 컬럼명
+    QINGS_SYMPTOM_KEYWORDS: list[str] = ["통화", "수화", "송화", "데이터 접속"]
     PREFETCH_ENABLED: bool = True         # 평일 9시 자동 사전 쿼리 활성화
     CACHE_MAX_AGE_HOURS: int = 48         # 캐시 유효 시간 (시간)
 

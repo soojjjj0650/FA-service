@@ -27,34 +27,51 @@ def get_status() -> dict:
 
 # ── SN 추출 ───────────────────────────────────────────────────────────────────
 def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> list[str]:
-    """Qings 엑셀에서 SN 목록을 추출합니다."""
+    """Qings 엑셀에서 SN 목록을 추출합니다.
+
+    증상명(CV열) 필터: 통화/수화/송화/데이터 접속 관련 행만 포함.
+    SN 추출: 제조번호(단축)(AS열), 중복 제거.
+    """
     import openpyxl
 
     if sn_column is None:
         sn_column = settings.QINGS_SN_COLUMN
 
+    symptom_col  = settings.QINGS_SYMPTOM_COLUMN
+    keywords     = settings.QINGS_SYMPTOM_KEYWORDS
+
     wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
     ws = wb.active
 
-    # 헤더 행 파싱
     headers = [
         str(cell.value).strip() if cell.value is not None else ""
         for cell in next(ws.iter_rows(max_row=1))
     ]
 
     if sn_column not in headers:
-        logger.warning(
-            f"[Prefetch] SN 열 '{sn_column}'을 찾을 수 없습니다. "
-            f"실제 헤더: {headers[:10]}"
-        )
+        logger.warning(f"[Prefetch] SN 열 '{sn_column}' 없음. 헤더: {headers[:10]}")
         wb.close()
         return []
 
-    col_idx = headers.index(sn_column)
+    sn_idx      = headers.index(sn_column)
+    symptom_idx = headers.index(symptom_col) if symptom_col in headers else None
+
+    if symptom_idx is None:
+        logger.warning(f"[Prefetch] 증상명 열 없음 — 필터 없이 전체 SN 추출")
+
     seen: set[str] = set()
-    sns: list[str] = []
+    sns:  list[str] = []
+    skipped = 0
+
     for row in ws.iter_rows(min_row=2, values_only=True):
-        val = row[col_idx] if col_idx < len(row) else None
+        # 증상명 필터
+        if symptom_idx is not None:
+            symptom = str(row[symptom_idx]).strip() if symptom_idx < len(row) and row[symptom_idx] else ""
+            if not any(kw in symptom for kw in keywords):
+                skipped += 1
+                continue
+
+        val = row[sn_idx] if sn_idx < len(row) else None
         if val:
             sn = str(val).strip().upper()
             if sn and sn not in seen:
@@ -62,7 +79,7 @@ def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> lis
                 sns.append(sn)
 
     wb.close()
-    logger.info(f"[Prefetch] 엑셀에서 SN {len(sns)}개 추출 (열: '{sn_column}')")
+    logger.info(f"[Prefetch] SN {len(sns)}개 추출 (증상 필터 통과 / {skipped}개 제외)")
     return sns
 
 
