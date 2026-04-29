@@ -2,21 +2,21 @@
 chcp 65001 > nul
 cd /d "%~dp0"
 
-echo ============================================================
-echo  SN 배치 쿼리 실행
-echo ============================================================
+echo ====================================================
+echo  FA Service - Batch Query Runner
+echo ====================================================
 echo.
 
 python --version > nul 2>&1
 if errorlevel 1 (
-    echo [오류] Python을 찾을 수 없습니다.
+    echo [ERROR] Python not found.
     pause
     exit /b 1
 )
 
 python -c "import openpyxl" > nul 2>&1
 if errorlevel 1 (
-    echo [설치] openpyxl 설치 중...
+    echo [INSTALL] Installing openpyxl...
     python -m pip install openpyxl
 )
 
