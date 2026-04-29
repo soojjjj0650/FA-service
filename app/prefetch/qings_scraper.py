@@ -26,25 +26,14 @@ _SEL = {
         '//*[@id="mainframe.VFrameSet0.IntroFrame.form.div_left.form'
         '.div_lfavorte.form.grd_Notice.body.gridrow_0.cell_0_0:text"]',
 
-    # 날짜 입력 (시작일 Edt_011 추정 / 종료일 Edt_012 확인)
+    # 날짜 입력 (시작일 Edt_011 / 종료일 Edt_012)
     "date_from":  f'//*[@id="{_BASE}.div_Section1.form.Edt_011:input"]',
     "date_to":    f'//*[@id="{_BASE}.div_Section1.form.Edt_012:input"]',
 
-    # 통합제품 돋보기 + 체크박스
-    "mag_product":   f'//*[@id="{_BASE}.div_Section1.form.Img_020:icontext"]',
-    "chk_product_0": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_0.cell_0_1.cellcheckbox:icontext"]',
-
-    # 지수산입구분 돋보기 + 체크박스 2개
-    "mag_intype":    f'//*[@id="{_BASE}.div_Section1.form.Img_090:icontext"]',
-    "chk_intype_0":  f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_0.cell_0_1.cellcheckbox:icontext"]',
-    "chk_intype_1a": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.cellcheckbox:icontext"]',
-    "chk_intype_1b": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.checkbox"]',
-
-    # 경영유무무상 돋보기 + 체크박스 2개
-    "mag_warranty":    f'//*[@id="{_BASE}.div_Section1.form.Img_080:icontext"]',
-    "chk_warranty_0":  f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_0.cell_0_1.cellcheckbox:icontext"]',
-    "chk_warranty_1a": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.cellcheckbox:icontext"]',
-    "chk_warranty_1b": f'//*[@id="{_BASE}.div_Section2.form.grd_List1.body.gridrow_1.cell_1_1.checkbox"]',
+    # 필터 직접 입력 필드 (돋보기 팝업 대신 필드에 값 직접 입력)
+    "flt_product":  f'//*[@id="{_BASE}.div_Selection1.form.Edt_011"]',  # 통합제품 → EBA0A
+    "flt_intype":   f'//*[@id="{_BASE}.div_Selection1.form.Edt_090"]',  # 지수산입구분 → 1,2
+    "flt_warranty": f'//*[@id="{_BASE}.div_Selection1.form.Edt_080"]',  # 경영유무상 → 1,2
 
     # 다운 컬럼 전체
     "btn_all_cols":  f'//*[@id="{_BASE}.div_Section1.form.img_Tab3:icontext"]',
@@ -140,36 +129,15 @@ async def scrape_qings_excel(save_dir: str) -> Optional[str]:
             logger.info(f"[Qings] 종료일 입력: {date_to}")
             await _fill_date(page, _SEL["date_to"], date_to)
 
-            # ── 3. 통합제품 선택 ──────────────────────────────────────────────
-            logger.info("[Qings] 통합제품 돋보기 클릭")
-            await _click(page, _SEL["mag_product"])
-            await asyncio.sleep(1)
-            await _click(page, _SEL["chk_product_0"])
-            await asyncio.sleep(0.5)
-            await page.keyboard.press("Escape")  # 팝업 닫기
-            await asyncio.sleep(0.5)
+            # ── 3. 필터 직접 입력 (돋보기 팝업 없이 필드에 값 입력) ─────────────
+            logger.info("[Qings] 통합제품 입력: EBA0A")
+            await _fill_filter(page, _SEL["flt_product"], "EBA0A")
 
-            # ── 4. 지수산입구분 선택 ──────────────────────────────────────────
-            logger.info("[Qings] 지수산입구분 돋보기 클릭")
-            await _click(page, _SEL["mag_intype"])
-            await asyncio.sleep(1.5)
-            await _click(page, _SEL["chk_intype_0"])
-            await asyncio.sleep(1)
-            await _click_any_frame(page, _SEL["chk_intype_1a"]) or await _click_any_frame(page, _SEL["chk_intype_1b"])
-            await asyncio.sleep(1)
-            await page.keyboard.press("Escape")  # 팝업 닫기
-            await asyncio.sleep(0.5)
+            logger.info("[Qings] 지수산입구분 입력: 1,2")
+            await _fill_filter(page, _SEL["flt_intype"], "1,2")
 
-            # ── 5. 경영유무무상 선택 ──────────────────────────────────────────
-            logger.info("[Qings] 경영유무무상 돋보기 클릭")
-            await _click(page, _SEL["mag_warranty"])
-            await asyncio.sleep(1.5)
-            await _click(page, _SEL["chk_warranty_0"])
-            await asyncio.sleep(1)
-            await _click_any_frame(page, _SEL["chk_warranty_1a"]) or await _click_any_frame(page, _SEL["chk_warranty_1b"])
-            await asyncio.sleep(1)
-            await page.keyboard.press("Escape")  # 팝업 닫기
-            await asyncio.sleep(0.5)
+            logger.info("[Qings] 경영유무상 입력: 1,2")
+            await _fill_filter(page, _SEL["flt_warranty"], "1,2")
 
             # ── 6. 다운 컬럼 전체 ─────────────────────────────────────────────
             logger.info("[Qings] 다운 컬럼 전체 클릭")
@@ -559,3 +527,28 @@ async def _fill_date(page: Page, xpath: str, date_str: str):
     await loc.type(date_str, delay=50)
     await page.keyboard.press("Tab")
     await asyncio.sleep(0.3)
+
+
+async def _fill_filter(page: Page, xpath: str, value: str):
+    """필터 입력 필드에 값을 직접 입력합니다 (돋보기 팝업 불필요).
+
+    :input suffix 있는 경우와 없는 경우 모두 시도하고 모든 frame 탐색합니다.
+    """
+    for suffix in [":input", ""]:
+        xpath_try = xpath.replace('"]', f'{suffix}"]') if suffix else xpath
+        for frame in page.frames:
+            try:
+                loc = frame.locator(f"xpath={xpath_try}")
+                if await loc.count() == 0:
+                    continue
+                await loc.first.click()
+                await asyncio.sleep(0.2)
+                await loc.first.fill("")
+                await loc.first.type(value, delay=50)
+                await page.keyboard.press("Tab")
+                await asyncio.sleep(0.3)
+                logger.info(f"[Qings] 필터 입력 완료: {value} (suffix='{suffix}')")
+                return
+            except Exception:
+                continue
+    logger.warning(f"[Qings] 필터 입력 실패: {xpath} = {value}")
