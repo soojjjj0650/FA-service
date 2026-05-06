@@ -17,7 +17,7 @@ from app.prefetch.prefetch_runner import extract_sns_from_excel
 
 def find_latest_excel(folder: str) -> str | None:
     p = Path(folder)
-    files = list(p.glob("*.xlsx")) + list(p.glob("*.xls"))
+    files = list(p.glob("*.xls"))
     if not files:
         return None
     return str(max(files, key=lambda f: f.stat().st_mtime))
