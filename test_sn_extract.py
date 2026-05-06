@@ -52,7 +52,17 @@ if __name__ == "__main__":
     print()
     print("=" * 50)
     if sns:
+        import openpyxl
+        sn_list_path = Path(settings.CSV_DOWNLOAD_PATH) / f"sn_list_{date.today().strftime('%Y%m%d')}.xlsx"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "SN 목록"
+        ws.append(["SN"])
+        for sn in sns:
+            ws.append([sn])
+        wb.save(sn_list_path)
         print(f"✅ SN {len(sns)}개 추출 완료")
+        print(f"   저장: {sn_list_path}")
         print(f"   처음 10개: {sns[:10]}")
     else:
         print("❌ SN 추출 실패 — 열 이름 확인 필요")

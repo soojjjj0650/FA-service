@@ -74,7 +74,17 @@ async def main():
         print("SN 추출 실패 — 열 이름 확인 필요")
         sys.exit(1)
 
-    print(f"추출된 SN: {len(sns)}개")
+    # 추출된 SN 목록 Excel 저장
+    import openpyxl
+    sn_list_path = Path(settings.CSV_DOWNLOAD_PATH) / f"sn_list_{date.today().strftime('%Y%m%d')}.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "SN 목록"
+    ws.append(["SN"])
+    for sn in sns:
+        ws.append([sn])
+    wb.save(sn_list_path)
+    print(f"추출된 SN: {len(sns)}개 → {sn_list_path}")
     print(f"저장 경로: {settings.CSV_DOWNLOAD_PATH}")
     print()
 
