@@ -1,0 +1,27 @@
+{
+  "filters": {
+    "수리형태": {
+      "column": "수리형태",
+      "values": [
+        "값을 여기에 입력"
+      ]
+    },
+    "ST_PROD_I": {
+      "column": "지표표준제품코드",
+      "values": [
+        "값1",
+        "값2",
+        "값3"
+      ]
+    },
+    "GPA_CE": {
+      "column": "GPA_CE",
+      "values": [
+        "값1",
+        "값2",
+        "값3"
+      ]
+    }
+  },
+  "condition": "AND"
+}
