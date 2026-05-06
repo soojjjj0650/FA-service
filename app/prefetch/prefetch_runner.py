@@ -125,20 +125,34 @@ def _iter_excel_rows(excel_path: str):
         return headers, rows
 
 
+def _load_filters() -> list[tuple[str, set[str]]]:
+    """filters.json에서 (column_name, allowed_values) 목록을 반환합니다."""
+    import json
+    from pathlib import Path
+    filters_path = Path(__file__).parent.parent.parent / "filters.json"
+    if not filters_path.exists():
+        return []
+    try:
+        data = json.loads(filters_path.read_text(encoding="utf-8"))
+        result = []
+        for item in data.get("filters", {}).values():
+            col = item.get("column", "").strip()
+            vals = {str(v).strip() for v in item.get("values", []) if str(v).strip()}
+            if col and vals:
+                result.append((col, vals))
+        return result
+    except Exception as e:
+        logger.warning(f"[Prefetch] filters.json 로드 실패: {e}")
+        return []
+
+
 def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> list[str]:
     """xlsx/xls에서 SN 목록을 추출합니다.
 
-    날짜 필터: SEQ_NO 앞 8자리(YYYYMMDD) 기준 오늘로부터 QINGS_DATE_LOOKBACK_DAYS 이내 행만 포함.
-    SN 추출: SER_NO(E열), 중복 제거.
+    filters.json 조건(AND)으로 행 필터링 후 SN 추출, 중복 제거.
     """
-    from datetime import date, timedelta
-
     if sn_column is None:
         sn_column = settings.QINGS_SN_COLUMN
-
-    date_col     = settings.QINGS_DATE_COLUMN
-    lookback     = settings.QINGS_DATE_LOOKBACK_DAYS
-    cutoff       = (date.today() - timedelta(days=lookback)).strftime("%Y%m%d")
 
     headers, row_iter = _iter_excel_rows(excel_path)
 
@@ -146,24 +160,37 @@ def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> lis
         logger.warning(f"[Prefetch] SN 열 '{sn_column}' 없음. 헤더: {headers[:10]}")
         return []
 
-    sn_idx   = headers.index(sn_column)
-    date_idx = headers.index(date_col) if date_col in headers else None
+    sn_idx = headers.index(sn_column)
 
-    if date_idx is None:
-        logger.warning(f"[Prefetch] 날짜 열 '{date_col}' 없음 — 날짜 필터 없이 전체 SN 추출")
+    # filters.json 로드 및 열 인덱스 매핑
+    filter_specs = _load_filters()
+    filter_idxs: list[tuple[int, set[str]]] = []
+    for col_name, allowed in filter_specs:
+        if col_name in headers:
+            filter_idxs.append((headers.index(col_name), allowed))
+        else:
+            logger.warning(f"[Prefetch] 필터 열 '{col_name}' 없음 — 해당 조건 무시")
+
+    if filter_idxs:
+        logger.info(f"[Prefetch] 필터 {len(filter_idxs)}개 적용 (AND)")
+    else:
+        logger.warning("[Prefetch] 적용할 필터 없음 — 전체 SN 추출")
 
     seen: set[str] = set()
     sns:  list[str] = []
     skipped = 0
 
     for row in row_iter:
-        # 날짜 필터: SEQ_NO 앞 8자리 >= cutoff
-        if date_idx is not None:
-            raw_date = str(row[date_idx]).strip() if date_idx < len(row) and row[date_idx] else ""
-            row_date = raw_date[:8]
-            if len(row_date) < 8 or row_date < cutoff:
-                skipped += 1
-                continue
+        # AND 필터: 모든 조건 만족해야 통과
+        passed = True
+        for idx, allowed in filter_idxs:
+            cell_val = str(row[idx]).strip() if idx < len(row) and row[idx] is not None else ""
+            if cell_val not in allowed:
+                passed = False
+                break
+        if not passed:
+            skipped += 1
+            continue
 
         val = row[sn_idx] if sn_idx < len(row) else None
         if val:
@@ -172,7 +199,7 @@ def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> lis
                 seen.add(sn)
                 sns.append(sn)
 
-    logger.info(f"[Prefetch] SN {len(sns)}개 추출 (기준일 {cutoff} 이후 / {skipped}개 제외)")
+    logger.info(f"[Prefetch] SN {len(sns)}개 추출 (필터 통과 / {skipped}개 제외)")
     return sns
 
 
