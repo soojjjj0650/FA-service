@@ -350,6 +350,7 @@ class DataProcessor:
                 error="데이터 없음",
             )
 
+        rows = self._fill_mute_pci_from_cend(rows)
         feature_tables = self._build_feature_tables(rows)
         summary = self._build_summary(query_result.sn, rows, feature_tables)
         html_tables = "".join(t.to_html() for t in feature_tables.values())
@@ -483,6 +484,85 @@ class DataProcessor:
                 logger.debug(f"MUTE 보조 테이블 생성: {summary_row}")
 
         return tables
+
+    def _fill_mute_pci_from_cend(self, rows: list[dict]) -> list[dict]:
+        """MUTE에서 PhID(PCI)가 없을 때 ±5초 내 같은 TAC의 CEND PhID로 채웁니다."""
+        from datetime import datetime, timedelta
+
+        def parse_dt(row: dict) -> datetime | None:
+            try:
+                d = str(row.get("Date", "")).strip()
+                t = str(row.get("Time", "")).strip()
+                return datetime.strptime(f"{d} {t}", "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                return None
+
+        # CEND 행만 미리 파싱
+        cend_rows: list[tuple[datetime, dict, dict]] = []
+        for row in rows:
+            feat = str(row.get("feature", "")).strip().upper()
+            if feat != "CEND":
+                continue
+            dt = parse_dt(row)
+            if dt is None:
+                continue
+            cv = self._parse_custom_value(str(row.get("custom_value", "") or ""))
+            phid = str(cv.get("PhID", "")).strip()
+            tac  = str(cv.get("TAC_", "")).strip()
+            if phid and tac:
+                cend_rows.append((dt, {"PhID": phid, "TAC_": tac}, row))
+
+        if not cend_rows:
+            return rows
+
+        filled = 0
+        window = timedelta(seconds=5)
+        result = []
+        for row in rows:
+            feat = str(row.get("feature", "")).strip().upper()
+            if feat != "MUTE":
+                result.append(row)
+                continue
+
+            cv = self._parse_custom_value(str(row.get("custom_value", "") or ""))
+            if cv.get("PhID", "").strip():
+                result.append(row)
+                continue
+
+            dt = parse_dt(row)
+            mute_tac = str(cv.get("TAC_", "")).strip()
+            if dt is None or not mute_tac:
+                result.append(row)
+                continue
+
+            # ±5초 내 같은 TAC CEND 중 가장 가까운 것
+            best_phid = None
+            best_diff = None
+            for cend_dt, cend_cv, _ in cend_rows:
+                if abs(cend_dt - dt) > window:
+                    continue
+                if cend_cv["TAC_"] != mute_tac:
+                    continue
+                diff = abs((cend_dt - dt).total_seconds())
+                if best_diff is None or diff < best_diff:
+                    best_diff = diff
+                    best_phid = cend_cv["PhID"]
+
+            if best_phid:
+                import json as _json
+                cv["PhID"] = best_phid
+                try:
+                    row = dict(row)
+                    row["custom_value"] = _json.dumps(cv, ensure_ascii=False)
+                    filled += 1
+                except Exception:
+                    pass
+
+            result.append(row)
+
+        if filled:
+            logger.info(f"[MUTE PCI 보완] {filled}건 CEND PhID로 채움")
+        return result
 
     def _aggregate_rows(
         self,
