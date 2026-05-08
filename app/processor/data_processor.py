@@ -287,8 +287,8 @@ class FeatureTable:
         )
         footnote_html = ""
         if self.footnotes:
-            items = "".join(f"<li>{fn}</li>" for fn in self.footnotes)
-            footnote_html = f'<ul class="feat-footnote">{items}</ul>'
+            text = " / ".join(self.footnotes)
+            footnote_html = f'<p class="feat-footnote">※ {text}</p>'
         return (
             f'<div class="feat-table-wrap">'
             f'<div class="feat-label">{self.feature}'
@@ -297,7 +297,8 @@ class FeatureTable:
             f'<thead><tr>{th}</tr></thead>'
             f'<tbody>{tbody}</tbody>'
             f'</table></div>'
-            f'{footnote_html}</div>'
+            f'{footnote_html}'
+            f'</div>'
         )
 
 
@@ -579,12 +580,12 @@ class DataProcessor:
         feat: str,
         columns: list[str],
         rows: list[list[str]],
-    ) -> tuple[list[str], list[list[str]]]:
+    ) -> tuple[list[str], list[list[str]], list[str]]:
         """FEATURE_AGGREGATION 규칙에 따라 행을 그룹화·집계합니다.
-        (columns, rows) 튜플을 반환합니다."""
+        (columns, rows, footnotes) 튜플을 반환합니다."""
         agg_cfg = FEATURE_AGGREGATION.get(feat)
         if not agg_cfg or not rows:
-            return columns, rows
+            return columns, rows, []
 
         col_idx = {c: i for i, c in enumerate(columns)}
         raw_group_by   = agg_cfg.get("group_by", None)
@@ -597,7 +598,7 @@ class DataProcessor:
         footnote_map: dict[str, str] = {}            # code → description (주석용)
 
         if not group_by_cols and not aggregate_all:
-            return columns, rows
+            return columns, rows, []
 
         # 그룹 키 → 해당 rows 묶기
         groups: dict[tuple, list[list[str]]] = {}
