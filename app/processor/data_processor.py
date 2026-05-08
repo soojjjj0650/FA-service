@@ -80,8 +80,8 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("PLMN",  "PLMN"),
         ("TAC",   "TAC_"),
         ("PhID",  "PhID"),
-        ("Lband", "LBnd"),
-        ("Nband", "NBnd"),
+        ("Lband", ("LBnd", "Mbnd")),
+        ("Nband", ("NBnd", "Sbnd")),
         ("Ftype", "Ftype"),
     ]),
     "ATTF": OrderedDict([
@@ -408,7 +408,10 @@ class DataProcessor:
                         elif json_key == "__feature__":
                             val = feat
                         else:
-                            val = cv.get(json_key, "")
+                            if isinstance(json_key, tuple):
+                                val = next((cv[k] for k in json_key if cv.get(k)), "")
+                            else:
+                                val = cv.get(json_key, "")
                             if col_name in HEX_COLUMNS:
                                 val = self._hex_to_dec(val)
                         tr.append(val)
