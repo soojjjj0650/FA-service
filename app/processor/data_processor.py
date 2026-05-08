@@ -245,6 +245,7 @@ class FeatureTable:
     feature: str
     columns: list[str]
     rows: list[list[str]]
+    footnotes: list[str] = field(default_factory=list)
 
     def to_text(self) -> str:
         """AI Agent 전송용 plain-text 테이블 (전체 행, 가로 형식).
@@ -266,7 +267,10 @@ class FeatureTable:
         col_header = " | ".join(self.columns)
         sep = "-" * max(len(col_header), 20)
         data_lines = [" | ".join(str(v) for v in row) for row in self.rows]
-        return "\n".join([header_label, col_header, sep] + data_lines)
+        lines = [header_label, col_header, sep] + data_lines
+        if self.footnotes:
+            lines += ["", "※ " + " / ".join(self.footnotes)]
+        return "\n".join(lines)
 
     def to_html(self) -> str:
         """챗봇 표시용 HTML 테이블"""
@@ -281,6 +285,10 @@ class FeatureTable:
             "<tr>" + "".join(f"<td>{v}</td>" for v in row) + "</tr>"
             for row in self.rows
         )
+        footnote_html = ""
+        if self.footnotes:
+            items = "".join(f"<li>{fn}</li>" for fn in self.footnotes)
+            footnote_html = f'<ul class="feat-footnote">{items}</ul>'
         return (
             f'<div class="feat-table-wrap">'
             f'<div class="feat-label">{self.feature}'
@@ -288,7 +296,8 @@ class FeatureTable:
             f'<div class="tbl-scroll"><table>'
             f'<thead><tr>{th}</tr></thead>'
             f'<tbody>{tbody}</tbody>'
-            f'</table></div></div>'
+            f'</table></div>'
+            f'{footnote_html}</div>'
         )
 
 
@@ -405,7 +414,7 @@ class DataProcessor:
                     table_rows.append(tr)
 
                 columns = list(col_map.keys())
-                columns, agg_rows = self._aggregate_rows(feat, columns, table_rows)
+                columns, agg_rows, footnotes = self._aggregate_rows(feat, columns, table_rows)
 
                 # drop 컬럼 제거
                 drop_cols = set(FEATURE_AGGREGATION.get(feat, {}).get("drop", []))
@@ -440,6 +449,7 @@ class DataProcessor:
                     feature=feat,
                     columns=columns,
                     rows=agg_rows,
+                    footnotes=footnotes,
                 )
             else:
                 # 매핑 미정의 feature: Date / Time / custom_value 축약 표시
@@ -584,6 +594,7 @@ class DataProcessor:
         avg_cols       = [c for c in agg_cfg.get("avg",  []) if c in col_idx]
         count_col      = agg_cfg.get("count_col")   # 그룹 행 수 컬럼명
         vc_col         = agg_cfg.get("value_counts") # 고유값 카운트 컬럼명
+        footnote_map: dict[str, str] = {}            # code → description (주석용)
 
         if not group_by_cols and not aggregate_all:
             return columns, rows
@@ -630,17 +641,24 @@ class DataProcessor:
                         pass
                 merged[col_idx[col]] = f"{sum(vals)/len(vals):.1f}" if vals else ""
 
-            # 고유값 카운트 (예: "1401:2회, 2000:1회")
+            # 고유값 카운트 (표: "487:2회" / 주석: "487: requested_terminated")
             if vc_col and vc_col in col_idx:
                 vc_counts: dict[str, int] = {}
                 for r in group_rows:
                     v = r[col_idx[vc_col]].strip()
                     if v:
                         vc_counts[v] = vc_counts.get(v, 0) + 1
-                merged[col_idx[vc_col]] = ", ".join(
-                    f"{apply_code(vc_col, v)}:{n}회"
-                    for v, n in sorted(vc_counts.items(), key=lambda x: -x[1])
-                )
+                cell_parts = []
+                for v, n in sorted(vc_counts.items(), key=lambda x: -x[1]):
+                    full = apply_code(vc_col, v)
+                    if "(" in full and full.endswith(")"):
+                        code = full[:full.index("(")]
+                        desc = full[full.index("(")+1:-1]
+                        footnote_map[code] = desc
+                        cell_parts.append(f"{code}:{n}회")
+                    else:
+                        cell_parts.append(f"{full}:{n}회")
+                merged[col_idx[vc_col]] = ", ".join(cell_parts)
 
             result.append(merged)
 
@@ -664,11 +682,12 @@ class DataProcessor:
         if vc_col and vc_col in columns:
             columns = [f"{vc_col}_Counts" if c == vc_col else c for c in columns]
 
+        footnotes = [f"{code}: {desc}" for code, desc in sorted(footnote_map.items())]
         logger.debug(
             f"[{feat}] 집계 완료: 원본 {len(rows)}건 → 집계 {len(result)}건 "
             f"(group_by={group_by_cols})"
         )
-        return columns, result
+        return columns, result, footnotes
 
     def _build_summary(
         self,
