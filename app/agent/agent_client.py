@@ -151,6 +151,14 @@ class AgentClient:
         import re
         text = re.sub(r"^Text\s*:\s*", "", text.lstrip())
 
+        # Langflow 내부 번역 지시문 제거
+        text = re.sub(
+            r"Translate the above text in Korean\.?\s*Follow the format of the original text\.?\s*Korean\.?\s*",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        ).strip()
+
         return text
 
     @staticmethod
