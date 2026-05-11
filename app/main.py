@@ -1012,6 +1012,7 @@ async def _fetch_station_info(processed: ProcessedData) -> list[dict]:
 
     # ── MUTE 상위 3행 ────────────────────────────────────────────────────────
     mute = processed.feature_tables.get("MUTE")
+    if mute and mute.rows:
         for i, row in enumerate(mute.rows[:3]):
             tac = _col_val(mute.columns, row, "TAC")
             pci = _col_val(mute.columns, row, "PCI")
