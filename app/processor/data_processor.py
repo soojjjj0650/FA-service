@@ -715,11 +715,10 @@ class DataProcessor:
         feature_tables: dict[str, FeatureTable],
     ) -> str:
         """AI Agent 전송용 텍스트 요약을 생성합니다."""
-        lines: list[str] = []
+        # AI에 전송할 feature (집계 정리된 테이블만, CEND 등 raw 제외)
+        _AI_FEATURES = {"MUTE", "DROP", "RLFI", "SCGF", "NSVC", "ATTF", "CRSH", "MUTE_EXTRA"}
 
-        # ─ 조회 기간 ──────────────────────────────────────────────────────────
-        dates = [r.get("Date", "").strip() for r in rows if r.get("Date", "").strip()]
-        date_range = f"{min(dates)} ~ {max(dates)}" if dates else "알 수 없음"
+        lines: list[str] = []
 
         # ─ Feature별 원본 행 수 (건수 내림차순 Top 7) ─────────────────────────
         feat_dist: dict[str, int] = {}
@@ -731,12 +730,13 @@ class DataProcessor:
         feat_summary = ", ".join(f"{f} {n}건" for f, n in top_feats)
 
         lines.append(f"[단말기 SN: {sn}]")
-        lines.append(f"조회 기간   : {date_range}")
         lines.append(f"Feature 분포: {feat_summary or '없음'}")
         lines.append("")
 
-        # ─ 모든 feature 테이블 텍스트 출력 ────────────────────────────────────
+        # ─ 집계된 feature 테이블만 출력 (raw 데이터 제외) ─────────────────────
         for feat_name, table in feature_tables.items():
+            if feat_name.upper() not in _AI_FEATURES:
+                continue
             lines.append(table.to_text())
             lines.append("")
 
