@@ -999,11 +999,19 @@ async def _fetch_station_info(processed: ProcessedData) -> list[dict]:
     def _col_val(cols: list[str], row: list, col_name: str) -> str:
         return row[cols.index(col_name)] if col_name in cols else ""
 
+    # PLMN → 사업자 판단: MUTE는 keep_cols 필터로 PLMN이 제거되므로
+    # PLMN 컬럼이 남아 있는 feature 테이블에서 순서대로 찾는다.
+    for _feat_name in ("SCGF", "ATTF", "ATTI", "CRSH", "CEND", "MUTE"):
+        _tbl = processed.feature_tables.get(_feat_name)
+        if _tbl and _tbl.rows and "PLMN" in _tbl.columns:
+            _plmn = _col_val(_tbl.columns, _tbl.rows[0], "PLMN").rstrip("#").strip()
+            if _plmn in _PLMN_OPERATOR:
+                operator = _PLMN_OPERATOR[_plmn]
+                logger.debug(f"사업자 판단: PLMN={_plmn} → {operator} ({_feat_name})")
+                break
+
     # ── MUTE 상위 3행 ────────────────────────────────────────────────────────
     mute = processed.feature_tables.get("MUTE")
-    if mute and mute.rows:
-        plmn = _col_val(mute.columns, mute.rows[0], "PLMN").rstrip("#").strip()
-        operator = _PLMN_OPERATOR.get(plmn, "skt")
         for i, row in enumerate(mute.rows[:3]):
             tac = _col_val(mute.columns, row, "TAC")
             pci = _col_val(mute.columns, row, "PCI")
