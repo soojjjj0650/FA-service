@@ -726,6 +726,59 @@ async def list_jobs():
     }
 
 
+# ─── 대시보드 엔드포인트 ──────────────────────────────────────────────────────
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_ui():
+    """분석 결과 대시보드 UI."""
+    html_file = FRONTEND_DIR / "dashboard.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Dashboard</h1><p>frontend/dashboard.html을 확인하세요.</p>")
+
+
+@app.get("/api/dashboard/results")
+async def dashboard_results():
+    """userdata 폴더의 모든 *_result.json 파일 목록을 반환합니다."""
+    import os
+    import json as _json
+    save_dir = settings.CSV_DOWNLOAD_PATH
+    results = []
+    try:
+        for fname in sorted(os.listdir(save_dir), reverse=True):
+            if not fname.endswith("_result.json"):
+                continue
+            path = os.path.join(save_dir, fname)
+            try:
+                with open(path, encoding="utf-8") as f:
+                    data = _json.load(f)
+                results.append({
+                    "sn": data.get("sn", fname.replace("_result.json", "")),
+                    "analyzed_at": data.get("analyzed_at", ""),
+                    "feature_summary": data.get("feature_summary", ""),
+                })
+            except Exception:
+                pass
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+    return {"results": results}
+
+
+@app.get("/api/dashboard/result/{sn}")
+async def dashboard_result_detail(sn: str):
+    """특정 SN의 결과 JSON을 반환합니다."""
+    import os
+    import json as _json
+    sn = sn.upper()
+    path = os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_result.json")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"{sn} 결과 파일이 없습니다.")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return _json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ─── WebSocket 엔드포인트 ─────────────────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
@@ -897,6 +950,39 @@ def _save_processing_files(sn: str, processed) -> None:
         logger.info(f"처리 결과 xlsx 저장 완료: {xlsx_path} ({len(tables)}개 feature)")
     except Exception as e:
         logger.warning(f"처리 결과 xlsx 저장 실패: {e}")
+
+
+def _save_result_json(sn: str, ai_response: str, feature_summary: str,
+                      station_entries: list, feature_tables: dict) -> None:
+    """분석 완료 결과를 {SN}_result.json으로 저장합니다."""
+    import os
+    import json as _json
+    from datetime import datetime
+
+    save_dir = settings.CSV_DOWNLOAD_PATH
+    path = os.path.join(save_dir, f"{sn}_result.json")
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+        tables_serializable = {}
+        for feat, tbl in (feature_tables or {}).items():
+            tables_serializable[feat] = {
+                "columns": tbl.columns,
+                "rows": tbl.rows,
+                "footnotes": tbl.footnotes,
+            }
+        payload = {
+            "sn": sn,
+            "analyzed_at": datetime.now().isoformat(timespec="seconds"),
+            "feature_summary": feature_summary,
+            "ai_response": ai_response,
+            "station_entries": station_entries or [],
+            "feature_tables": tables_serializable,
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            _json.dump(payload, f, ensure_ascii=False, indent=2)
+        logger.info(f"결과 JSON 저장 완료: {path}")
+    except Exception as e:
+        logger.warning(f"결과 JSON 저장 실패: {e}")
 
 
 # ─── 기지국 정보 조회 헬퍼 ────────────────────────────────────────────────────
@@ -1325,7 +1411,10 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         job["station_text"] = _station_entries_to_text(station_entries)  # push용 텍스트
         job["feature_tables"] = processed.feature_tables  # MUTE/DROP 표 데이터
 
-        # 5. 결과 카드 자동 push (CHATBOT_PUSH_URL 설정 시)
+        # 5. 결과 JSON 저장 (대시보드용)
+        _save_result_json(sn, ai_response, feature_summary, station_entries, processed.feature_tables)
+
+        # 6. 결과 카드 자동 push (CHATBOT_PUSH_URL 설정 시)
         await _push_card_to_chatroom(job)
 
     except Exception as e:

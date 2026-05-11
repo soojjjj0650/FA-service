@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FA 분석 대시보드</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Noto Sans KR', sans-serif;
+      background: #f0f2f5;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      background: #1e3a5f;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    .nav-links { margin-left: auto; display: flex; gap: 16px; }
+    .nav-links a {
+      color: #a0c4e8;
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 4px 10px;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .nav-links a:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .nav-links a.active { background: rgba(255,255,255,0.15); color: #fff; }
+
+    .main-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── 좌측 SN 목록 ── */
+    .sidebar {
+      width: 280px;
+      flex-shrink: 0;
+      background: #fff;
+      border-right: 1px solid #dce2ea;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid #dce2ea;
+    }
+    .sidebar-header h2 { font-size: 0.9rem; color: #333; font-weight: 600; }
+    .sidebar-header .count { font-size: 0.78rem; color: #888; margin-top: 2px; }
+    .refresh-btn {
+      float: right;
+      background: #e8f0fb;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      color: #1e3a5f;
+      cursor: pointer;
+      margin-top: -2px;
+    }
+    .refresh-btn:hover { background: #c5d9f5; }
+
+    .sn-list { flex: 1; overflow-y: auto; }
+    .sn-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f0f2f5;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .sn-item:hover { background: #f5f8ff; }
+    .sn-item.active { background: #e8f0fb; border-left: 3px solid #1e6fbf; }
+    .sn-item .sn-val { font-size: 0.9rem; font-weight: 600; color: #1e3a5f; font-family: monospace; }
+    .sn-item .sn-time { font-size: 0.72rem; color: #888; margin-top: 2px; }
+    .sn-item .sn-feat { font-size: 0.72rem; color: #555; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .empty-list {
+      padding: 32px 16px;
+      text-align: center;
+      color: #aaa;
+      font-size: 0.85rem;
+    }
+
+    /* ── 우측 상세 ── */
+    .detail-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .detail-placeholder {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      color: #bbb;
+    }
+    .detail-placeholder .icon { font-size: 3rem; }
+    .detail-placeholder p { font-size: 0.9rem; }
+
+    .detail-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: none;
+    }
+
+    .detail-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #1e3a5f;
+      margin-bottom: 4px;
+    }
+    .detail-meta { font-size: 0.78rem; color: #888; margin-bottom: 20px; }
+
+    /* 섹션 카드 */
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .card-header {
+      background: #1e3a5f;
+      color: #fff;
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-header.green { background: #2e7d32; }
+    .card-header.orange { background: #e65100; }
+    .card-body { padding: 16px; }
+
+    /* 기지국 그리드 */
+    .station-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .station-card {
+      border: 1px solid #dce2ea;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .station-card-title {
+      background: #e8f0fb;
+      padding: 7px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #1e3a5f;
+    }
+    .station-card-body { padding: 10px 12px; }
+    .station-row { display: flex; gap: 8px; font-size: 0.78rem; margin-bottom: 4px; }
+    .station-key { color: #888; width: 80px; flex-shrink: 0; }
+    .station-val { color: #222; font-weight: 500; }
+    .station-warn { color: #c62828; font-weight: 700; }
+    .station-nodata { font-size: 0.78rem; color: #aaa; padding: 8px 0; }
+
+    /* Feature 테이블 */
+    .feat-tabs { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid #dce2ea; background: #f8f9fb; flex-wrap: wrap; }
+    .feat-tab {
+      padding: 8px 14px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      color: #555;
+      transition: color 0.1s;
+    }
+    .feat-tab:hover { color: #1e3a5f; }
+    .feat-tab.active { color: #1e3a5f; border-bottom-color: #1e6fbf; font-weight: 600; }
+    .feat-panel { display: none; padding: 12px 16px; }
+    .feat-panel.active { display: block; }
+
+    .feat-table-wrap { overflow-x: auto; }
+    table.feat-tbl {
+      border-collapse: collapse;
+      font-size: 0.78rem;
+      min-width: 100%;
+    }
+    table.feat-tbl th {
+      background: #e8f0fb;
+      color: #1e3a5f;
+      padding: 6px 10px;
+      text-align: left;
+      white-space: nowrap;
+      font-weight: 600;
+      border: 1px solid #d0d8e8;
+    }
+    table.feat-tbl td {
+      padding: 5px 10px;
+      border: 1px solid #e8edf3;
+      white-space: nowrap;
+      color: #333;
+    }
+    table.feat-tbl tr:nth-child(even) td { background: #f8f9fb; }
+    .feat-footnotes { margin-top: 8px; font-size: 0.75rem; color: #666; border-top: 1px solid #eee; padding-top: 8px; }
+    .feat-footnotes p { margin-bottom: 3px; }
+
+    /* AI 결과 */
+    .ai-result {
+      line-height: 1.7;
+      font-size: 0.85rem;
+      color: #222;
+    }
+    .ai-result h1, .ai-result h2, .ai-result h3 {
+      font-size: 0.9rem;
+      color: #1e3a5f;
+      margin: 12px 0 4px;
+    }
+    .ai-result p { margin-bottom: 6px; }
+    .ai-result ul, .ai-result ol { padding-left: 18px; margin-bottom: 6px; }
+    .ai-result table { border-collapse: collapse; font-size: 0.78rem; margin: 8px 0; }
+    .ai-result table th { background: #e8f0fb; padding: 4px 8px; border: 1px solid #d0d8e8; }
+    .ai-result table td { padding: 4px 8px; border: 1px solid #e8edf3; }
+    .ai-result strong { color: #1e3a5f; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📊 FA 분석 대시보드</h1>
+  <div class="nav-links">
+    <a href="/">챗봇</a>
+    <a href="/batch">배치 쿼리</a>
+    <a href="/dashboard" class="active">대시보드</a>
+  </div>
+</header>
+
+<div class="main-layout">
+  <!-- 좌측 SN 목록 -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <button class="refresh-btn" onclick="loadList()">새로고침</button>
+      <h2>분석 결과 목록</h2>
+      <div class="count" id="count-label">불러오는 중...</div>
+    </div>
+    <div class="sn-list" id="sn-list"></div>
+  </div>
+
+  <!-- 우측 상세 -->
+  <div class="detail-panel">
+    <div class="detail-placeholder" id="detail-placeholder">
+      <div class="icon">📋</div>
+      <p>좌측에서 SN을 선택하세요</p>
+    </div>
+    <div class="detail-content" id="detail-content"></div>
+  </div>
+</div>
+
+<script>
+  let currentSn = null;
+
+  async function loadList() {
+    const listEl = document.getElementById('sn-list');
+    const countEl = document.getElementById('count-label');
+    listEl.innerHTML = '<div class="empty-list">불러오는 중...</div>';
+    try {
+      const res = await fetch('/api/dashboard/results');
+      const data = await res.json();
+      const results = data.results || [];
+      countEl.textContent = `총 ${results.length}건`;
+      if (!results.length) {
+        listEl.innerHTML = '<div class="empty-list">분석 결과가 없습니다.<br>챗봇에서 SN을 조회하면<br>여기에 표시됩니다.</div>';
+        return;
+      }
+      listEl.innerHTML = results.map(r => `
+        <div class="sn-item" onclick="loadDetail('${r.sn}')" id="item-${r.sn}">
+          <div class="sn-val">${r.sn}</div>
+          <div class="sn-time">${formatDate(r.analyzed_at)}</div>
+          <div class="sn-feat">${r.feature_summary || '-'}</div>
+        </div>
+      `).join('');
+    } catch(e) {
+      listEl.innerHTML = `<div class="empty-list">로드 실패: ${e.message}</div>`;
+      countEl.textContent = '';
+    }
+  }
+
+  async function loadDetail(sn) {
+    if (currentSn === sn) return;
+    currentSn = sn;
+
+    // 목록 active 표시
+    document.querySelectorAll('.sn-item').forEach(el => el.classList.remove('active'));
+    const item = document.getElementById('item-' + sn);
+    if (item) item.classList.add('active');
+
+    const placeholder = document.getElementById('detail-placeholder');
+    const content = document.getElementById('detail-content');
+    placeholder.style.display = 'none';
+    content.style.display = 'block';
+    content.innerHTML = '<div style="padding:40px;text-align:center;color:#aaa">불러오는 중...</div>';
+
+    try {
+      const res = await fetch(`/api/dashboard/result/${sn}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      const d = await res.json();
+      content.innerHTML = buildDetail(d);
+      initTabs(content);
+    } catch(e) {
+      content.innerHTML = `<div style="padding:20px;color:#c00">오류: ${e.message}</div>`;
+    }
+  }
+
+  function buildDetail(d) {
+    const stationHtml = buildStations(d.station_entries || []);
+    const featHtml = buildFeatures(d.feature_tables || {});
+    const aiHtml = d.ai_response
+      ? `<div class="ai-result">${marked.parse(d.ai_response)}</div>`
+      : '<p style="color:#aaa;font-size:0.85rem">AI 분석 결과 없음</p>';
+
+    return `
+      <div class="detail-title">${d.sn}</div>
+      <div class="detail-meta">분석일시: ${formatDate(d.analyzed_at)} &nbsp;|&nbsp; ${d.feature_summary || ''}</div>
+
+      <div class="card">
+        <div class="card-header green">🏗️ 기지국 정보</div>
+        <div class="card-body">${stationHtml}</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header orange">📊 Feature 데이터</div>
+        ${featHtml}
+      </div>
+
+      <div class="card">
+        <div class="card-header">🤖 AI 분석 결과</div>
+        <div class="card-body">${aiHtml}</div>
+      </div>
+    `;
+  }
+
+  function buildStations(entries) {
+    if (!entries.length) return '<p style="color:#aaa;font-size:0.85rem">기지국 정보 없음</p>';
+    return `<div class="station-grid">${entries.map(e => buildStationCard(e)).join('')}</div>`;
+  }
+
+  function buildStationCard(e) {
+    const r = e.row;
+    const label = e.label || '';
+    if (!r) {
+      return `<div class="station-card">
+        <div class="station-card-title">${label}</div>
+        <div class="station-card-body">
+          <div class="station-nodata">조회 결과 없음 (TAC:${e.tac||'-'} PCI:${e.pci||'-'})</div>
+        </div>
+      </div>`;
+    }
+    const anomaly = parseFloat(r.anomaly_score) || 0;
+    const anomalyWarn = anomaly >= 100;
+    const anomalyText = anomalyWarn
+      ? `<span class="station-warn">${r.anomaly_score} ⚠ 주의필요</span>`
+      : r.anomaly_score || '-';
+    const week = r.week || r.period || r.date_range || '';
+    const operatorStr = week ? `${r.operator||'-'} | ${week}` : (r.operator || '-');
+    return `<div class="station-card">
+      <div class="station-card-title">${label}</div>
+      <div class="station-card-body">
+        <div class="station-row"><span class="station-key">지역</span><span class="station-val">${r.region||'-'}</span></div>
+        <div class="station-row"><span class="station-key">사업자</span><span class="station-val">${operatorStr}</span></div>
+        <div class="station-row"><span class="station-key">TAC/PCI</span><span class="station-val">${r.tac||'-'} / ${r.pci||'-'} DLCh:${r.dlch||'-'}</span></div>
+        <div class="station-row"><span class="station-key">Vendor</span><span class="station-val">${r.vendor||'-'}</span></div>
+        <div class="station-row"><span class="station-key">단말/호</span><span class="station-val">${r.device_cnt||'-'} / ${r.call_cnt||'-'}</span></div>
+        <div class="station-row"><span class="station-key">Drop/RLF</span><span class="station-val">${r.drop_cnt||'-'} / ${r.rlf_cnt||'-'}</span></div>
+        <div class="station-row"><span class="station-key">HO실패</span><span class="station-val">${r.ho_failure_cnt||'-'}</span></div>
+        <div class="station-row"><span class="station-key">이상점수</span><span class="station-val">${anomalyText}</span></div>
+      </div>
+    </div>`;
+  }
+
+  function buildFeatures(tables) {
+    const keys = Object.keys(tables);
+    if (!keys.length) return '<div style="padding:16px;color:#aaa;font-size:0.85rem">Feature 데이터 없음</div>';
+
+    const tabs = keys.map((k, i) =>
+      `<div class="feat-tab${i===0?' active':''}" data-tab="${k}">${k} (${(tables[k].rows||[]).length}건)</div>`
+    ).join('');
+
+    const panels = keys.map((k, i) => {
+      const tbl = tables[k];
+      const rows = tbl.rows || [];
+      const cols = tbl.columns || [];
+      const footnotes = tbl.footnotes || [];
+      const thead = cols.map(c => `<th>${c}</th>`).join('');
+      const tbody = rows.map(r => `<tr>${r.map(v => `<td>${v}</td>`).join('')}</tr>`).join('');
+      const fnHtml = footnotes.length
+        ? `<div class="feat-footnotes">${footnotes.map(f => `<p>${f}</p>`).join('')}</div>`
+        : '';
+      return `<div class="feat-panel${i===0?' active':''}" data-panel="${k}">
+        <div class="feat-table-wrap">
+          <table class="feat-tbl"><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>
+        </div>
+        ${fnHtml}
+      </div>`;
+    }).join('');
+
+    return `<div class="feat-tabs">${tabs}</div>${panels}`;
+  }
+
+  function initTabs(container) {
+    container.querySelectorAll('.feat-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const key = tab.dataset.tab;
+        const parent = tab.closest('.card');
+        parent.querySelectorAll('.feat-tab').forEach(t => t.classList.remove('active'));
+        parent.querySelectorAll('.feat-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        parent.querySelector(`.feat-panel[data-panel="${key}"]`).classList.add('active');
+      });
+    });
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '-';
+    return iso.replace('T', ' ');
+  }
+
+  loadList();
+</script>
+</body>
+</html>
