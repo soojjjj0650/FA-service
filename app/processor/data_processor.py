@@ -309,6 +309,7 @@ class ProcessedData:
     feature_tables: dict[str, FeatureTable] = field(default_factory=dict)
     html_tables: str = ""   # 챗봇 HTML 렌더링용
     error: str | None = None
+    plmn: str = ""          # 원시 데이터에서 추출한 PLMN (사업자 판단용)
 
     # main.py 기존 코드 호환 (processed.device.*)
     @property
@@ -361,6 +362,19 @@ class DataProcessor:
             )
 
         rows = self._fill_mute_pci_from_cend(rows)
+
+        # keep_cols 필터 전에 PLMN 추출 (사업자 판단용)
+        plmn = ""
+        for row in rows:
+            cv_raw = row.get("custom_value", "{}")
+            try:
+                cv = json.loads(cv_raw) if isinstance(cv_raw, str) else cv_raw
+                plmn = str(cv.get("PLMN", "")).rstrip("#").strip()
+            except Exception:
+                pass
+            if plmn:
+                break
+
         feature_tables = self._build_feature_tables(rows)
         summary = self._build_summary(query_result.sn, rows, feature_tables)
         html_tables = "".join(t.to_html() for t in feature_tables.values())
@@ -375,6 +389,7 @@ class DataProcessor:
             summary_text=summary,
             feature_tables=feature_tables,
             html_tables=html_tables,
+            plmn=plmn,
         )
 
     # ─────────────────────────────────────────────────────────────────────────

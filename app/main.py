@@ -993,22 +993,13 @@ async def _fetch_station_info(processed: ProcessedData) -> list[dict]:
     """MUTE 상위 3행 + DROP 첫 행의 TAC·PCI로 기지국 정보를 조회합니다.
     반환: [{"label": "MUTE 1위", "row": {...}}, ...]"""
 
-    operator = "skt"
+    operator = _PLMN_OPERATOR.get(processed.plmn, "skt")
+    if processed.plmn:
+        logger.debug(f"사업자 판단: PLMN={processed.plmn} → {operator}")
     entries: list[dict] = []
 
     def _col_val(cols: list[str], row: list, col_name: str) -> str:
         return row[cols.index(col_name)] if col_name in cols else ""
-
-    # PLMN → 사업자 판단: MUTE는 keep_cols 필터로 PLMN이 제거되므로
-    # PLMN 컬럼이 남아 있는 feature 테이블에서 순서대로 찾는다.
-    for _feat_name in ("SCGF", "ATTF", "ATTI", "CRSH", "CEND", "MUTE"):
-        _tbl = processed.feature_tables.get(_feat_name)
-        if _tbl and _tbl.rows and "PLMN" in _tbl.columns:
-            _plmn = _col_val(_tbl.columns, _tbl.rows[0], "PLMN").rstrip("#").strip()
-            if _plmn in _PLMN_OPERATOR:
-                operator = _PLMN_OPERATOR[_plmn]
-                logger.debug(f"사업자 판단: PLMN={_plmn} → {operator} ({_feat_name})")
-                break
 
     # ── MUTE 상위 3행 ────────────────────────────────────────────────────────
     mute = processed.feature_tables.get("MUTE")
