@@ -98,7 +98,11 @@ class AgentClient:
 
                 result = self._extract_text(data)
                 if not result:
-                    logger.warning(f"AI Agent 응답에서 텍스트 추출 실패: {data}")
+                    logger.warning(
+                        f"AI Agent 응답에서 텍스트 추출 실패 - SN: {processed.sn}\n"
+                        f"응답 최상위 키: {list(data.keys()) if isinstance(data, dict) else type(data)}\n"
+                        f"응답 (500자): {str(data)[:500]}"
+                    )
                     return self._fallback_response(processed)
 
                 logger.info(f"AI Agent 응답 수신 완료 - SN: {processed.sn}")
@@ -131,14 +135,37 @@ class AgentClient:
     @staticmethod
     def _extract_text(data: dict) -> str:
         """API 응답에서 텍스트를 추출합니다."""
-        # 형식: {"outputs": [{"outputs": [{"results": {"message": {"text": "..."}}}]}]}
+        text = ""
+
+        # 경로 1: {"outputs":[{"outputs":[{"results":{"message":{"text":"..."}}}]}]}
         try:
             text = data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
         except (KeyError, IndexError, TypeError):
-            text = ""
+            pass
 
+        # 경로 2: outputs[0].outputs[0].artifacts.message
         if not text:
-            # 단순 flat 형식 fallback
+            try:
+                text = data["outputs"][0]["outputs"][0]["artifacts"]["message"]
+            except (KeyError, IndexError, TypeError):
+                pass
+
+        # 경로 3: outputs[0].outputs[0].messages[0].message
+        if not text:
+            try:
+                text = data["outputs"][0]["outputs"][0]["messages"][0]["message"]
+            except (KeyError, IndexError, TypeError):
+                pass
+
+        # 경로 4: outputs[0].outputs[0].text
+        if not text:
+            try:
+                text = data["outputs"][0]["outputs"][0]["text"]
+            except (KeyError, IndexError, TypeError):
+                pass
+
+        # 경로 5: flat 형식 fallback
+        if not text:
             text = (
                 data.get("result")
                 or data.get("answer")
