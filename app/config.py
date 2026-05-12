@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     AI_AGENT_PROMPT_TEMPLATE: str = ""
     AI_AGENT_TIMEOUT: int = 120
     # AI Agent 입력 포맷: "table" (표 형식) 또는 "narrative" (서술형)
-    AI_AGENT_INPUT_FORMAT: str = "narrative"
+    AI_AGENT_INPUT_FORMAT: str = "table"
 
     # ─── 회사 챗봇 웹훅 (FA 분석 완료 시 결과 push) ──────────────────────────
     CHATBOT_WEBHOOK_URL: str = "https://botbuilder.samsung.net/webhook/fa.service"
