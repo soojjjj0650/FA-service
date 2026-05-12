@@ -748,7 +748,7 @@ class DataProcessor:
                 sliced = FeatureTable(
                     feature=table.feature,
                     columns=table.columns,
-                    rows=table.rows[:2],
+                    rows=table.rows[:3],
                     footnotes=table.footnotes,
                 )
                 lines.append(sliced.to_text())
@@ -786,7 +786,7 @@ class DataProcessor:
         mute = feature_tables.get("MUTE")
         if mute and mute.rows:
             lines.append(f"■ 무음(MUTE) 이벤트 — {len(mute.rows)}개 그룹")
-            for i, row in enumerate(mute.rows[:2]):
+            for i, row in enumerate(mute.rows[:3]):
                 act  = _col(mute, row, "ACT")
                 tac  = _col(mute, row, "TAC")
                 pci  = _col(mute, row, "PCI")
@@ -805,7 +805,7 @@ class DataProcessor:
         drop = feature_tables.get("DROP")
         if drop and drop.rows:
             lines.append(f"■ 호단절(DROP) 이벤트 — {len(drop.rows)}개 그룹")
-            for i, row in enumerate(drop.rows[:2]):
+            for i, row in enumerate(drop.rows[:3]):
                 act  = _col(drop, row, "ACT")
                 tac  = _col(drop, row, "TAC")
                 pci  = _col(drop, row, "PCI")
@@ -828,7 +828,7 @@ class DataProcessor:
         rlfi = feature_tables.get("RLFI")
         if rlfi and rlfi.rows:
             lines.append(f"■ 무선링크실패(RLFI) 이벤트 — {len(rlfi.rows)}개 그룹")
-            for i, row in enumerate(rlfi.rows[:2]):
+            for i, row in enumerate(rlfi.rows[:3]):
                 act = _col(rlfi, row, "ACT")
                 tac = _col(rlfi, row, "TAC")
                 pid = _col(rlfi, row, "PID")
@@ -849,7 +849,7 @@ class DataProcessor:
         scgf = feature_tables.get("SCGF")
         if scgf and scgf.rows:
             lines.append(f"■ 보조셀실패(SCGF) 이벤트 — {len(scgf.rows)}개 그룹")
-            for i, row in enumerate(scgf.rows[:2]):
+            for i, row in enumerate(scgf.rows[:3]):
                 tac   = _col(scgf, row, "TAC")
                 pci   = _col(scgf, row, "PhID")
                 lband = _col(scgf, row, "L밴드")
@@ -879,7 +879,7 @@ class DataProcessor:
             tbl = feature_tables.get(feat_key)
             if tbl and tbl.rows:
                 lines.append(f"■ {label} — {len(tbl.rows)}개 그룹")
-                for i, row in enumerate(tbl.rows[:2]):
+                for i, row in enumerate(tbl.rows[:3]):
                     act  = _col(tbl, row, "ACT_")
                     tac  = _col(tbl, row, "TAC_")
                     pci  = _col(tbl, row, "PhID_")
@@ -895,7 +895,7 @@ class DataProcessor:
         crsh = feature_tables.get("CRSH")
         if crsh and crsh.rows:
             lines.append(f"■ 크래시(CRSH) — {len(crsh.rows)}개 그룹")
-            for i, row in enumerate(crsh.rows[:2]):
+            for i, row in enumerate(crsh.rows[:3]):
                 act = _col(crsh, row, "ACT_")
                 tac = _col(crsh, row, "TAC_")
                 cnt = _col(crsh, row, "Count")
