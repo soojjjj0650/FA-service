@@ -376,7 +376,11 @@ class DataProcessor:
                 break
 
         feature_tables = self._build_feature_tables(rows)
-        summary = self._build_summary(query_result.sn, rows, feature_tables)
+        from app.config import settings as _settings
+        if _settings.AI_AGENT_INPUT_FORMAT == "narrative":
+            summary = self._build_summary_narrative(query_result.sn, rows, feature_tables)
+        else:
+            summary = self._build_summary(query_result.sn, rows, feature_tables)
         html_tables = "".join(t.to_html() for t in feature_tables.values())
 
         logger.info(
@@ -739,6 +743,170 @@ class DataProcessor:
                 continue
             lines.append(table.to_text())
             lines.append("")
+
+        return "\n".join(lines)
+
+    def _build_summary_narrative(
+        self,
+        sn: str,
+        rows: list[dict],
+        feature_tables: dict[str, FeatureTable],
+    ) -> str:
+        """AI Agent 전송용 서술형 텍스트 요약을 생성합니다."""
+        _AI_FEATURES = {"MUTE", "DROP", "RLFI", "SCGF", "NSVC", "ATTF", "CRSH", "MUTE_EXTRA"}
+
+        def _col(tbl: FeatureTable, row: list, name: str) -> str:
+            return row[tbl.columns.index(name)] if name in tbl.columns else ""
+
+        # ─ Feature 분포 ───────────────────────────────────────────────────────
+        feat_dist: dict[str, int] = {}
+        for r in rows:
+            f = str(r.get("feature", "")).strip().upper()
+            if f:
+                feat_dist[f] = feat_dist.get(f, 0) + 1
+        top_feats = sorted(feat_dist.items(), key=lambda x: x[1], reverse=True)[:7]
+        feat_summary = ", ".join(f"{f} {n}건" for f, n in top_feats)
+
+        lines: list[str] = []
+        lines.append(f"단말기 SN {sn}의 네트워크 이벤트 분석 데이터입니다.")
+        lines.append(f"발생 이벤트 분포: {feat_summary or '없음'}")
+        lines.append("")
+
+        # ─ MUTE ──────────────────────────────────────────────────────────────
+        mute = feature_tables.get("MUTE")
+        if mute and mute.rows:
+            lines.append(f"■ 무음(MUTE) 이벤트 — {len(mute.rows)}개 그룹")
+            for i, row in enumerate(mute.rows[:5]):
+                act  = _col(mute, row, "ACT")
+                tac  = _col(mute, row, "TAC")
+                pci  = _col(mute, row, "PCI")
+                band = _col(mute, row, "Band")
+                ecnt = _col(mute, row, "ECNT")
+                rsrp = _col(mute, row, "RSRP")
+                sinr = _col(mute, row, "SINR")
+                bler = _col(mute, row, "BLER")
+                lines.append(
+                    f"  {i+1}위: {act} TAC {tac} / PCI {pci} ({band}밴드) — "
+                    f"무음 {ecnt}건, RSRP {rsrp} dBm, SINR {sinr} dB, BLER {bler}%"
+                )
+            lines.append("")
+
+        # ─ DROP ──────────────────────────────────────────────────────────────
+        drop = feature_tables.get("DROP")
+        if drop and drop.rows:
+            lines.append(f"■ 호단절(DROP) 이벤트 — {len(drop.rows)}개 그룹")
+            for i, row in enumerate(drop.rows[:5]):
+                act  = _col(drop, row, "ACT")
+                tac  = _col(drop, row, "TAC")
+                pci  = _col(drop, row, "PCI")
+                cnt  = _col(drop, row, "발생횟수")
+                rxp0 = _col(drop, row, "RxP0")
+                rxp1 = _col(drop, row, "RxP1")
+                bler = _col(drop, row, "BLER")
+                sipr = _col(drop, row, "SIPR")
+                sipr_str = f", 원인: {sipr}" if sipr else ""
+                lines.append(
+                    f"  {i+1}위: {act} TAC {tac} / PCI {pci} — "
+                    f"Drop {cnt}회, RxP0 {rxp0} / RxP1 {rxp1} dBm, BLER {bler}%{sipr_str}"
+                )
+            if drop.footnotes:
+                for fn in drop.footnotes:
+                    lines.append(f"  ※ {fn}")
+            lines.append("")
+
+        # ─ RLFI ──────────────────────────────────────────────────────────────
+        rlfi = feature_tables.get("RLFI")
+        if rlfi and rlfi.rows:
+            lines.append(f"■ 무선링크실패(RLFI) 이벤트 — {len(rlfi.rows)}개 그룹")
+            for i, row in enumerate(rlfi.rows[:5]):
+                act = _col(rlfi, row, "ACT")
+                tac = _col(rlfi, row, "TAC")
+                pid = _col(rlfi, row, "PID")
+                cnt = _col(rlfi, row, "발생횟수")
+                rxp = _col(rlfi, row, "RxP")
+                cau = _col(rlfi, row, "원인")
+                cau_str = f", 원인: {cau}" if cau else ""
+                lines.append(
+                    f"  {i+1}위: {act} TAC {tac} / PID {pid} — "
+                    f"RLFI {cnt}회, RxP {rxp} dBm{cau_str}"
+                )
+            if rlfi.footnotes:
+                for fn in rlfi.footnotes:
+                    lines.append(f"  ※ {fn}")
+            lines.append("")
+
+        # ─ SCGF ──────────────────────────────────────────────────────────────
+        scgf = feature_tables.get("SCGF")
+        if scgf and scgf.rows:
+            lines.append(f"■ 보조셀실패(SCGF) 이벤트 — {len(scgf.rows)}개 그룹")
+            for i, row in enumerate(scgf.rows[:5]):
+                tac   = _col(scgf, row, "TAC")
+                pci   = _col(scgf, row, "PhID")
+                lband = _col(scgf, row, "L밴드")
+                nband = _col(scgf, row, "N밴드")
+                cnt   = _col(scgf, row, "발생횟수")
+                ftype = _col(scgf, row, "원인")
+                band_str = " / ".join(b for b in [lband, nband] if b)
+                ftype_str = f", 원인: {ftype}" if ftype else ""
+                lines.append(
+                    f"  {i+1}위: TAC {tac} / PCI {pci} ({band_str}) — "
+                    f"SCGF {cnt}회{ftype_str}"
+                )
+            lines.append("")
+
+        # ─ NSVC ──────────────────────────────────────────────────────────────
+        nsvc = feature_tables.get("NSVC")
+        if nsvc and nsvc.rows:
+            row = nsvc.rows[0]
+            pairs = [f"LEV{i}: {_col(nsvc, row, f'LEV{i}_avg')}" for i in range(6)
+                     if _col(nsvc, row, f"LEV{i}_avg")]
+            if pairs:
+                lines.append(f"■ 네트워크서비스(NSVC) — " + ", ".join(pairs))
+                lines.append("")
+
+        # ─ ATTF / ATTI ───────────────────────────────────────────────────────
+        for feat_key, label in [("ATTF", "접속실패(ATTF)"), ("ATTI", "접속지연(ATTI)")]:
+            tbl = feature_tables.get(feat_key)
+            if tbl and tbl.rows:
+                lines.append(f"■ {label} — {len(tbl.rows)}개 그룹")
+                for i, row in enumerate(tbl.rows[:3]):
+                    act  = _col(tbl, row, "ACT_")
+                    tac  = _col(tbl, row, "TAC_")
+                    pci  = _col(tbl, row, "PhID_")
+                    cnt  = _col(tbl, row, "Count")
+                    emmc = _col(tbl, row, "EMMC_Counts")
+                    emmc_str = f", 원인: {emmc}" if emmc else ""
+                    lines.append(
+                        f"  {i+1}위: {act} TAC {tac} / PCI {pci} — {cnt}건{emmc_str}"
+                    )
+                lines.append("")
+
+        # ─ CRSH ──────────────────────────────────────────────────────────────
+        crsh = feature_tables.get("CRSH")
+        if crsh and crsh.rows:
+            lines.append(f"■ 크래시(CRSH) — {len(crsh.rows)}개 그룹")
+            for i, row in enumerate(crsh.rows[:3]):
+                act = _col(crsh, row, "ACT_")
+                tac = _col(crsh, row, "TAC_")
+                cnt = _col(crsh, row, "Count")
+                inca = _col(crsh, row, "InCa_Counts")
+                inca_str = f", 원인: {inca}" if inca else ""
+                lines.append(f"  {i+1}위: {act} TAC {tac} — {cnt}건{inca_str}")
+            lines.append("")
+
+        # ─ MUTE_EXTRA ────────────────────────────────────────────────────────
+        mute_extra = feature_tables.get("MUTE_EXTRA")
+        if mute_extra and mute_extra.rows:
+            row = mute_extra.rows[0]
+            parts = []
+            for c in mute_extra.columns:
+                v = _col(mute_extra, row, c)
+                if v and v != "-":
+                    parts.append(f"{c}: {v}")
+            if parts:
+                lines.append("■ MUTE 부가정보 (SAMS/SMBU/MCST)")
+                lines.append("  " + " / ".join(parts))
+                lines.append("")
 
         return "\n".join(lines)
 
