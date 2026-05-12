@@ -375,10 +375,11 @@ class DataProcessor:
             if plmn:
                 break
 
-        feature_tables = self._build_feature_tables(rows)
+        feature_tables = self._build_feature_tables(rows, apply_keep_cols=True)
         from app.config import settings as _settings
         if _settings.AI_AGENT_INPUT_FORMAT == "narrative":
-            summary = self._build_summary_narrative(query_result.sn, rows, feature_tables)
+            full_tables = self._build_feature_tables(rows, apply_keep_cols=False)
+            summary = self._build_summary_narrative(query_result.sn, rows, full_tables)
         else:
             summary = self._build_summary(query_result.sn, rows, feature_tables)
         html_tables = "".join(t.to_html() for t in feature_tables.values())
@@ -400,7 +401,7 @@ class DataProcessor:
     # Internal
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _build_feature_tables(self, rows: list[dict]) -> dict[str, FeatureTable]:
+    def _build_feature_tables(self, rows: list[dict], apply_keep_cols: bool = True) -> dict[str, FeatureTable]:
         """feature별로 그룹화하고 FeatureTable 목록을 반환합니다."""
         grouped: dict[str, list[dict]] = {}
         for row in rows:
@@ -456,12 +457,14 @@ class DataProcessor:
                 agg_rows = agg_rows[:10]
 
                 # 표시 컬럼 필터 (FEATURE_KEEP_COLS 지정 시 해당 컬럼만, 순서 유지)
-                keep = FEATURE_KEEP_COLS.get(feat)
-                if keep:
-                    keep_idx = [i for i, c in enumerate(columns) if c in keep]
-                    keep_idx.sort(key=lambda i: keep.index(columns[i]))
-                    columns  = [columns[i] for i in keep_idx]
-                    agg_rows = [[row[i] for i in keep_idx] for row in agg_rows]
+                # apply_keep_cols=False 이면 모든 컬럼 유지 (서술형 AI 입력용)
+                if apply_keep_cols:
+                    keep = FEATURE_KEEP_COLS.get(feat)
+                    if keep:
+                        keep_idx = [i for i, c in enumerate(columns) if c in keep]
+                        keep_idx.sort(key=lambda i: keep.index(columns[i]))
+                        columns  = [columns[i] for i in keep_idx]
+                        agg_rows = [[row[i] for i in keep_idx] for row in agg_rows]
 
                 # 컬럼명 변경 (FEATURE_RENAME_COLS)
                 rename = FEATURE_RENAME_COLS.get(feat)
@@ -763,7 +766,7 @@ class DataProcessor:
         feature_tables: dict[str, FeatureTable],
     ) -> str:
         """AI Agent 전송용 서술형 텍스트 요약을 생성합니다."""
-        _AI_FEATURES = {"MUTE", "DROP", "RLFI", "SCGF", "NSVC", "ATTF", "CRSH", "MUTE_EXTRA"}
+        _ORDINALS = ["제일", "두번째로", "세번째로"]
 
         def _col(tbl: FeatureTable, row: list, name: str) -> str:
             return row[tbl.columns.index(name)] if name in tbl.columns else ""
@@ -775,92 +778,96 @@ class DataProcessor:
             if f:
                 feat_dist[f] = feat_dist.get(f, 0) + 1
         top_feats = sorted(feat_dist.items(), key=lambda x: x[1], reverse=True)[:7]
-        feat_summary = ", ".join(f"{f} {n}건" for f, n in top_feats)
+        feat_summary = " ".join(f"{f}({n}회)" for f, n in top_feats)
 
         lines: list[str] = []
-        lines.append(f"단말기 SN {sn}의 네트워크 이벤트 분석 데이터입니다.")
-        lines.append(f"발생 이벤트 분포: {feat_summary or '없음'}")
+        lines.append(f"[단말기 SN: {sn}]")
+        lines.append(f"Feature가 많이 발생한 순서는 {feat_summary} 순입니다.")
         lines.append("")
 
         # ─ MUTE ──────────────────────────────────────────────────────────────
         mute = feature_tables.get("MUTE")
         if mute and mute.rows:
-            lines.append(f"■ 무음(MUTE) 이벤트 — {len(mute.rows)}개 그룹")
             for i, row in enumerate(mute.rows[:3]):
-                act  = _col(mute, row, "ACT")
+                ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
                 tac  = _col(mute, row, "TAC")
                 pci  = _col(mute, row, "PCI")
                 band = _col(mute, row, "Band")
+                ubmt = _col(mute, row, "UBMT")
+                rsmt = _col(mute, row, "RSMT")
+                rnmt = _col(mute, row, "RNMT")
+                dbmt = _col(mute, row, "DBMT")
                 ecnt = _col(mute, row, "ECNT")
                 rsrp = _col(mute, row, "RSRP")
                 sinr = _col(mute, row, "SINR")
                 bler = _col(mute, row, "BLER")
+                cnt_str = ""
+                if ubmt: cnt_str += f" UBMT {ubmt}회"
+                if rsmt: cnt_str += f" RSMT {rsmt}회"
+                if rnmt: cnt_str += f" RNMT {rnmt}회"
+                if dbmt: cnt_str += f" DBMT {dbmt}회"
+                if ecnt: cnt_str += f" ECNT {ecnt}번"
                 lines.append(
-                    f"  {i+1}위: {act} TAC {tac} / PCI {pci} ({band}밴드) — "
-                    f"무음 {ecnt}건, RSRP {rsrp} dBm, SINR {sinr} dB, BLER {bler}%"
+                    f"MUTE가 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} Band{band}이고"
+                    f"{cnt_str} 발생하였고, RSRP는 {rsrp}, SINR {sinr} BLER {bler}입니다."
                 )
             lines.append("")
 
         # ─ DROP ──────────────────────────────────────────────────────────────
         drop = feature_tables.get("DROP")
         if drop and drop.rows:
-            lines.append(f"■ 호단절(DROP) 이벤트 — {len(drop.rows)}개 그룹")
             for i, row in enumerate(drop.rows[:3]):
-                act  = _col(drop, row, "ACT")
+                ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
                 tac  = _col(drop, row, "TAC")
                 pci  = _col(drop, row, "PCI")
-                cnt  = _col(drop, row, "발생횟수")
-                rxp0 = _col(drop, row, "RxP0")
-                rxp1 = _col(drop, row, "RxP1")
-                bler = _col(drop, row, "BLER")
-                sipr = _col(drop, row, "SIPR")
-                sipr_str = f", 원인: {sipr}" if sipr else ""
+                dlch = _col(drop, row, "DLCh")
+                cnt  = _col(drop, row, "Drop횟수") or _col(drop, row, "발생횟수")
+                rxp0 = _col(drop, row, "RxP0_avg") or _col(drop, row, "RxP0")
+                rxp1 = _col(drop, row, "RxP1_avg") or _col(drop, row, "RxP1")
+                snr  = _col(drop, row, "SNR0_avg")
+                sipr = _col(drop, row, "SIPR_Counts") or _col(drop, row, "SIPR")
+                snr_str = f" SNR평균은 {snr}이고" if snr else ""
+                sipr_str = f" SIPR값은 {sipr}입니다." if sipr else "."
                 lines.append(
-                    f"  {i+1}위: {act} TAC {tac} / PCI {pci} — "
-                    f"Drop {cnt}회, RxP0 {rxp0} / RxP1 {rxp1} dBm, BLER {bler}%{sipr_str}"
+                    f"Drop이 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} DLCh {dlch}이고"
+                    f" Drop횟수는 {cnt}번 RxP0는 {rxp0}, RxP1은 {rxp1},{snr_str}{sipr_str}"
                 )
-            if drop.footnotes:
-                for fn in drop.footnotes:
-                    lines.append(f"  ※ {fn}")
             lines.append("")
 
         # ─ RLFI ──────────────────────────────────────────────────────────────
         rlfi = feature_tables.get("RLFI")
         if rlfi and rlfi.rows:
-            lines.append(f"■ 무선링크실패(RLFI) 이벤트 — {len(rlfi.rows)}개 그룹")
             for i, row in enumerate(rlfi.rows[:3]):
-                act = _col(rlfi, row, "ACT")
-                tac = _col(rlfi, row, "TAC")
-                pid = _col(rlfi, row, "PID")
-                cnt = _col(rlfi, row, "발생횟수")
-                rxp = _col(rlfi, row, "RxP")
-                cau = _col(rlfi, row, "원인")
-                cau_str = f", 원인: {cau}" if cau else ""
+                ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
+                tac  = _col(rlfi, row, "TAC") or _col(rlfi, row, "TAC1")
+                pid  = _col(rlfi, row, "PID")
+                dch  = _col(rlfi, row, "DCh") or _col(rlfi, row, "DCh1")
+                cnt  = _col(rlfi, row, "RLFI횟수") or _col(rlfi, row, "발생횟수")
+                rxp  = _col(rlfi, row, "RxP_avg") or _col(rlfi, row, "RxP")
+                cau  = _col(rlfi, row, "CAU_Counts") or _col(rlfi, row, "원인")
+                cau_str = f" CAU는 {cau}로" if cau else ""
                 lines.append(
-                    f"  {i+1}위: {act} TAC {tac} / PID {pid} — "
-                    f"RLFI {cnt}회, RxP {rxp} dBm{cau_str}"
+                    f"RLFI가 {ord_} 많이 발생한 지역은 TAC {tac} PID {pid} DCh {dch}"
+                    f" RxP는 {rxp},{cau_str} 총 {cnt}번 발생하였습니다."
                 )
-            if rlfi.footnotes:
-                for fn in rlfi.footnotes:
-                    lines.append(f"  ※ {fn}")
             lines.append("")
 
         # ─ SCGF ──────────────────────────────────────────────────────────────
         scgf = feature_tables.get("SCGF")
         if scgf and scgf.rows:
-            lines.append(f"■ 보조셀실패(SCGF) 이벤트 — {len(scgf.rows)}개 그룹")
             for i, row in enumerate(scgf.rows[:3]):
+                ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
                 tac   = _col(scgf, row, "TAC")
                 pci   = _col(scgf, row, "PhID")
-                lband = _col(scgf, row, "L밴드")
-                nband = _col(scgf, row, "N밴드")
-                cnt   = _col(scgf, row, "발생횟수")
-                ftype = _col(scgf, row, "원인")
-                band_str = " / ".join(b for b in [lband, nband] if b)
-                ftype_str = f", 원인: {ftype}" if ftype else ""
+                lband = _col(scgf, row, "Lband") or _col(scgf, row, "L밴드")
+                nband = _col(scgf, row, "Nband") or _col(scgf, row, "N밴드")
+                cnt   = _col(scgf, row, "SCGF발생횟수") or _col(scgf, row, "발생횟수")
+                ftype = _col(scgf, row, "Ftype_Counts") or _col(scgf, row, "원인")
+                band_str = " ".join(b for b in [lband, nband] if b)
+                ftype_str = f" 원인은 {ftype}입니다." if ftype else "입니다."
                 lines.append(
-                    f"  {i+1}위: TAC {tac} / PCI {pci} ({band_str}) — "
-                    f"SCGF {cnt}회{ftype_str}"
+                    f"SCGF가 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} {band_str}이고"
+                    f" 총 {cnt}번 발생하였습니다.{ftype_str}"
                 )
             lines.append("")
 
@@ -868,43 +875,46 @@ class DataProcessor:
         nsvc = feature_tables.get("NSVC")
         if nsvc and nsvc.rows:
             row = nsvc.rows[0]
-            pairs = [f"LEV{i}: {_col(nsvc, row, f'LEV{i}_avg')}" for i in range(6)
+            pairs = [f"LEV{i} {_col(nsvc, row, f'LEV{i}_avg')}" for i in range(6)
                      if _col(nsvc, row, f"LEV{i}_avg")]
             if pairs:
-                lines.append(f"■ 네트워크서비스(NSVC) — " + ", ".join(pairs))
+                lines.append(f"NSVC 레벨 분포는 {', '.join(pairs)}입니다.")
                 lines.append("")
 
         # ─ ATTF / ATTI ───────────────────────────────────────────────────────
         for feat_key, label in [("ATTF", "접속실패(ATTF)"), ("ATTI", "접속지연(ATTI)")]:
             tbl = feature_tables.get(feat_key)
             if tbl and tbl.rows:
-                lines.append(f"■ {label} — {len(tbl.rows)}개 그룹")
                 for i, row in enumerate(tbl.rows[:3]):
-                    act  = _col(tbl, row, "ACT_")
+                    ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
                     tac  = _col(tbl, row, "TAC_")
                     pci  = _col(tbl, row, "PhID_")
                     cnt  = _col(tbl, row, "Count")
-                    emmc = _col(tbl, row, "EMMC_Counts")
-                    emmc_str = f", 원인: {emmc}" if emmc else ""
+                    emmc = _col(tbl, row, "EMMC_Counts") or _col(tbl, row, "EMMC")
+                    emmc_str = f" 원인은 {emmc}입니다." if emmc else "입니다."
                     lines.append(
-                        f"  {i+1}위: {act} TAC {tac} / PCI {pci} — {cnt}건{emmc_str}"
+                        f"{label}가 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci}이고"
+                        f" {cnt}번 발생하였습니다.{emmc_str}"
                     )
                 lines.append("")
 
         # ─ CRSH ──────────────────────────────────────────────────────────────
         crsh = feature_tables.get("CRSH")
         if crsh and crsh.rows:
-            lines.append(f"■ 크래시(CRSH) — {len(crsh.rows)}개 그룹")
             for i, row in enumerate(crsh.rows[:3]):
-                act = _col(crsh, row, "ACT_")
-                tac = _col(crsh, row, "TAC_")
-                cnt = _col(crsh, row, "Count")
-                inca = _col(crsh, row, "InCa_Counts")
-                inca_str = f", 원인: {inca}" if inca else ""
-                lines.append(f"  {i+1}위: {act} TAC {tac} — {cnt}건{inca_str}")
+                ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
+                tac  = _col(crsh, row, "TAC_")
+                pci  = _col(crsh, row, "PhID")
+                cnt  = _col(crsh, row, "Count")
+                inca = _col(crsh, row, "InCa_Counts") or _col(crsh, row, "InCa")
+                inca_str = f" 원인은 {inca}입니다." if inca else "입니다."
+                lines.append(
+                    f"CRSH가 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci}이고"
+                    f" {cnt}번 발생하였습니다.{inca_str}"
+                )
             lines.append("")
 
-        # ─ MUTE_EXTRA ────────────────────────────────────────────────────────
+        # ─ MUTE_EXTRA (SAMS/SMBU/MCST 전체) ─────────────────────────────────
         mute_extra = feature_tables.get("MUTE_EXTRA")
         if mute_extra and mute_extra.rows:
             row = mute_extra.rows[0]
@@ -912,10 +922,9 @@ class DataProcessor:
             for c in mute_extra.columns:
                 v = _col(mute_extra, row, c)
                 if v and v != "-":
-                    parts.append(f"{c}: {v}")
+                    parts.append(f"{c}는 {v}")
             if parts:
-                lines.append("■ MUTE 부가정보 (SAMS/SMBU/MCST)")
-                lines.append("  " + " / ".join(parts))
+                lines.append(", ".join(parts) + "입니다.")
                 lines.append("")
 
         return "\n".join(lines)
