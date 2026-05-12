@@ -741,7 +741,17 @@ class DataProcessor:
         for feat_name, table in feature_tables.items():
             if feat_name.upper() not in _AI_FEATURES:
                 continue
-            lines.append(table.to_text())
+            # MUTE_EXTRA는 전체, 나머지는 상위 2행만
+            if feat_name.upper() == "MUTE_EXTRA":
+                lines.append(table.to_text())
+            else:
+                sliced = FeatureTable(
+                    feature=table.feature,
+                    columns=table.columns,
+                    rows=table.rows[:2],
+                    footnotes=table.footnotes,
+                )
+                lines.append(sliced.to_text())
             lines.append("")
 
         return "\n".join(lines)
@@ -776,7 +786,7 @@ class DataProcessor:
         mute = feature_tables.get("MUTE")
         if mute and mute.rows:
             lines.append(f"■ 무음(MUTE) 이벤트 — {len(mute.rows)}개 그룹")
-            for i, row in enumerate(mute.rows[:5]):
+            for i, row in enumerate(mute.rows[:2]):
                 act  = _col(mute, row, "ACT")
                 tac  = _col(mute, row, "TAC")
                 pci  = _col(mute, row, "PCI")
@@ -795,7 +805,7 @@ class DataProcessor:
         drop = feature_tables.get("DROP")
         if drop and drop.rows:
             lines.append(f"■ 호단절(DROP) 이벤트 — {len(drop.rows)}개 그룹")
-            for i, row in enumerate(drop.rows[:5]):
+            for i, row in enumerate(drop.rows[:2]):
                 act  = _col(drop, row, "ACT")
                 tac  = _col(drop, row, "TAC")
                 pci  = _col(drop, row, "PCI")
@@ -818,7 +828,7 @@ class DataProcessor:
         rlfi = feature_tables.get("RLFI")
         if rlfi and rlfi.rows:
             lines.append(f"■ 무선링크실패(RLFI) 이벤트 — {len(rlfi.rows)}개 그룹")
-            for i, row in enumerate(rlfi.rows[:5]):
+            for i, row in enumerate(rlfi.rows[:2]):
                 act = _col(rlfi, row, "ACT")
                 tac = _col(rlfi, row, "TAC")
                 pid = _col(rlfi, row, "PID")
@@ -839,7 +849,7 @@ class DataProcessor:
         scgf = feature_tables.get("SCGF")
         if scgf and scgf.rows:
             lines.append(f"■ 보조셀실패(SCGF) 이벤트 — {len(scgf.rows)}개 그룹")
-            for i, row in enumerate(scgf.rows[:5]):
+            for i, row in enumerate(scgf.rows[:2]):
                 tac   = _col(scgf, row, "TAC")
                 pci   = _col(scgf, row, "PhID")
                 lband = _col(scgf, row, "L밴드")
@@ -869,7 +879,7 @@ class DataProcessor:
             tbl = feature_tables.get(feat_key)
             if tbl and tbl.rows:
                 lines.append(f"■ {label} — {len(tbl.rows)}개 그룹")
-                for i, row in enumerate(tbl.rows[:3]):
+                for i, row in enumerate(tbl.rows[:2]):
                     act  = _col(tbl, row, "ACT_")
                     tac  = _col(tbl, row, "TAC_")
                     pci  = _col(tbl, row, "PhID_")
@@ -885,7 +895,7 @@ class DataProcessor:
         crsh = feature_tables.get("CRSH")
         if crsh and crsh.rows:
             lines.append(f"■ 크래시(CRSH) — {len(crsh.rows)}개 그룹")
-            for i, row in enumerate(crsh.rows[:3]):
+            for i, row in enumerate(crsh.rows[:2]):
                 act = _col(crsh, row, "ACT_")
                 tac = _col(crsh, row, "TAC_")
                 cnt = _col(crsh, row, "Count")
