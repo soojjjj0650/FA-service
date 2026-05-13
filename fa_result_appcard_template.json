@@ -21,7 +21,7 @@
           "type": "TextBlock",
           "text": "▎ 정보 분석",
           "weight": "Bolder",
-          "size": "Small",
+          "size": "Medium",
           "color": "Default"
         }
       ]
@@ -44,7 +44,7 @@
           "type": "TextBlock",
           "text": "▎ AI 분석 결과",
           "weight": "Bolder",
-          "size": "Small",
+          "size": "Medium",
           "color": "Default"
         }
       ]
@@ -66,7 +66,7 @@
           "type": "TextBlock",
           "text": "▎ 기지국 정보",
           "weight": "Bolder",
-          "size": "Small",
+          "size": "Medium",
           "color": "Default"
         }
       ]
