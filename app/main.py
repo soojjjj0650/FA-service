@@ -1050,7 +1050,7 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> 
     parts = []
 
     if feature_summary:
-        parts.append(f"[ Feature 분포 ]\n\n{feature_summary}")
+        parts.append(f"**[ 주요 Feature 분포 ]**\n\n{feature_summary}")
 
     for feat in _FEAT_ORDER:
         table = feature_tables.get(feat)
@@ -1433,7 +1433,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
 
         feature_summary = " > ".join(
             f"{f}({len(t.rows)}건)"
-            for f, t in sorted(processed.feature_tables.items(), key=lambda x: len(x[1].rows), reverse=True)
+            for f, t in sorted(processed.feature_tables.items(), key=lambda x: len(x[1].rows), reverse=True)[:9]
         ) or "데이터 없음"
 
         job["status"] = "done"
