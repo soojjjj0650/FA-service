@@ -1052,12 +1052,12 @@ def _col_pad(s: str, width: int) -> str:
 
 
 def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> str:
-    """Feature 분포 + 각 feature 테이블(상위 3행, MUTE_EXTRA 전체)을 텍스트로 변환합니다."""
+    """Feature 분포 + 각 feature 테이블(상위 3행, MUTE_EXTRA 전체)을 마크다운 표로 변환합니다."""
     _FEAT_ORDER = ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF", "NSVC", "ATTF", "CRSH"]
     parts = []
 
     if feature_summary:
-        parts.append(f"[ Feature 분포 ]\n{feature_summary}")
+        parts.append(f"**[ Feature 분포 ]**\n{feature_summary}")
 
     for feat in _FEAT_ORDER:
         table = feature_tables.get(feat)
@@ -1069,34 +1069,29 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> 
             continue
         label = _FEATURE_LABELS.get(feat, feat)
         total = len(table.rows)
-        lines = [f"◆ {label} ({total}건)"]
+        lines = [f"**◆ {label} ({total}건)**"]
 
         if feat == "MUTE_EXTRA":
-            # 전체 값 표시
+            # 전체 값 표시 (마크다운 표)
             row = table.rows[0]
-            lines.append("  ".join(
-                f"{disp}:{row[table.columns.index(actual)]}"
-                for disp, actual in valid
-            ))
+            headers = [disp for disp, _ in valid]
+            values = [str(row[table.columns.index(actual)]) for disp, actual in valid]
+            lines.append("| " + " | ".join(headers) + " |")
+            lines.append("|" + "|".join("---" for _ in headers) + "|")
+            lines.append("| " + " | ".join(values) + " |")
         else:
-            # 상위 3행만 표시
+            # 상위 3행만 마크다운 표로 표시
             display_rows = [
-                [_trunc(str(row[table.columns.index(actual)]), 12) for _, actual in valid]
+                [_trunc(str(row[table.columns.index(actual)]), 15) for _, actual in valid]
                 for row in table.rows[:3]
             ]
             headers = [disp for disp, _ in valid]
-            widths = [_col_width(h) for h in headers]
+            lines.append("| " + " | ".join(headers) + " |")
+            lines.append("|" + "|".join("---" for _ in headers) + "|")
             for row_vals in display_rows:
-                for i, v in enumerate(row_vals):
-                    widths[i] = max(widths[i], _col_width(v))
-
-            sep = "-+-".join("-" * w for w in widths)
-            lines.append(" | ".join(_col_pad(h, widths[i]) for i, h in enumerate(headers)))
-            lines.append(sep)
-            for row_vals in display_rows:
-                lines.append(" | ".join(_col_pad(v, widths[i]) for i, v in enumerate(row_vals)))
+                lines.append("| " + " | ".join(row_vals) + " |")
             if total > 3:
-                lines.append(f"  ... 외 {total - 3}건")
+                lines.append(f"*... 외 {total - 3}건*")
 
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
