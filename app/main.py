@@ -382,13 +382,6 @@ def _strip_markdown(text: str) -> str:
         l for l in result.splitlines()
         if not re.match(r'^\s*[-*_]{3,}\s*$', l)
     )
-    # "1. MUTE (설명...)" → "1. MUTE 결과"
-    result = re.sub(
-        r'(\d+\.\s*)(MUTE|DROP|RLFI|SCGF)\b.*',
-        r'\1\2 결과',
-        result,
-        flags=re.IGNORECASE | re.MULTILINE,
-    )
     # 연속 빈 줄 2개 이상 → 1개로 축소
     result = re.sub(r'\n{3,}', '\n\n', result)
     # 마크다운 표 열 너비 정규화
