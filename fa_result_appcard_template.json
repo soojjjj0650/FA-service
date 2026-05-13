@@ -5,24 +5,26 @@
   "body": [
     {
       "type": "TextBlock",
-      "text": "${body.title}",
-      "size": "Large",
+      "text": "📋 ${body.title}",
+      "size": "Small",
       "weight": "Bolder",
       "color": "Accent",
       "wrap": true
     },
     {
-      "type": "Container",
-      "style": "emphasis",
-      "spacing": "Medium",
-      "items": [
-        {
-          "type": "TextBlock",
-          "text": "1. 정보 분석",
-          "weight": "Bolder",
-          "size": "Medium"
-        }
-      ]
+      "type": "TextBlock",
+      "text": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "size": "Small",
+      "spacing": "Small",
+      "isSubtle": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "📊 1. 정보 분석",
+      "weight": "Bolder",
+      "size": "Small",
+      "spacing": "Small",
+      "color": "Good"
     },
     {
       "type": "TextBlock",
@@ -33,36 +35,41 @@
       "spacing": "Small"
     },
     {
-      "type": "Container",
-      "style": "emphasis",
-      "spacing": "Medium",
-      "items": [
-        {
-          "type": "TextBlock",
-          "text": "2. AI 분석 결과",
-          "weight": "Bolder",
-          "size": "Medium"
-        }
-      ]
+      "type": "TextBlock",
+      "text": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "size": "Small",
+      "spacing": "Small",
+      "isSubtle": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "🤖 2. AI 분석 결과",
+      "weight": "Bolder",
+      "size": "Small",
+      "spacing": "Small",
+      "color": "Accent"
     },
     {
       "type": "TextBlock",
       "text": "${body.ai_result}",
       "wrap": true,
+      "size": "Small",
       "spacing": "Small"
     },
     {
-      "type": "Container",
-      "style": "emphasis",
-      "spacing": "Medium",
-      "items": [
-        {
-          "type": "TextBlock",
-          "text": "3. 기지국 정보",
-          "weight": "Bolder",
-          "size": "Medium"
-        }
-      ]
+      "type": "TextBlock",
+      "text": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "size": "Small",
+      "spacing": "Small",
+      "isSubtle": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "🏗️ 3. 기지국 정보",
+      "weight": "Bolder",
+      "size": "Small",
+      "spacing": "Small",
+      "color": "Warning"
     },
     {
       "type": "TextBlock",
