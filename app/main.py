@@ -1094,6 +1094,14 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> 
             table_text = table_text + "\n\n" + footnote_lines
 
         parts.append(table_text)
+
+    # 표시할 테이블이 하나도 없으면 조회 없음 메시지
+    has_tables = len(parts) > (1 if feature_summary else 0)
+    if not has_tables:
+        lookback = settings.QINGS_DATE_LOOKBACK_DAYS
+        no_data_msg = f"최근 {lookback}일간 조회되는 데이터가 없습니다."
+        parts.append(no_data_msg)
+
     return "\n\n".join(parts)
 
 
