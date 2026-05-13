@@ -421,14 +421,17 @@ async def _push_card_to_chatroom(job: dict) -> None:
     if status == "done":
         ai_text = _strip_markdown(job.get('ai_response', ''))
         station_text = job.get('station_text', '')
-        station_section = station_text  # 헤더는 앱카드 템플릿에 고정 표시
+        feature_tables = job.get('feature_tables') or {}
+        feature_summary = job.get('feature_summary', '')
+        info_analysis = _feature_tables_to_text(feature_tables, feature_summary)
 
         payload = {
-            "chatRoomId":   chat_room_id,
-            "userId":       user_id,
-            "title":        f"[SN: {sn}] FA 분석 결과",
-            "ai_result":    ai_text,
-            "station_info": station_section,
+            "chatRoomId":    chat_room_id,
+            "userId":        user_id,
+            "title":         f"[SN: {sn}] FA 분석 결과",
+            "info_analysis": info_analysis,
+            "ai_result":     ai_text,
+            "station_info":  station_text,
         }
     else:
         payload = {
@@ -1048,10 +1051,15 @@ def _col_pad(s: str, width: int) -> str:
     return s + " " * max(0, width - _col_width(s))
 
 
-def _feature_tables_to_text(feature_tables: dict) -> str:
-    """MUTE/MUTE_EXTRA/DROP/RLFI/SCGF 테이블을 지정 컬럼만 추려 정렬된 텍스트로 변환합니다."""
+def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> str:
+    """Feature 분포 + 각 feature 테이블(상위 3행, MUTE_EXTRA 전체)을 텍스트로 변환합니다."""
+    _FEAT_ORDER = ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF", "NSVC", "ATTF", "CRSH"]
     parts = []
-    for feat in ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF"]:
+
+    if feature_summary:
+        parts.append(f"[ Feature 분포 ]\n{feature_summary}")
+
+    for feat in _FEAT_ORDER:
         table = feature_tables.get(feat)
         if not table or not table.rows:
             continue
@@ -1060,31 +1068,35 @@ def _feature_tables_to_text(feature_tables: dict) -> str:
         if not valid:
             continue
         label = _FEATURE_LABELS.get(feat, feat)
-        lines = [f"◆ {label} ({len(table.rows)}건)"]
+        total = len(table.rows)
+        lines = [f"◆ {label} ({total}건)"]
 
         if feat == "MUTE_EXTRA":
+            # 전체 값 표시
             row = table.rows[0]
             lines.append("  ".join(
                 f"{disp}:{row[table.columns.index(actual)]}"
                 for disp, actual in valid
             ))
         else:
-            # 컬럼별 최대 너비 계산 (헤더 vs 데이터 중 큰 값)
-            data_rows = [
+            # 상위 3행만 표시
+            display_rows = [
                 [_trunc(str(row[table.columns.index(actual)]), 12) for _, actual in valid]
-                for row in table.rows
+                for row in table.rows[:3]
             ]
             headers = [disp for disp, _ in valid]
             widths = [_col_width(h) for h in headers]
-            for row_vals in data_rows:
+            for row_vals in display_rows:
                 for i, v in enumerate(row_vals):
                     widths[i] = max(widths[i], _col_width(v))
 
             sep = "-+-".join("-" * w for w in widths)
             lines.append(" | ".join(_col_pad(h, widths[i]) for i, h in enumerate(headers)))
             lines.append(sep)
-            for row_vals in data_rows:
+            for row_vals in display_rows:
                 lines.append(" | ".join(_col_pad(v, widths[i]) for i, v in enumerate(row_vals)))
+            if total > 3:
+                lines.append(f"  ... 외 {total - 3}건")
 
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
@@ -1198,6 +1210,19 @@ _FEATURE_DISPLAY_COLS = {
         ("TAC", "TAC"), ("PhID", "PhID"), ("L밴드", "L밴드"), ("N밴드", "N밴드"),
         ("발생횟수", "발생횟수"), ("원인", "원인"),
     ],
+    "NSVC": [
+        ("수", "NSVC_Count"),
+        ("LEV0", "LEV0_avg"), ("LEV1", "LEV1_avg"), ("LEV2", "LEV2_avg"),
+        ("LEV3", "LEV3_avg"), ("LEV4", "LEV4_avg"), ("LEV5", "LEV5_avg"),
+    ],
+    "ATTF": [
+        ("ACT", "ACT_"), ("TAC", "TAC_"), ("PCI", "PhID_"), ("DLCh", "DLCh"),
+        ("Count", "Count"), ("원인", "EMMC_Counts"),
+    ],
+    "CRSH": [
+        ("ACT", "ACT_"), ("TAC", "TAC_"), ("PCI", "PhID"),
+        ("Count", "Count"), ("원인", "InCa_Counts"),
+    ],
 }
 
 # 표시 레이블 (feature key → 챗봇 표시용 이름)
@@ -1207,6 +1232,9 @@ _FEATURE_LABELS = {
     "DROP":       "DROP",
     "RLFI":       "RLFI",
     "SCGF":       "SCGF",
+    "NSVC":       "NSVC",
+    "ATTF":       "ATTF (접속실패)",
+    "CRSH":       "CRSH (크래시)",
 }
 
 
