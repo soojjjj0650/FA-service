@@ -872,7 +872,7 @@ async def _handle_query(websocket: WebSocket, sn: str, send_fn=None):
 
         feature_summary = ", ".join(
             f"{f}:{len(t.rows)}건" for f, t in processed.feature_tables.items()
-        ) or "데이터 없음"
+        )
         await progress(f"데이터 가공 완료 — {feature_summary}")
 
         # 3. AI Agent 분석
@@ -1098,8 +1098,7 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> 
     # 표시할 테이블이 하나도 없으면 조회 없음 메시지
     has_tables = len(parts) > (1 if feature_summary else 0)
     if not has_tables:
-        lookback = settings.QINGS_DATE_LOOKBACK_DAYS
-        no_data_msg = f"최근 {lookback}일간 조회되는 데이터가 없습니다."
+        no_data_msg = f"최근 {settings.QUERY_LOOKBACK_DAYS}일간 조회되는 데이터가 없습니다."
         parts.append(no_data_msg)
 
     return "\n\n".join(parts)
@@ -1406,8 +1405,8 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         # 데이터 없음 처리 (쿼리 성공했으나 결과 없음)
         if query_result.csv_path is None:
             job["status"] = "done"
-            job["ai_response"] = "최근 10일간 조회 결과가 없습니다."
-            job["feature_summary"] = "데이터 없음"
+            job["ai_response"] = f"최근 {settings.QUERY_LOOKBACK_DAYS}일간 조회 결과가 없습니다."
+            job["feature_summary"] = ""
             await _push_card_to_chatroom(job)
             return
 
@@ -1434,7 +1433,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         feature_summary = " > ".join(
             f"{f}({len(t.rows)}건)"
             for f, t in sorted(processed.feature_tables.items(), key=lambda x: len(x[1].rows), reverse=True)[:9]
-        ) or "데이터 없음"
+        )
 
         job["status"] = "done"
         job["ai_response"] = ai_response

@@ -55,7 +55,7 @@ with Data_SN as (
 )
 SELECT yymmddcrt as Date, SUBSTR(generation_timestamp,12,8) AS Time, feature,custom_value
 FROM `bigdata-dqa-data.mobile_udc`.to_udc_modem INNER JOIN Data_SN USING (un)
-WHERE p_yymmddval between DATE_SUB(current_date(), INTERVAL 10 DAY) and current_date()
+WHERE p_yymmddval between DATE_SUB(current_date(), INTERVAL {days} DAY) and current_date()
 ORDER by Date,Time"""
 
     async def run(
@@ -130,7 +130,7 @@ ORDER by Date,Time"""
 
             # 2. SQL 쿼리 입력
             await notify(f"SQL 쿼리 입력 중... (SN: {sn})")
-            sql = self.SQL_TEMPLATE.format(sn=sn.strip())
+            sql = self.SQL_TEMPLATE.format(sn=sn.strip(), days=settings.QUERY_LOOKBACK_DAYS)
             await self._input_query(page, sql)
 
             # 3. Run 버튼 클릭 + 완료 대기
