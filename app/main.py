@@ -416,7 +416,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         station_text = job.get('station_text', '')
         feature_tables = job.get('feature_tables') or {}
         feature_summary = job.get('feature_summary', '')
-        info_analysis = _feature_tables_to_text(feature_tables, feature_summary)
+        info_analysis = _feature_tables_to_text(feature_tables, feature_summary, job.get('query_days'))
 
         payload = {
             "chatRoomId":    chat_room_id,
@@ -1044,7 +1044,7 @@ def _col_pad(s: str, width: int) -> str:
     return s + " " * max(0, width - _col_width(s))
 
 
-def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> str:
+def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "", query_days: int | None = None) -> str:
     """Feature 분포 + 각 feature 테이블(상위 3행, MUTE_EXTRA 전체)을 마크다운 표로 변환합니다."""
     _FEAT_ORDER = ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF", "NSVC", "ATTF", "CRSH"]
     parts = []
@@ -1098,7 +1098,7 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> 
     # 표시할 테이블이 하나도 없으면 조회 없음 메시지
     has_tables = len(parts) > (1 if feature_summary else 0)
     if not has_tables:
-        no_data_msg = f"최근 {settings.QUERY_LOOKBACK_DAYS}일간 조회되는 데이터가 없습니다."
+        no_data_msg = f"최근 {query_days or settings.QUERY_LOOKBACK_DAYS}일간 조회되는 데이터가 없습니다."
         parts.append(no_data_msg)
 
     return "\n\n".join(parts)
@@ -1355,10 +1355,11 @@ def _build_station_card_blocks(entries: list[dict]) -> list[dict]:
 
 
 # ─── 챗봇 전용 백그라운드 파이프라인 ─────────────────────────────────────────
-async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
+async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | None = None) -> None:
     """챗봇 Job: SQL 조회 → 데이터 가공 → AI 분석 전체 파이프라인 실행"""
     job = _chatbot_jobs[job_id]
     job["status"] = "running"
+    days = query_days if query_days is not None else settings.QUERY_LOOKBACK_DAYS
 
     try:
         if settings.MOCK_MODE:
@@ -1390,7 +1391,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         else:
             if cached_path:
                 logger.info(f"[Chatbot Job {job_id}] 캐시 만료 → live 쿼리 실행")
-            query_result = await query_runner.run(sn)
+            query_result = await query_runner.run(sn, days=days)
 
         if not query_result.success:
             job["status"] = "error"
@@ -1405,7 +1406,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str) -> None:
         # 데이터 없음 처리 (쿼리 성공했으나 결과 없음)
         if query_result.csv_path is None:
             job["status"] = "done"
-            job["ai_response"] = f"최근 {settings.QUERY_LOOKBACK_DAYS}일간 조회 결과가 없습니다."
+            job["ai_response"] = f"최근 {days}일간 조회 결과가 없습니다."
             job["feature_summary"] = ""
             await _push_card_to_chatroom(job)
             return
@@ -1665,6 +1666,14 @@ async def webhook_handler(request: Request):
         logger.info(f"[Webhook] SN 조회 시작: {sn_list} | userId={user_id} | chatRoomId={chat_room_id}")
 
         # SN별 Job 생성 + 병렬 파이프라인 시작
+        # 조회 기간 (days): 웹훅 payload 우선, 없으면 config 기본값
+        days_raw = data.get("days") or data.get("day") or data.get("lookback_days")
+        try:
+            query_days = int(days_raw) if days_raw is not None else settings.QUERY_LOOKBACK_DAYS
+            query_days = max(1, min(query_days, 30))  # 1~30일 범위 제한
+        except (ValueError, TypeError):
+            query_days = settings.QUERY_LOOKBACK_DAYS
+
         for sn in sn_list:
             job_id = str(uuid.uuid4())
             _chatbot_jobs[job_id] = {
@@ -1673,8 +1682,9 @@ async def webhook_handler(request: Request):
                 "userId": user_id or None,
                 "chatRoomId": chat_room_id or None,
                 "created_at": time.time(),
+                "query_days": query_days,
             }
-            asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn))
+            asyncio.create_task(_run_chatbot_full_pipeline(job_id, sn, query_days))
 
         sn_display = ", ".join(sn_list)
         return JSONResponse({

@@ -62,12 +62,14 @@ ORDER by Date,Time"""
         self,
         sn: str,
         progress_callback: ProgressCallback | None = None,
+        days: int | None = None,
     ) -> QueryResult:
         """
         SN에 대해 SQL 쿼리를 실행하고 CSV를 다운로드합니다.
         Connection 오류 시 1회 자동 재시도합니다.
         """
-        logger.info(f"쿼리 시작 - SN: {sn}")
+        query_days = days if days is not None else settings.QUERY_LOOKBACK_DAYS
+        logger.info(f"쿼리 시작 - SN: {sn}, 조회기간: {query_days}일")
 
         async def notify(msg: str):
             logger.debug(f"[{sn}] {msg}")
@@ -77,7 +79,7 @@ ORDER by Date,Time"""
         for attempt in range(2):  # 최대 2회 시도
             try:
                 async with browser_pool.acquire() as context:
-                    return await self._execute_query(context, sn, notify)
+                    return await self._execute_query(context, sn, notify, query_days)
             except SessionExpiredNotice as e:
                 msg = str(e)
                 await notify("세션 만료 - 수동 재로그인 필요 (python scripts/manual_login.py)")
@@ -107,6 +109,7 @@ ORDER by Date,Time"""
         context: BrowserContext,
         sn: str,
         notify: ProgressCallback,
+        days: int = 1,
     ) -> QueryResult:
         page = await context.new_page()
 
@@ -130,7 +133,7 @@ ORDER by Date,Time"""
 
             # 2. SQL 쿼리 입력
             await notify(f"SQL 쿼리 입력 중... (SN: {sn})")
-            sql = self.SQL_TEMPLATE.format(sn=sn.strip(), days=settings.QUERY_LOOKBACK_DAYS)
+            sql = self.SQL_TEMPLATE.format(sn=sn.strip(), days=days)
             await self._input_query(page, sql)
 
             # 3. Run 버튼 클릭 + 완료 대기
