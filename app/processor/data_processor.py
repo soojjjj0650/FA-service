@@ -438,6 +438,16 @@ class DataProcessor:
                     table_rows.append(tr)
 
                 columns = list(col_map.keys())
+
+                # MUTE: ECNT 없는 행은 집계에서 제외
+                if feat == "MUTE" and "ECNT" in columns:
+                    ecnt_idx = columns.index("ECNT")
+                    orig_count = len(table_rows)
+                    table_rows = [r for r in table_rows if r[ecnt_idx].strip() and r[ecnt_idx].strip() != "0"]
+                    excluded = orig_count - len(table_rows)
+                    if excluded:
+                        logger.info(f"[MUTE] ECNT 없는 행 {excluded}건 제외 (집계 대상: {len(table_rows)}건)")
+
                 columns, agg_rows, footnotes = self._aggregate_rows(feat, columns, table_rows)
 
                 # drop 컬럼 제거
@@ -562,6 +572,12 @@ class DataProcessor:
 
             cv = self._parse_custom_value(str(row.get("custom_value", "") or ""))
             if cv.get("PhID", "").strip():
+                result.append(row)
+                continue
+
+            # ECNT 없으면 CEND PCI 보완 대상 아님 (어차피 집계에서 제외됨)
+            ecnt = str(cv.get("ECNT", "")).strip()
+            if not ecnt or ecnt == "0":
                 result.append(row)
                 continue
 
