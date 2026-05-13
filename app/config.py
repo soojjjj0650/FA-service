@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # ─── 내부 AI Agent ───────────────────────────────────────────────────────
     AI_AGENT_URL: str = "https://agent.sec.samsung.net/api/v1/run/f0bb8a7f-69c0-4343-8251-1483286bbb22?stream=false"
     AI_AGENT_API_KEY: str = "sk-TnJNxPXgqSMH9ikmNk5alN99JfkKy4CXQPDYqY_EWx8"
-    AI_AGENT_INPUT_KEY: str = "TextInput-n8kcD"   # 실제 데이터 입력 컴포넌트 key
+    AI_AGENT_INPUT_KEY: str = "Text Input-n8kcD"   # 실제 데이터 입력 컴포넌트 key
     # 프롬프트 템플릿 컴포넌트 key (비워두면 해당 component_input 미전송)
     # Langflow flow에서 prompt 컴포넌트의 key 값 입력 (예: "prompt-rFpiB")
     AI_AGENT_PROMPT_KEY: str = "prompt-rFpiB"
