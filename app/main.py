@@ -1050,7 +1050,7 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> 
     parts = []
 
     if feature_summary:
-        parts.append(f"**[ Feature 분포 ]**\n\n{feature_summary}")
+        parts.append(f"[ Feature 분포 ]\n\n{feature_summary}")
 
     for feat in _FEAT_ORDER:
         table = feature_tables.get(feat)
