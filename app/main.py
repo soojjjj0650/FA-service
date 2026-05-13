@@ -871,7 +871,7 @@ async def _handle_query(websocket: WebSocket, sn: str, send_fn=None):
             return
 
         feature_summary = ", ".join(
-            f"{f}:{len(t.rows)}건" for f, t in processed.feature_tables.items()
+            f"{f}:{len(t.rows)}건" for f, t in processed.feature_tables.items() if t.rows
         )
         await progress(f"데이터 가공 완료 — {feature_summary}")
 
@@ -1434,6 +1434,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
         feature_summary = " > ".join(
             f"{f}({len(t.rows)}건)"
             for f, t in sorted(processed.feature_tables.items(), key=lambda x: len(x[1].rows), reverse=True)[:9]
+            if t.rows
         )
 
         job["status"] = "done"
