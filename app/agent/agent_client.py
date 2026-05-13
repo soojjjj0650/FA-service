@@ -87,8 +87,8 @@ class AgentClient:
             "component_inputs": component_inputs,
         }
 
-        # AI Agent 입력값을 파일로 저장 (확인용)
-        self._save_input_log(processed.sn, processed.summary_text)
+        # AI Agent 입력값 + 전체 payload를 파일로 저장 (확인용)
+        self._save_input_log(processed.sn, processed.summary_text, payload)
 
         for attempt in range(_MAX_RETRIES):
             try:
@@ -197,18 +197,32 @@ class AgentClient:
         )
 
     @staticmethod
-    def _save_input_log(sn: str, prompt: str) -> None:
-        """AI Agent에 전송하는 입력값을 텍스트 파일로 저장합니다."""
-        import os
+    def _save_input_log(sn: str, prompt: str, payload: dict | None = None) -> None:
+        """AI Agent에 전송하는 입력값 + 전체 payload를 파일로 저장합니다."""
+        import os, json
         save_dir = settings.CSV_DOWNLOAD_PATH
-        path = os.path.join(save_dir, f"{sn}_ai_input.txt")
         try:
             os.makedirs(save_dir, exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
+            # 입력 텍스트
+            text_path = os.path.join(save_dir, f"{sn}_ai_input.txt")
+            with open(text_path, "w", encoding="utf-8") as f:
                 f.write(prompt)
-            logger.info(f"AI 입력값 저장 완료: {path}")
+            # 전체 payload JSON (component_inputs 키 확인용)
+            if payload:
+                payload_path = os.path.join(save_dir, f"{sn}_ai_payload.json")
+                with open(payload_path, "w", encoding="utf-8") as f:
+                    # input_value 값은 길어서 앞 200자만 저장
+                    compact = dict(payload)
+                    ci = {}
+                    for k, v in compact.get("component_inputs", {}).items():
+                        val = v.get("input_value", "")
+                        ci[k] = {"input_value": val[:200] + "..." if len(val) > 200 else val}
+                    compact["component_inputs"] = ci
+                    json.dump(compact, f, ensure_ascii=False, indent=2)
+                logger.info(f"AI payload 저장 완료: {payload_path}")
+            logger.info(f"AI 입력값 저장 완료: {text_path}")
         except Exception as e:
-            logger.error(f"AI 입력값 저장 실패 [{type(e).__name__}]: {e}\n저장 경로: {path}", exc_info=True)
+            logger.error(f"AI 입력값 저장 실패 [{type(e).__name__}]: {e}", exc_info=True)
 
     @staticmethod
     def _save_output_log(sn: str, response: str) -> None:
