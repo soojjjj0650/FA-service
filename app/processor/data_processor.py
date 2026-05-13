@@ -63,7 +63,7 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("ACT",     "ACT1"),
         ("LAC",     "LAC1"),
         ("TAC",     "TAC1"),
-        ("PID",     "PID"),
+        ("PID",     ("PID", "PID1", "PID2", "PID3", "PID4")),
         ("DCh",     "DCh1"),
         ("RxP_avg", "RxP1"),
         ("CAU",     "CAU1"),
