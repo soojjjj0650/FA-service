@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # ─── 쿼리 조회 기간 ──────────────────────────────────────────────────────
-    QUERY_LOOKBACK_DAYS: int = 10       # SQL INTERVAL N DAY (데이터 조회 기간)
+    QUERY_LOOKBACK_DAYS: int = 1        # SQL INTERVAL N DAY (데이터 조회 기간)
 
     class Config:
         env_file = ".env"
