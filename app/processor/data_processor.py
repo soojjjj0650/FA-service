@@ -515,17 +515,29 @@ class DataProcessor:
                         vc[col][v] = vc[col].get(v, 0) + 1
             # 하나라도 값이 있는 경우에만 테이블 추가
             if any(vc[c] for c in extra_cols):
-                summary_row = [
-                    ", ".join(
-                        f"{apply_code(c, v)}:{n}회"
-                        for v, n in sorted(vc[c].items(), key=lambda x: -x[1])
-                    ) if vc[c] else "-"
-                    for c in extra_cols
-                ]
+                footnote_map: dict[str, str] = {}
+                summary_row = []
+                for c in extra_cols:
+                    if vc[c]:
+                        parts = []
+                        for v, n in sorted(vc[c].items(), key=lambda x: -x[1]):
+                            full = apply_code(c, v)
+                            if "(" in full and full.endswith(")"):
+                                code = full[:full.index("(")]
+                                desc = full[full.index("(")+1:-1]
+                                footnote_map[code] = desc
+                                parts.append(f"{code}:{n}회")
+                            else:
+                                parts.append(f"{full}:{n}회")
+                        summary_row.append(", ".join(parts))
+                    else:
+                        summary_row.append("-")
+                footnotes = [f"{code}: {desc}" for code, desc in sorted(footnote_map.items())]
                 tables["MUTE_EXTRA"] = FeatureTable(
                     feature="MUTE(SAMS/SMBU/MCST)",
                     columns=extra_cols,
                     rows=[summary_row],
+                    footnotes=footnotes,
                 )
                 logger.debug(f"MUTE 보조 테이블 생성: {summary_row}")
 

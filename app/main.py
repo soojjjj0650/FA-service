@@ -1093,6 +1093,11 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "") -> 
             if total > 3:
                 lines.append(f"*... 외 {total - 3}건*")
 
+        # 괄호 안 설명을 표 아래 주석으로 표시
+        if table.footnotes:
+            for fn in table.footnotes:
+                lines.append(f"※ {fn}")
+
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
