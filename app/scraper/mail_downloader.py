@@ -185,30 +185,14 @@ async def _open_folder(page: Page) -> None:
     logger.warning(f"[Mail] '{folder_name}' 폴더를 찾지 못했습니다")
 
 
-def _find_mail_frame(page: Page):
-    """#DEFAULT_scroll-list 가 존재하는 프레임을 반환"""
+async def _find_frame_with(page: Page, selector: str):
+    """selector가 존재하는 프레임을 반환 (page 포함)"""
     for ctx in [page, *page.frames]:
         try:
-            loc = ctx.locator(_SEL_SCROLL_CTR)
-            # is_visible은 동기 컨텍스트에서 사용 불가 → count로 대체
-            # (비동기 함수 밖에서 호출되므로 coroutine 반환만 함)
-            return ctx
-        except Exception:
-            continue
-    return page
-
-
-async def _find_mail_frame_async(page: Page):
-    """#DEFAULT_scroll-list 가 실제로 보이는 프레임을 비동기로 찾아 반환"""
-    for ctx in [page, *page.frames]:
-        try:
-            cnt = await ctx.locator(_SEL_SCROLL_CTR).count()
-            if cnt > 0:
-                logger.info(f"[Mail] 메일 목록 프레임 발견: {getattr(ctx, 'url', 'page')}")
+            if await ctx.locator(selector).count() > 0:
                 return ctx
         except Exception:
             continue
-    logger.warning("[Mail] 메일 목록 프레임 미발견 — 메인 페이지 사용")
     return page
 
 
@@ -223,7 +207,8 @@ async def _process_mail_list(
     processed_this_run: list[str] = []
 
     # 메일 목록이 있는 프레임 탐색
-    frame = await _find_mail_frame_async(page)
+    frame = await _find_frame_with(page, _SEL_SCROLL_CTR)
+    logger.info(f"[Mail] 메일 목록 프레임: {getattr(frame, 'url', 'main page')}")
 
     scroll_attempts = 0
     max_scrolls = 10
@@ -243,17 +228,19 @@ async def _process_mail_list(
                     continue
 
                 logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
-                files = await _open_and_download(page, frame, context, row, save_dir)
+                files = await _open_and_download(page, frame, row, save_dir)
 
                 if files:
                     saved.extend(files)
-                    done_ids.add(subject)
-                    processed_this_run.append(subject)
+                done_ids.add(subject)
+                processed_this_run.append(subject)
+                if files:
                     logger.info(f"[Mail] 저장: {files}")
-                else:
-                    done_ids.add(subject)
-                    processed_this_run.append(subject)
 
+                # 메일 열람 후 목록 복귀 대기
+                await asyncio.sleep(2)
+                # 목록 프레임 재탐색 (화면 전환 후 변경될 수 있음)
+                frame = await _find_frame_with(page, _SEL_SCROLL_CTR)
                 rows = frame.locator(_SEL_MAIL_ROW)
                 count = await rows.count()
 
@@ -275,104 +262,57 @@ async def _process_mail_list(
 async def _open_and_download(
     page: Page,
     frame,
-    context: BrowserContext,
     row,
     save_dir: str,
 ) -> list[str]:
-    """체크박스 클릭 → 우클릭 → '새 창으로 보기' → 첨부파일 체크 → 저장"""
+    """메일 행 클릭 → 같은 화면에서 열림 → 첨부파일 체크 → 저장 → 뒤로가기"""
     saved: list[str] = []
-    mail_page = page
 
+    # 메일 행 클릭 (제목 셀 클릭)
     try:
-        # 1. 체크박스 클릭으로 행 선택
-        chk = row.locator(_SEL_MAIL_CHK).first
-        await chk.click()
-        await asyncio.sleep(0.5)
-
-        # 2. 행 우클릭 → 컨텍스트 메뉴
-        await row.click(button="right")
-        await asyncio.sleep(0.5)
-
-        # 3. "새 창으로 보기" 클릭 (메인 page 또는 frame 양쪽에서 탐색)
-        new_win_item = None
-        for ctx in [page, frame]:
-            loc = ctx.locator('text="새 창으로 보기"')
-            if await loc.count() > 0:
-                new_win_item = loc.first
-                break
-
-        if new_win_item is None:
-            logger.warning("[Mail] '새 창으로 보기' 메뉴 항목 미발견")
-            return saved
-
-        async with context.expect_page(timeout=8_000) as new_pg:
-            await new_win_item.click()
-        mail_page = await new_pg.value
-        await mail_page.wait_for_load_state("domcontentloaded", timeout=15_000)
-        logger.info("[Mail] 새 창으로 메일 열림")
-
-    except Exception as e:
-        logger.warning(f"[Mail] 메일 열기 실패: {e}")
-        return saved
-
+        title_cell = row.locator("div > div:first-child").first
+        await title_cell.click()
+    except Exception:
+        await row.click()
     await asyncio.sleep(2)
 
+    # page + 모든 프레임에서 첨부파일 체크박스 탐색
+    chk_frame = await _find_frame_with(page, _SEL_ATTACH_CHK)
+    checkboxes = chk_frame.locator(_SEL_ATTACH_CHK)
+    chk_count = await checkboxes.count()
+
+    if chk_count == 0:
+        logger.debug("[Mail] 첨부파일 없음 — 뒤로가기")
+        await page.go_back()
+        await asyncio.sleep(1)
+        return saved
+
+    logger.info(f"[Mail] 첨부파일 {chk_count}개 체크...")
+    for j in range(chk_count):
+        await checkboxes.nth(j).click()
+        await asyncio.sleep(0.3)
+
+    # 저장 버튼 탐색
+    save_frame = await _find_frame_with(page, _SEL_SAVE_BTN)
+    save_btn = save_frame.locator(_SEL_SAVE_BTN).first
+    if not await save_btn.is_visible(timeout=3_000):
+        logger.warning("[Mail] 저장 버튼 없음 — 뒤로가기")
+        await page.go_back()
+        await asyncio.sleep(1)
+        return saved
+
+    logger.info("[Mail] 저장 버튼 클릭...")
     try:
-        # 새 창의 모든 프레임에서 첨부파일 체크박스 탐색
-        mail_frame = None
-        checkboxes = None
-        chk_count = 0
-        for ctx in [mail_page, *mail_page.frames]:
-            try:
-                loc = ctx.locator(_SEL_ATTACH_CHK)
-                cnt = await loc.count()
-                if cnt > 0:
-                    mail_frame = ctx
-                    checkboxes = loc
-                    chk_count = cnt
-                    break
-            except Exception:
-                continue
+        async with page.expect_download(timeout=30_000) as dl_info:
+            await save_btn.click()
+        dl: Download = await dl_info.value
+        saved = await _save_download(dl, save_dir)
+    except Exception as e:
+        logger.warning(f"[Mail] 다운로드 실패: {e}")
 
-        if chk_count == 0:
-            logger.debug("[Mail] 첨부파일 없음 — 건너뜀")
-            return saved
-
-        logger.info(f"[Mail] 첨부파일 {chk_count}개 체크...")
-        for j in range(chk_count):
-            await checkboxes.nth(j).click()
-            await asyncio.sleep(0.3)
-
-        # 저장 버튼도 같은 프레임에서 탐색
-        save_btn = None
-        save_frame = mail_frame or mail_page
-        for ctx in [save_frame, mail_page, *mail_page.frames]:
-            try:
-                loc = ctx.locator(_SEL_SAVE_BTN)
-                if await loc.count() > 0:
-                    save_btn = loc.first
-                    save_frame = ctx
-                    break
-            except Exception:
-                continue
-
-        if save_btn is None or not await save_btn.is_visible(timeout=3_000):
-            logger.warning("[Mail] 저장 버튼 없음")
-            return saved
-
-        logger.info("[Mail] 저장 버튼 클릭...")
-        try:
-            async with mail_page.expect_download(timeout=30_000) as dl_info:
-                await save_btn.click()
-            dl: Download = await dl_info.value
-            files = await _save_download(dl, save_dir)
-            saved.extend(files)
-        except Exception as e:
-            logger.warning(f"[Mail] 다운로드 실패: {e}")
-
-    finally:
-        if mail_page != page:
-            await mail_page.close()
+    # 목록으로 복귀
+    await page.go_back()
+    await asyncio.sleep(1)
 
     return saved
 
