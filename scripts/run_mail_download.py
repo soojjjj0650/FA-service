@@ -22,7 +22,28 @@ logging.basicConfig(
 )
 
 
+IDS_FILE = ROOT / "data" / "sessions" / "mail_downloaded_ids.json"
+
+
+def reset_ids():
+    if IDS_FILE.exists():
+        IDS_FILE.unlink()
+        print(f"  이력 초기화 완료: {IDS_FILE}")
+    else:
+        print("  이력 파일 없음 (이미 초기화 상태)")
+
+
 async def main():
+    # --reset 옵션: 다운로드 이력만 삭제하고 종료
+    if "--reset" in sys.argv:
+        print("=" * 60)
+        print("  메일 다운로드 이력 초기화")
+        print("=" * 60)
+        reset_ids()
+        print()
+        input("  아무 키나 누르면 닫힙니다...")
+        return
+
     print("=" * 60)
     print("  FA 미결건 메일 첨부파일 다운로드")
     print("=" * 60)
