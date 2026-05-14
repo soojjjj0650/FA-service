@@ -256,7 +256,18 @@ async def _process_mail_list(
 
 
 async def _find_checkboxes(page: Page):
-    """모든 프레임에서 메일 목록 체크박스를 찾아 (frame, locator, count) 반환"""
+    """모든 프레임에서 #DEFAULT_scroll-list 안의 체크박스를 찾아 (frame, locator, count) 반환"""
+    # 1순위: 메일 목록 컨테이너 안의 체크박스 (프레임과 XPath가 일치 보장)
+    for ctx in [page, *page.frames]:
+        try:
+            loc = ctx.locator(f'{_SEL_SCROLL_CTR} {_SEL_MAIL_CHK}')
+            cnt = await loc.count()
+            if cnt > 0:
+                logger.info(f"[Mail] 체크박스 {cnt}개 발견 (프레임: {getattr(ctx, 'url', 'main')})")
+                return ctx, loc, cnt
+        except Exception:
+            continue
+    # 2순위: 컨테이너 없이 전체 탐색
     for ctx in [page, *page.frames]:
         try:
             loc = ctx.locator(_SEL_MAIL_CHK)
@@ -265,7 +276,6 @@ async def _find_checkboxes(page: Page):
                 return ctx, loc, cnt
         except Exception:
             continue
-    # 못 찾으면 빈 결과
     return page, page.locator(_SEL_MAIL_CHK), 0
 
 
@@ -286,7 +296,7 @@ async def _open_and_download(
     # 2. 제목 셀 우클릭 (XPath 1-based 인덱스)
     xpath_title = f'xpath=//*[@id="DEFAULT_scroll-list"]/div/div[2]/div[{row_idx+1}]/div/div[1]'
     title_cell = frame.locator(xpath_title)
-    await title_cell.click(button="right")
+    await title_cell.click(button="right", timeout=10_000)
     await asyncio.sleep(0.5)
 
     # 3. "새 창으로 열기" / "새 창으로 보기" 메뉴 탐색 (모든 프레임)
