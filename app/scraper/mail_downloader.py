@@ -375,10 +375,15 @@ async def _open_and_download(
                     break
                 try:
                     for sel in [
+                        'button:has-text("저장(S)")',
+                        'button[aria-label="저장(S)"]',
                         'button[aria-label="저장"]',
+                        '[role="dialog"] button:has-text("저장(S)")',
                         '[role="dialog"] button:has-text("저장")',
                         '[role="dialog"] button:has-text("확인")',
+                        '.dialog button:has-text("저장(S)")',
                         '.dialog button:has-text("저장")',
+                        '.modal button:has-text("저장(S)")',
                         '.modal button:has-text("저장")',
                         'button:has-text("확인")',
                         'button:has-text("저장")',
