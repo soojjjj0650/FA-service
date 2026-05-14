@@ -33,12 +33,10 @@ _EXCEL_EXTS = {".xlsx", ".xls", ".xlsm"}
 # ─── 셀렉터 ───────────────────────────────────────────────────────────────────
 _SEL_MAIL_BTN    = 'button[aria-label="메일"]'
 _SEL_FOLDER      = 'button:has(span.text:text("FA 미결건"))'
-# 메일 행 체크박스: 클릭하면 메일이 선택(열림)됨
 _SEL_MAIL_ROW    = '#DEFAULT_scroll-list > div > div:nth-child(2) > div'
 _SEL_MAIL_CHK    = 'span[role="check"][aria-label="선택"]'
 _SEL_SCROLL_CTR  = '#DEFAULT_scroll-list'
-_SEL_ATTACH_CHK  = 'label:has(i.check.md)'
-_SEL_SAVE_BTN    = 'button[aria-label="저장"]'
+_SEL_SAVE_ALL    = 'button[aria-label="모두저장"]'   # 새 창에서 클릭할 버튼
 
 
 def _save_dir() -> str:
@@ -264,41 +262,82 @@ async def _open_and_download(
     title_cell,
     save_dir: str,
 ) -> list[str]:
-    """제목 셀 클릭 → 첨부파일 체크 → 저장 버튼 → 다운로드"""
+    """체크박스 클릭 → 우클릭 → 새 창으로 열기 → 모두저장 → 다운로드"""
     saved: list[str] = []
 
-    await title_cell.click()
-    await asyncio.sleep(2)
-
-    # page + 모든 프레임에서 첨부파일 체크박스 탐색
-    chk_frame = await _find_frame_with(page, _SEL_ATTACH_CHK)
-    checkboxes = chk_frame.locator(_SEL_ATTACH_CHK)
-    chk_count = await checkboxes.count()
-
-    if chk_count == 0:
-        logger.debug("[Mail] 첨부파일 없음 — 건너뜀")
-        return saved
-
-    logger.info(f"[Mail] 첨부파일 {chk_count}개 체크...")
-    for j in range(chk_count):
-        await checkboxes.nth(j).click()
-        await asyncio.sleep(0.3)
-
-    # 저장 버튼 탐색
-    save_frame = await _find_frame_with(page, _SEL_SAVE_BTN)
-    save_btn = save_frame.locator(_SEL_SAVE_BTN).first
-    if not await save_btn.is_visible(timeout=3_000):
-        logger.warning("[Mail] 저장 버튼 없음")
-        return saved
-
-    logger.info("[Mail] 저장 버튼 클릭...")
     try:
-        async with page.expect_download(timeout=30_000) as dl_info:
+        # 1. 행 체크박스 클릭 (title_cell 기준 2단계 위 = 행 div)
+        # XPath: .../div[N]/div/div[1]  →  ../.. = div[N]
+        row_el = title_cell.locator('xpath=../..')
+        chk = row_el.locator(_SEL_MAIL_CHK)
+        if await chk.count() == 0:
+            chk = frame.locator(_SEL_MAIL_CHK).first
+        await chk.first.click()
+        await asyncio.sleep(0.4)
+    except Exception as e:
+        logger.warning(f"[Mail] 체크박스 클릭 실패: {e}")
+
+    try:
+        # 2. 제목 셀 우클릭 → 컨텍스트 메뉴
+        await title_cell.click(button="right")
+        await asyncio.sleep(0.5)
+
+        # 3. "새 창으로 열기" 또는 "새 창으로 보기" 클릭
+        menu_item = None
+        for label in ["새 창으로 열기", "새 창으로 보기"]:
+            for ctx in [page, frame]:
+                loc = ctx.locator(f'text="{label}"')
+                if await loc.count() > 0:
+                    menu_item = loc.first
+                    break
+            if menu_item:
+                break
+
+        if menu_item is None:
+            logger.warning("[Mail] 새 창 메뉴 미발견")
+            return saved
+
+        # 4. 새 창 열기
+        async with page.context.expect_page(timeout=8_000) as new_pg:
+            await menu_item.click()
+        mail_page = await new_pg.value
+        await mail_page.wait_for_load_state("domcontentloaded", timeout=15_000)
+        await asyncio.sleep(2)
+        logger.info("[Mail] 새 창 열림")
+
+    except Exception as e:
+        logger.warning(f"[Mail] 새 창 열기 실패: {e}")
+        return saved
+
+    try:
+        # 5. 새 창 + 모든 프레임에서 '모두저장' 버튼 탐색
+        save_btn = None
+        save_owner = mail_page
+        for ctx in [mail_page, *mail_page.frames]:
+            try:
+                loc = ctx.locator(_SEL_SAVE_ALL)
+                if await loc.count() > 0:
+                    save_btn = loc.first
+                    save_owner = ctx
+                    break
+            except Exception:
+                continue
+
+        if save_btn is None or not await save_btn.is_visible(timeout=5_000):
+            logger.warning("[Mail] 모두저장 버튼 없음 — 첨부파일 없는 메일로 간주")
+            return saved
+
+        # 6. 모두저장 클릭 → 다운로드 인터셉트 (accept_downloads=True 로 팝업 자동 확인)
+        logger.info("[Mail] 모두저장 클릭...")
+        async with mail_page.expect_download(timeout=30_000) as dl_info:
             await save_btn.click()
         dl: Download = await dl_info.value
         saved = await _save_download(dl, save_dir)
+
     except Exception as e:
         logger.warning(f"[Mail] 다운로드 실패: {e}")
+    finally:
+        await mail_page.close()
 
     return saved
 
