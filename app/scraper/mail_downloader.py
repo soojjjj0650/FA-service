@@ -215,34 +215,33 @@ async def _process_mail_list(
     last_count = 0
 
     while scroll_attempts <= max_scrolls:
-        rows = frame.locator(_SEL_MAIL_ROW)
+        # XPath로 행 수 파악: //*[@id="DEFAULT_scroll-list"]/div/div[2]/div[N]
+        rows = frame.locator('xpath=//*[@id="DEFAULT_scroll-list"]/div/div[2]/div')
         count = await rows.count()
         logger.info(f"[Mail] 메일 목록 {count}개 발견 (스크롤 {scroll_attempts}회)")
 
         for i in range(last_count, count):
             try:
-                row = rows.nth(i)
-                subject = (await row.inner_text()).strip().split("\n")[0] or f"mail_{i}"
+                # 각 행의 제목 셀: div[N]/div/div[1]  (1-based XPath index)
+                xpath_title = f'xpath=//*[@id="DEFAULT_scroll-list"]/div/div[2]/div[{i+1}]/div/div[1]'
+                title_cell = frame.locator(xpath_title)
 
+                subject = (await title_cell.inner_text()).strip() or f"mail_{i}"
                 if subject in done_ids or subject in processed_this_run:
                     continue
 
                 logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
-                files = await _open_and_download(page, frame, row, save_dir)
+                files = await _open_and_download(page, frame, title_cell, save_dir)
 
                 if files:
                     saved.extend(files)
+                    logger.info(f"[Mail] 저장: {files}")
                 done_ids.add(subject)
                 processed_this_run.append(subject)
-                if files:
-                    logger.info(f"[Mail] 저장: {files}")
 
-                # 메일 열람 후 목록 복귀 대기
                 await asyncio.sleep(2)
-                # 목록 프레임 재탐색 (화면 전환 후 변경될 수 있음)
+                # 목록 프레임 재탐색
                 frame = await _find_frame_with(page, _SEL_SCROLL_CTR)
-                rows = frame.locator(_SEL_MAIL_ROW)
-                count = await rows.count()
 
             except Exception as e:
                 logger.warning(f"[Mail] {i+1}번 메일 처리 오류: {e}")
@@ -262,18 +261,13 @@ async def _process_mail_list(
 async def _open_and_download(
     page: Page,
     frame,
-    row,
+    title_cell,
     save_dir: str,
 ) -> list[str]:
-    """메일 행 클릭 → 같은 화면에서 열림 → 첨부파일 체크 → 저장 → 뒤로가기"""
+    """제목 셀 클릭 → 첨부파일 체크 → 저장 버튼 → 다운로드"""
     saved: list[str] = []
 
-    # 메일 행 클릭 (제목 셀 클릭)
-    try:
-        title_cell = row.locator("div > div:first-child").first
-        await title_cell.click()
-    except Exception:
-        await row.click()
+    await title_cell.click()
     await asyncio.sleep(2)
 
     # page + 모든 프레임에서 첨부파일 체크박스 탐색
@@ -282,9 +276,7 @@ async def _open_and_download(
     chk_count = await checkboxes.count()
 
     if chk_count == 0:
-        logger.debug("[Mail] 첨부파일 없음 — 뒤로가기")
-        await page.go_back()
-        await asyncio.sleep(1)
+        logger.debug("[Mail] 첨부파일 없음 — 건너뜀")
         return saved
 
     logger.info(f"[Mail] 첨부파일 {chk_count}개 체크...")
@@ -296,9 +288,7 @@ async def _open_and_download(
     save_frame = await _find_frame_with(page, _SEL_SAVE_BTN)
     save_btn = save_frame.locator(_SEL_SAVE_BTN).first
     if not await save_btn.is_visible(timeout=3_000):
-        logger.warning("[Mail] 저장 버튼 없음 — 뒤로가기")
-        await page.go_back()
-        await asyncio.sleep(1)
+        logger.warning("[Mail] 저장 버튼 없음")
         return saved
 
     logger.info("[Mail] 저장 버튼 클릭...")
@@ -309,10 +299,6 @@ async def _open_and_download(
         saved = await _save_download(dl, save_dir)
     except Exception as e:
         logger.warning(f"[Mail] 다운로드 실패: {e}")
-
-    # 목록으로 복귀
-    await page.go_back()
-    await asyncio.sleep(1)
 
     return saved
 
