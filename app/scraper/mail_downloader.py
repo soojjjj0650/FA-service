@@ -282,12 +282,8 @@ async def _open_and_download(
     await chk.click()
     await asyncio.sleep(0.4)
 
-    # 2. JS로 체크박스의 부모 행을 우클릭
-    await chk.evaluate("""el => {
-        const row = el.closest('#DEFAULT_scroll-list > div > div > div')
-                   || el.parentElement;
-        row.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true}));
-    }""")
+    # 2. 체크박스 우클릭 → 컨텍스트 메뉴
+    await chk.click(button="right")
     await asyncio.sleep(0.5)
 
     # 3. "새 창으로 열기" / "새 창으로 보기" 메뉴 탐색 (모든 프레임)
