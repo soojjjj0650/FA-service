@@ -379,18 +379,27 @@ async def _open_and_download(
 
         # 6. 모두저장 클릭 → 저장첨부 팝업창(새 창) 열기
         logger.info("[Mail] 모두저장 클릭 → 저장첨부 팝업창 대기...")
+        pages_before = set(id(p) for p in mail_page.context.pages)
+        await save_btn.click()
+
         save_popup = None
-        try:
-            async with mail_page.context.expect_page(timeout=10_000) as popup_info:
-                await save_btn.click()
-            save_popup = await popup_info.value
-            await save_popup.wait_for_load_state("domcontentloaded", timeout=15_000)
-            await asyncio.sleep(2)
-            logger.info("[Mail] 저장첨부 팝업창 열림")
-        except Exception as e:
-            logger.warning(f"[Mail] 저장첨부 팝업 새 창 열기 실패: {e}")
+        for _ in range(15):  # 최대 15초 대기
+            await asyncio.sleep(1)
+            for p in mail_page.context.pages:
+                if id(p) not in pages_before:
+                    save_popup = p
+                    break
+            if save_popup:
+                break
+
+        if save_popup is None:
+            logger.warning("[Mail] 저장첨부 팝업창을 찾지 못했습니다")
             await mail_page.close()
             return saved
+
+        await save_popup.wait_for_load_state("domcontentloaded", timeout=15_000)
+        await asyncio.sleep(1)
+        logger.info(f"[Mail] 저장첨부 팝업창 열림: {save_popup.url}")
 
         # 알림 팝업 자동 닫기 핸들러
         async def _dismiss_dialog(dialog):
