@@ -204,51 +204,36 @@ async def _process_mail_list(
     saved: list[str] = []
     processed_this_run: list[str] = []
 
-    scroll_attempts = 0
-    max_scrolls = 10
-    last_count = 0
+    # 체크박스 프레임(클릭용)과 스크롤 프레임(XPath용) 따로 탐색
+    chk_frame, checkboxes, count = await _find_checkboxes(page)
+    scroll_frame = await _find_scroll_frame(page)
+    logger.info(f"[Mail] 메일 {count}개 발견")
 
-    while scroll_attempts <= max_scrolls:
-        # 체크박스 프레임(클릭용)과 스크롤 프레임(XPath용) 따로 탐색
-        chk_frame, checkboxes, count = await _find_checkboxes(page)
-        scroll_frame = await _find_scroll_frame(page)
-        logger.info(f"[Mail] 메일 {count}개 (스크롤 {scroll_attempts}회)")
+    for i in range(count):
+        try:
+            chk = checkboxes.nth(i)
+            subject = await chk.evaluate(
+                "el => (el.closest('div[class]') || el.parentElement)?.innerText?.split('\\n')[0]?.trim() || ''"
+            ) or f"mail_{i}"
 
-        for i in range(last_count, count):
-            try:
-                chk = checkboxes.nth(i)
-                subject = (await chk.inner_text()).strip() or f"mail_{i}"
-                if not subject:
-                    # 체크박스 텍스트가 없으면 부모 행 텍스트 첫 줄 사용
-                    subject = await chk.evaluate(
-                        "el => (el.closest('div[class]') || el.parentElement)?.innerText?.split('\\n')[0]?.trim() || ''"
-                    ) or f"mail_{i}"
-
-                if subject in done_ids or subject in processed_this_run:
-                    continue
-
-                logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
-                files = await _open_and_download(page, scroll_frame, chk, i, save_dir)
-
-                if files:
-                    saved.extend(files)
-                    logger.info(f"[Mail] 저장: {files}")
-                done_ids.add(subject)
-                processed_this_run.append(subject)
-
-                await asyncio.sleep(2)
-
-            except Exception as e:
-                logger.warning(f"[Mail] {i+1}번 메일 처리 오류: {e}")
+            if subject in done_ids or subject in processed_this_run:
+                logger.info(f"[Mail] [{i+1}] '{subject}' 이미 처리됨 — 건너뜀")
                 continue
 
-        last_count = count
+            logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
+            files = await _open_and_download(page, scroll_frame, chk, i, save_dir)
 
-        new_count = await _scroll_mail_list(scroll_frame)
-        if new_count <= count:
-            logger.info("[Mail] 스크롤 끝 — 모든 메일 처리 완료")
-            break
-        scroll_attempts += 1
+            if files:
+                saved.extend(files)
+                logger.info(f"[Mail] 저장: {files}")
+            done_ids.add(subject)
+            processed_this_run.append(subject)
+
+            await asyncio.sleep(1)
+
+        except Exception as e:
+            logger.warning(f"[Mail] {i+1}번 메일 처리 오류: {e}")
+            continue
 
     return saved
 
