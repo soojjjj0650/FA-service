@@ -307,25 +307,36 @@ async def _open_and_download(
             await menu_item.click()
         mail_page = await new_pg.value
         await mail_page.wait_for_load_state("domcontentloaded", timeout=15_000)
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
         logger.info("[Mail] 새 창 열림")
     except Exception as e:
         logger.warning(f"[Mail] 새 창 열기 실패: {e}")
         return saved
 
-    # 5. 새 창 + 모든 프레임에서 '모두저장' 버튼 탐색
+    # 5. 새 창 + 모든 프레임에서 '모두저장' 버튼 탐색 (로드 대기 포함)
     try:
         save_btn = None
-        for ctx in [mail_page, *mail_page.frames]:
-            try:
-                loc = ctx.locator(_SEL_SAVE_ALL)
-                if await loc.count() > 0:
-                    save_btn = loc.first
+        # 최대 10초 대기하며 버튼 탐색
+        for attempt in range(5):
+            all_ctxs = [mail_page, *mail_page.frames]
+            logger.info(f"[Mail] 새 창 프레임 수: {len(all_ctxs)} (시도 {attempt+1})")
+            for ctx in all_ctxs:
+                try:
+                    for sel in [_SEL_SAVE_ALL, 'button:has-text("모두저장")', 'button[aria-label*="저장"]']:
+                        loc = ctx.locator(sel)
+                        if await loc.count() > 0:
+                            save_btn = loc.first
+                            logger.info(f"[Mail] 모두저장 버튼 발견 (selector: {sel})")
+                            break
+                except Exception:
+                    continue
+                if save_btn:
                     break
-            except Exception:
-                continue
+            if save_btn:
+                break
+            await asyncio.sleep(2)
 
-        if save_btn is None or not await save_btn.is_visible(timeout=5_000):
+        if save_btn is None:
             logger.warning("[Mail] 모두저장 버튼 없음 — 첨부파일 없는 메일")
             return saved
 
