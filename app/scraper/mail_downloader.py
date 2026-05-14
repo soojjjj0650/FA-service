@@ -209,27 +209,26 @@ async def _process_mail_list(
     last_count = 0
 
     while scroll_attempts <= max_scrolls:
-        # 모든 프레임에서 체크박스 탐색 → 체크박스 수 = 메일 수
-        frame, checkboxes, count = await _find_checkboxes(page)
-        logger.info(f"[Mail] 체크박스 {count}개 발견 (프레임: {getattr(frame, 'url', 'main')}, 스크롤 {scroll_attempts}회)")
+        # 체크박스 프레임(클릭용)과 스크롤 프레임(XPath용) 따로 탐색
+        chk_frame, checkboxes, count = await _find_checkboxes(page)
+        scroll_frame = await _find_scroll_frame(page)
+        logger.info(f"[Mail] 메일 {count}개 (스크롤 {scroll_attempts}회)")
 
         for i in range(last_count, count):
             try:
                 chk = checkboxes.nth(i)
-
-                # 제목 텍스트: 체크박스 부모 행에서 추출 (JS)
-                subject = await chk.evaluate("""el => {
-                    const row = el.closest('#DEFAULT_scroll-list > div > div > div');
-                    if (!row) return '';
-                    const cell = row.querySelector('div > div:first-child');
-                    return cell ? cell.innerText.trim() : '';
-                }""") or f"mail_{i}"
+                subject = (await chk.inner_text()).strip() or f"mail_{i}"
+                if not subject:
+                    # 체크박스 텍스트가 없으면 부모 행 텍스트 첫 줄 사용
+                    subject = await chk.evaluate(
+                        "el => (el.closest('div[class]') || el.parentElement)?.innerText?.split('\\n')[0]?.trim() || ''"
+                    ) or f"mail_{i}"
 
                 if subject in done_ids or subject in processed_this_run:
                     continue
 
                 logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
-                files = await _open_and_download(page, frame, chk, i, save_dir)
+                files = await _open_and_download(page, scroll_frame, chk, i, save_dir)
 
                 if files:
                     saved.extend(files)
@@ -238,7 +237,6 @@ async def _process_mail_list(
                 processed_this_run.append(subject)
 
                 await asyncio.sleep(2)
-                frame, checkboxes, count = await _find_checkboxes(page)
 
             except Exception as e:
                 logger.warning(f"[Mail] {i+1}번 메일 처리 오류: {e}")
@@ -246,7 +244,7 @@ async def _process_mail_list(
 
         last_count = count
 
-        new_count = await _scroll_mail_list(frame)
+        new_count = await _scroll_mail_list(scroll_frame)
         if new_count <= count:
             logger.info("[Mail] 스크롤 끝 — 모든 메일 처리 완료")
             break
@@ -256,27 +254,29 @@ async def _process_mail_list(
 
 
 async def _find_checkboxes(page: Page):
-    """모든 프레임에서 #DEFAULT_scroll-list 안의 체크박스를 찾아 (frame, locator, count) 반환"""
-    # 1순위: 메일 목록 컨테이너 안의 체크박스 (프레임과 XPath가 일치 보장)
-    for ctx in [page, *page.frames]:
-        try:
-            loc = ctx.locator(f'{_SEL_SCROLL_CTR} {_SEL_MAIL_CHK}')
-            cnt = await loc.count()
-            if cnt > 0:
-                logger.info(f"[Mail] 체크박스 {cnt}개 발견 (프레임: {getattr(ctx, 'url', 'main')})")
-                return ctx, loc, cnt
-        except Exception:
-            continue
-    # 2순위: 컨테이너 없이 전체 탐색
+    """모든 프레임에서 체크박스를 찾아 (frame, locator, count) 반환"""
     for ctx in [page, *page.frames]:
         try:
             loc = ctx.locator(_SEL_MAIL_CHK)
             cnt = await loc.count()
             if cnt > 0:
+                logger.info(f"[Mail] 체크박스 {cnt}개 (프레임: {getattr(ctx, 'url', 'main')})")
                 return ctx, loc, cnt
         except Exception:
             continue
     return page, page.locator(_SEL_MAIL_CHK), 0
+
+
+async def _find_scroll_frame(page: Page):
+    """모든 프레임에서 #DEFAULT_scroll-list 가 있는 프레임 반환"""
+    for ctx in [page, *page.frames]:
+        try:
+            if await ctx.locator(_SEL_SCROLL_CTR).count() > 0:
+                logger.info(f"[Mail] 스크롤 프레임: {getattr(ctx, 'url', 'main')}")
+                return ctx
+        except Exception:
+            continue
+    return page
 
 
 async def _open_and_download(
