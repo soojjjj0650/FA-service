@@ -229,7 +229,7 @@ async def _process_mail_list(
                     continue
 
                 logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
-                files = await _open_and_download(page, frame, chk, save_dir)
+                files = await _open_and_download(page, frame, chk, i, save_dir)
 
                 if files:
                     saved.extend(files)
@@ -273,17 +273,20 @@ async def _open_and_download(
     page: Page,
     frame,
     chk,
+    row_idx: int,
     save_dir: str,
 ) -> list[str]:
-    """체크박스 클릭 → 우클릭 → 새 창으로 열기 → 모두저장 → 다운로드"""
+    """체크박스 클릭 → 제목 셀 우클릭 → 새 창으로 열기 → 모두저장 → 다운로드"""
     saved: list[str] = []
 
     # 1. 체크박스 클릭 (행 선택)
     await chk.click()
     await asyncio.sleep(0.4)
 
-    # 2. 체크박스 우클릭 → 컨텍스트 메뉴
-    await chk.click(button="right")
+    # 2. 제목 셀 우클릭 (XPath 1-based 인덱스)
+    xpath_title = f'xpath=//*[@id="DEFAULT_scroll-list"]/div/div[2]/div[{row_idx+1}]/div/div[1]'
+    title_cell = frame.locator(xpath_title)
+    await title_cell.click(button="right")
     await asyncio.sleep(0.5)
 
     # 3. "새 창으로 열기" / "새 창으로 보기" 메뉴 탐색 (모든 프레임)
