@@ -221,7 +221,7 @@ async def _process_mail_list(
                 continue
 
             logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
-            files = await _open_and_download(page, scroll_frame, chk, i, save_dir)
+            files = await _open_and_download(page, chk_frame, chk, i, save_dir)
 
             if files:
                 saved.extend(files)
@@ -278,10 +278,9 @@ async def _open_and_download(
     await chk.click()
     await asyncio.sleep(0.4)
 
-    # 2. 제목 셀 우클릭 (XPath 1-based 인덱스)
-    xpath_title = f'xpath=//*[@id="DEFAULT_scroll-list"]/div/div[2]/div[{row_idx+1}]/div/div[1]'
-    title_cell = frame.locator(xpath_title)
-    await title_cell.click(button="right", timeout=10_000)
+    # 2. 같은 프레임에서 행을 찾아 우클릭 (체크박스와 동일 프레임 보장)
+    row = frame.locator(_SEL_MAIL_ROW).nth(row_idx)
+    await row.click(button="right", timeout=10_000)
     await asyncio.sleep(0.5)
 
     # 3. "새 창으로 열기" / "새 창으로 보기" 메뉴 탐색 (모든 프레임)
