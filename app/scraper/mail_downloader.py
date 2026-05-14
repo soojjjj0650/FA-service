@@ -163,7 +163,7 @@ async def _open_folder(page: Page) -> None:
             btn = ctx.locator(_SEL_FOLDER).first
             if await btn.is_visible(timeout=3_000):
                 await btn.click()
-                await asyncio.sleep(2)
+                await asyncio.sleep(4)
                 logger.info(f"[Mail] '{folder_name}' 폴더 열림")
                 return
         except Exception:
@@ -204,10 +204,18 @@ async def _process_mail_list(
     saved: list[str] = []
     processed_this_run: list[str] = []
 
-    # 체크박스 프레임(클릭용)과 스크롤 프레임(XPath용) 따로 탐색
-    chk_frame, checkboxes, count = await _find_checkboxes(page)
-    scroll_frame = await _find_scroll_frame(page)
-    logger.info(f"[Mail] 메일 {count}개 발견")
+    # 메일 목록 로드 대기 (최대 20초 재시도)
+    chk_frame, checkboxes, count = page, page.locator(_SEL_MAIL_CHK), 0
+    for attempt in range(10):
+        chk_frame, checkboxes, count = await _find_checkboxes(page)
+        logger.info(f"[Mail] 체크박스 탐색 {attempt+1}회: {count}개 발견")
+        if count > 0:
+            break
+        await asyncio.sleep(2)
+
+    if count == 0:
+        logger.warning("[Mail] 메일 목록을 찾지 못했습니다 (체크박스 없음)")
+        return saved
 
     for i in range(count):
         try:
