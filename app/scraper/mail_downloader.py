@@ -33,9 +33,9 @@ _EXCEL_EXTS = {".xlsx", ".xls", ".xlsm"}
 # ─── 셀렉터 ───────────────────────────────────────────────────────────────────
 _SEL_MAIL_BTN    = 'button[aria-label="메일"]'
 _SEL_FOLDER      = 'button:has(span.text:text("FA 미결건"))'
-# //*[@id="DEFAULT_scroll-list"]/div/div[2]/div[N]/div/div[1]
-# div[2] = 메일 목록 body, div[N] = 각 행, div/div[1] = 제목 셀
-_SEL_MAIL_LINK   = '#DEFAULT_scroll-list > div > div:nth-child(2) > div > div > div:first-child'
+# 메일 행 체크박스: 클릭하면 메일이 선택(열림)됨
+_SEL_MAIL_ROW    = '#DEFAULT_scroll-list > div > div:nth-child(2) > div'
+_SEL_MAIL_CHK    = 'span[role="check"][aria-label="선택"]'
 _SEL_SCROLL_CTR  = '#DEFAULT_scroll-list'
 _SEL_ATTACH_CHK  = 'label:has(i.check.md)'
 _SEL_SAVE_BTN    = 'button[aria-label="저장"]'
@@ -196,25 +196,26 @@ async def _process_mail_list(
     processed_this_run: list[str] = []
 
     scroll_attempts = 0
-    max_scrolls = 10       # 최대 스크롤 횟수
+    max_scrolls = 10
     last_count = 0
 
     while scroll_attempts <= max_scrolls:
-        links = page.locator(_SEL_MAIL_LINK)
-        count = await links.count()
+        rows = page.locator(_SEL_MAIL_ROW)
+        count = await rows.count()
         logger.info(f"[Mail] 메일 목록 {count}개 발견 (스크롤 {scroll_attempts}회)")
 
-        # 새로 생긴 행부터 처리
         for i in range(last_count, count):
             try:
-                link = links.nth(i)
-                subject = (await link.inner_text()).strip() or f"mail_{i}"
+                row = rows.nth(i)
+
+                # 제목 텍스트를 subject ID로 사용 (행 전체 텍스트의 앞부분)
+                subject = (await row.inner_text()).strip().split("\n")[0] or f"mail_{i}"
 
                 if subject in done_ids or subject in processed_this_run:
                     continue
 
                 logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
-                files = await _open_and_download(page, context, link, save_dir)
+                files = await _open_and_download(page, context, row, save_dir)
 
                 if files:
                     saved.extend(files)
@@ -222,13 +223,12 @@ async def _process_mail_list(
                     processed_this_run.append(subject)
                     logger.info(f"[Mail] 저장: {files}")
                 else:
-                    # 첨부파일 없는 메일도 중복 방지를 위해 기록
                     done_ids.add(subject)
                     processed_this_run.append(subject)
 
-                # 메일 목록으로 돌아오면 링크가 새로 렌더링될 수 있으므로 재탐색
-                links = page.locator(_SEL_MAIL_LINK)
-                count = await links.count()
+                # 목록으로 돌아오면 행이 재렌더링될 수 있으므로 재탐색
+                rows = page.locator(_SEL_MAIL_ROW)
+                count = await rows.count()
 
             except Exception as e:
                 logger.warning(f"[Mail] {i+1}번 메일 처리 오류: {e}")
@@ -236,7 +236,6 @@ async def _process_mail_list(
 
         last_count = count
 
-        # 더 이상 스크롤할 내용이 없으면 종료
         new_count = await _scroll_mail_list(page)
         if new_count <= count:
             logger.info("[Mail] 스크롤 끝 — 모든 메일 처리 완료")
@@ -249,21 +248,26 @@ async def _process_mail_list(
 async def _open_and_download(
     page: Page,
     context: BrowserContext,
-    link,
+    row,
     save_dir: str,
 ) -> list[str]:
-    """메일 클릭 → 첨부파일 체크 → 저장 버튼 → 다운로드"""
+    """메일 행 체크박스 클릭 → 첨부파일 체크 → 저장 버튼 → 다운로드"""
     saved: list[str] = []
 
-    # 메일 클릭 (새 탭 또는 같은 페이지)
+    # 행의 체크박스 클릭으로 메일 선택/열기
     mail_page = page
     try:
+        chk = row.locator(_SEL_MAIL_CHK).first
         async with context.expect_page(timeout=3_000) as new_pg:
-            await link.click()
+            await chk.click()
         mail_page = await new_pg.value
         await mail_page.wait_for_load_state("domcontentloaded", timeout=15_000)
     except Exception:
-        await link.click()
+        try:
+            chk = row.locator(_SEL_MAIL_CHK).first
+            await chk.click()
+        except Exception:
+            await row.click()
         await asyncio.sleep(2)
 
     await asyncio.sleep(2)
@@ -357,4 +361,4 @@ async def _scroll_mail_list(page: Page) -> int:
     except Exception:
         pass
 
-    return await page.locator(_SEL_MAIL_LINK).count()
+    return await page.locator(_SEL_MAIL_ROW).count()
