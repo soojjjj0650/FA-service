@@ -7,12 +7,11 @@ FA 미결건 메일 다운로드 단독 실행 스크립트
 
 import asyncio
 import sys
+import traceback
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
-
-from app.scraper.mail_downloader import download_mail_attachments
 
 
 async def main():
@@ -21,17 +20,30 @@ async def main():
     print("=" * 60)
     print()
 
-    files = await download_mail_attachments()
+    try:
+        from app.scraper.mail_downloader import download_mail_attachments
+        files = await download_mail_attachments()
+
+        print()
+        print("=" * 60)
+        if files:
+            print(f"  완료! {len(files)}개 파일 저장됨:")
+            for f in files:
+                print(f"    - {f}")
+        else:
+            print("  완료! 새로운 첨부파일이 없습니다.")
+        print("=" * 60)
+
+    except Exception as e:
+        print()
+        print("=" * 60)
+        print(f"  [오류] {e}")
+        print()
+        traceback.print_exc()
+        print("=" * 60)
 
     print()
-    print("=" * 60)
-    if files:
-        print(f"  완료! {len(files)}개 파일 저장됨:")
-        for f in files:
-            print(f"    - {f}")
-    else:
-        print("  완료! 새로운 첨부파일이 없습니다.")
-    print("=" * 60)
+    input("  아무 키나 누르면 닫힙니다...")
 
 
 if __name__ == "__main__":
