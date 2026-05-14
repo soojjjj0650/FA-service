@@ -1,19 +1,15 @@
 @echo off
 chcp 65001 > nul
-title FA 미결건 메일 다운로드
+title FA 미결건 메일 다운로드 (단독 실행)
 
 echo ============================================================
-echo   FA 미결건 메일 첨부파일 수동 다운로드
+echo   FA 미결건 메일 첨부파일 다운로드
 echo ============================================================
 echo.
-echo  서버에 다운로드 요청 중...
-echo.
 
-curl -s -X POST http://localhost:80/api/mail/trigger -H "Content-Type: application/json" -d "{}"
+cd /d "%~dp0"
+python scriptsun_mail_download.py
 
-echo.
-echo  다운로드는 백그라운드에서 실행됩니다.
-echo  서버 로그에서 진행 상황을 확인하세요.
 echo.
 pause > nul
 
