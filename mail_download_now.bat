@@ -8,8 +8,7 @@ echo ============================================================
 echo.
 
 cd /d "%~dp0"
-python scriptsun_mail_download.py
+python scripts\run_mail_download.py
 
 echo.
 pause > nul
-
