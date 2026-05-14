@@ -377,68 +377,11 @@ async def _open_and_download(
             await mail_page.close()
             return saved
 
-        # 6. 모두저장 클릭 → 저장첨부 팝업창(새 창) 열기
-        logger.info("[Mail] 모두저장 클릭 → 저장첨부 팝업창 대기...")
-        pages_before = set(id(p) for p in mail_page.context.pages)
-        await save_btn.click()
-
-        save_popup = None
-        for _ in range(15):  # 최대 15초 대기
-            await asyncio.sleep(1)
-            for p in mail_page.context.pages:
-                if id(p) not in pages_before:
-                    save_popup = p
-                    break
-            if save_popup:
-                break
-
-        if save_popup is None:
-            logger.warning("[Mail] 저장첨부 팝업창을 찾지 못했습니다")
-            await mail_page.close()
-            return saved
-
-        await save_popup.wait_for_load_state("domcontentloaded", timeout=15_000)
-        await asyncio.sleep(1)
-        logger.info(f"[Mail] 저장첨부 팝업창 열림: {save_popup.url}")
-
-        # 알림 팝업 자동 닫기 핸들러
-        async def _dismiss_dialog(dialog):
-            logger.info(f"[Mail] 알림 자동 닫기: {dialog.message}")
-            await dialog.accept()
-        save_popup.on("dialog", _dismiss_dialog)
-
-        # 7. 저장첨부 팝업창에서 저장(S) 버튼 탐색
-        save_confirm_btn = None
-        for ctx in [save_popup, *save_popup.frames]:
-            try:
-                for sel in [
-                    'button:has-text("저장(S)")',
-                    'button[aria-label="저장(S)"]',
-                    'button[aria-label="저장"]',
-                    'button:has-text("저장")',
-                    'button:has-text("확인")',
-                ]:
-                    loc = ctx.locator(sel)
-                    if await loc.count() > 0 and await loc.first.is_visible():
-                        save_confirm_btn = loc.first
-                        logger.info(f"[Mail] 저장(S) 버튼 발견 ({sel}, frame={getattr(ctx, 'url', 'main')})")
-                        break
-            except Exception:
-                continue
-            if save_confirm_btn:
-                break
-
-        if save_confirm_btn is None:
-            logger.warning("[Mail] 저장(S) 버튼 미발견")
-            await save_popup.close()
-            await mail_page.close()
-            return saved
-
-        # 8. 저장(S) 클릭 → 다운로드 캡처
-        logger.info("[Mail] 저장(S) 클릭...")
+        # 6. 모두저장 클릭 → "다른 이름으로 저장" 다이얼로그는 accept_downloads=True로 자동 처리
+        logger.info("[Mail] 모두저장 클릭 → 다운로드 대기...")
         try:
-            async with save_popup.expect_download(timeout=30_000) as dl_info:
-                await save_confirm_btn.click()
+            async with mail_page.expect_download(timeout=30_000) as dl_info:
+                await save_btn.click()
             dl: Download = await dl_info.value
             saved = await _save_download(dl, save_dir)
         except Exception as e:
@@ -447,11 +390,6 @@ async def _open_and_download(
     except Exception as e:
         logger.warning(f"[Mail] 다운로드 실패: {e}")
     finally:
-        try:
-            if save_popup:
-                await save_popup.close()
-        except Exception:
-            pass
         await mail_page.close()
 
     return saved
