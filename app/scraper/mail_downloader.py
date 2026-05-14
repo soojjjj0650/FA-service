@@ -33,7 +33,10 @@ _EXCEL_EXTS = {".xlsx", ".xls", ".xlsm"}
 # ─── 셀렉터 ───────────────────────────────────────────────────────────────────
 _SEL_MAIL_BTN    = 'button[aria-label="메일"]'
 _SEL_FOLDER      = 'button:has(span.text:text("FA 미결건"))'
-_SEL_MAIL_LINK   = 'div.inner-cell.col03-01 div.text-title a'
+# //*[@id="DEFAULT_scroll-list"]/div/div[2]/div[N]/div/div[1]
+# div[2] = 메일 목록 body, div[N] = 각 행, div/div[1] = 제목 셀
+_SEL_MAIL_LINK   = '#DEFAULT_scroll-list > div > div:nth-child(2) > div > div > div:first-child'
+_SEL_SCROLL_CTR  = '#DEFAULT_scroll-list'
 _SEL_ATTACH_CHK  = 'label:has(i.check.md)'
 _SEL_SAVE_BTN    = 'button[aria-label="저장"]'
 
@@ -345,23 +348,11 @@ def _extract_excel_from_zip(zip_path: str, save_dir: str, ts: str) -> list[str]:
 async def _scroll_mail_list(page: Page) -> int:
     """메일 목록 컨테이너를 아래로 스크롤하고 새 메일 수를 반환"""
     try:
-        # 메일 목록 컨테이너 스크롤
-        container_sels = [
-            "div.mail-list", "div[class*='mail-list']",
-            "div[class*='list-body']", "div[class*='mailListBody']",
-            "ul[class*='mail']",
-        ]
-        scrolled = False
-        for sel in container_sels:
-            container = page.locator(sel).first
-            if await container.is_visible(timeout=1_000):
-                await container.evaluate("el => el.scrollTop += el.clientHeight")
-                scrolled = True
-                break
-
-        if not scrolled:
+        container = page.locator(_SEL_SCROLL_CTR).first
+        if await container.is_visible(timeout=2_000):
+            await container.evaluate("el => el.scrollTop += el.clientHeight")
+        else:
             await page.keyboard.press("End")
-
         await asyncio.sleep(1.5)
     except Exception:
         pass
