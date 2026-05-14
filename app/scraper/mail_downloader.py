@@ -185,6 +185,33 @@ async def _open_folder(page: Page) -> None:
     logger.warning(f"[Mail] '{folder_name}' 폴더를 찾지 못했습니다")
 
 
+def _find_mail_frame(page: Page):
+    """#DEFAULT_scroll-list 가 존재하는 프레임을 반환"""
+    for ctx in [page, *page.frames]:
+        try:
+            loc = ctx.locator(_SEL_SCROLL_CTR)
+            # is_visible은 동기 컨텍스트에서 사용 불가 → count로 대체
+            # (비동기 함수 밖에서 호출되므로 coroutine 반환만 함)
+            return ctx
+        except Exception:
+            continue
+    return page
+
+
+async def _find_mail_frame_async(page: Page):
+    """#DEFAULT_scroll-list 가 실제로 보이는 프레임을 비동기로 찾아 반환"""
+    for ctx in [page, *page.frames]:
+        try:
+            cnt = await ctx.locator(_SEL_SCROLL_CTR).count()
+            if cnt > 0:
+                logger.info(f"[Mail] 메일 목록 프레임 발견: {getattr(ctx, 'url', 'page')}")
+                return ctx
+        except Exception:
+            continue
+    logger.warning("[Mail] 메일 목록 프레임 미발견 — 메인 페이지 사용")
+    return page
+
+
 async def _process_mail_list(
     page: Page,
     context: BrowserContext,
@@ -195,27 +222,28 @@ async def _process_mail_list(
     saved: list[str] = []
     processed_this_run: list[str] = []
 
+    # 메일 목록이 있는 프레임 탐색
+    frame = await _find_mail_frame_async(page)
+
     scroll_attempts = 0
     max_scrolls = 10
     last_count = 0
 
     while scroll_attempts <= max_scrolls:
-        rows = page.locator(_SEL_MAIL_ROW)
+        rows = frame.locator(_SEL_MAIL_ROW)
         count = await rows.count()
         logger.info(f"[Mail] 메일 목록 {count}개 발견 (스크롤 {scroll_attempts}회)")
 
         for i in range(last_count, count):
             try:
                 row = rows.nth(i)
-
-                # 제목 텍스트를 subject ID로 사용 (행 전체 텍스트의 앞부분)
                 subject = (await row.inner_text()).strip().split("\n")[0] or f"mail_{i}"
 
                 if subject in done_ids or subject in processed_this_run:
                     continue
 
                 logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
-                files = await _open_and_download(page, context, row, save_dir)
+                files = await _open_and_download(page, frame, context, row, save_dir)
 
                 if files:
                     saved.extend(files)
@@ -226,8 +254,7 @@ async def _process_mail_list(
                     done_ids.add(subject)
                     processed_this_run.append(subject)
 
-                # 목록으로 돌아오면 행이 재렌더링될 수 있으므로 재탐색
-                rows = page.locator(_SEL_MAIL_ROW)
+                rows = frame.locator(_SEL_MAIL_ROW)
                 count = await rows.count()
 
             except Exception as e:
@@ -236,7 +263,7 @@ async def _process_mail_list(
 
         last_count = count
 
-        new_count = await _scroll_mail_list(page)
+        new_count = await _scroll_mail_list(frame)
         if new_count <= count:
             logger.info("[Mail] 스크롤 끝 — 모든 메일 처리 완료")
             break
@@ -247,6 +274,7 @@ async def _process_mail_list(
 
 async def _open_and_download(
     page: Page,
+    frame,
     context: BrowserContext,
     row,
     save_dir: str,
@@ -265,8 +293,18 @@ async def _open_and_download(
         await row.click(button="right")
         await asyncio.sleep(0.5)
 
-        # 3. "새 창으로 보기" 클릭 → 새 탭
-        new_win_item = page.locator('text="새 창으로 보기"').first
+        # 3. "새 창으로 보기" 클릭 (메인 page 또는 frame 양쪽에서 탐색)
+        new_win_item = None
+        for ctx in [page, frame]:
+            loc = ctx.locator('text="새 창으로 보기"')
+            if await loc.count() > 0:
+                new_win_item = loc.first
+                break
+
+        if new_win_item is None:
+            logger.warning("[Mail] '새 창으로 보기' 메뉴 항목 미발견")
+            return saved
+
         async with context.expect_page(timeout=8_000) as new_pg:
             await new_win_item.click()
         mail_page = await new_pg.value
@@ -356,16 +394,14 @@ def _extract_excel_from_zip(zip_path: str, save_dir: str, ts: str) -> list[str]:
     return saved
 
 
-async def _scroll_mail_list(page: Page) -> int:
+async def _scroll_mail_list(frame) -> int:
     """메일 목록 컨테이너를 아래로 스크롤하고 새 메일 수를 반환"""
     try:
-        container = page.locator(_SEL_SCROLL_CTR).first
+        container = frame.locator(_SEL_SCROLL_CTR).first
         if await container.is_visible(timeout=2_000):
             await container.evaluate("el => el.scrollTop += el.clientHeight")
-        else:
-            await page.keyboard.press("End")
         await asyncio.sleep(1.5)
     except Exception:
         pass
 
-    return await page.locator(_SEL_MAIL_ROW).count()
+    return await frame.locator(_SEL_MAIL_ROW).count()
