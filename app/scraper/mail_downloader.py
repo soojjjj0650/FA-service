@@ -204,32 +204,32 @@ async def _process_mail_list(
     saved: list[str] = []
     processed_this_run: list[str] = []
 
-    # 메일 목록이 있는 프레임 탐색
-    frame = await _find_frame_with(page, _SEL_SCROLL_CTR)
-    logger.info(f"[Mail] 메일 목록 프레임: {getattr(frame, 'url', 'main page')}")
-
     scroll_attempts = 0
     max_scrolls = 10
     last_count = 0
 
     while scroll_attempts <= max_scrolls:
-        # XPath로 행 수 파악: //*[@id="DEFAULT_scroll-list"]/div/div[2]/div[N]
-        rows = frame.locator('xpath=//*[@id="DEFAULT_scroll-list"]/div/div[2]/div')
-        count = await rows.count()
-        logger.info(f"[Mail] 메일 목록 {count}개 발견 (스크롤 {scroll_attempts}회)")
+        # 모든 프레임에서 체크박스 탐색 → 체크박스 수 = 메일 수
+        frame, checkboxes, count = await _find_checkboxes(page)
+        logger.info(f"[Mail] 체크박스 {count}개 발견 (프레임: {getattr(frame, 'url', 'main')}, 스크롤 {scroll_attempts}회)")
 
         for i in range(last_count, count):
             try:
-                # 각 행의 제목 셀: div[N]/div/div[1]  (1-based XPath index)
-                xpath_title = f'xpath=//*[@id="DEFAULT_scroll-list"]/div/div[2]/div[{i+1}]/div/div[1]'
-                title_cell = frame.locator(xpath_title)
+                chk = checkboxes.nth(i)
 
-                subject = (await title_cell.inner_text()).strip() or f"mail_{i}"
+                # 제목 텍스트: 체크박스 부모 행에서 추출 (JS)
+                subject = await chk.evaluate("""el => {
+                    const row = el.closest('#DEFAULT_scroll-list > div > div > div');
+                    if (!row) return '';
+                    const cell = row.querySelector('div > div:first-child');
+                    return cell ? cell.innerText.trim() : '';
+                }""") or f"mail_{i}"
+
                 if subject in done_ids or subject in processed_this_run:
                     continue
 
                 logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
-                files = await _open_and_download(page, frame, title_cell, save_dir)
+                files = await _open_and_download(page, frame, chk, save_dir)
 
                 if files:
                     saved.extend(files)
@@ -238,8 +238,7 @@ async def _process_mail_list(
                 processed_this_run.append(subject)
 
                 await asyncio.sleep(2)
-                # 목록 프레임 재탐색
-                frame = await _find_frame_with(page, _SEL_SCROLL_CTR)
+                frame, checkboxes, count = await _find_checkboxes(page)
 
             except Exception as e:
                 logger.warning(f"[Mail] {i+1}번 메일 처리 오류: {e}")
@@ -256,78 +255,87 @@ async def _process_mail_list(
     return saved
 
 
+async def _find_checkboxes(page: Page):
+    """모든 프레임에서 메일 목록 체크박스를 찾아 (frame, locator, count) 반환"""
+    for ctx in [page, *page.frames]:
+        try:
+            loc = ctx.locator(_SEL_MAIL_CHK)
+            cnt = await loc.count()
+            if cnt > 0:
+                return ctx, loc, cnt
+        except Exception:
+            continue
+    # 못 찾으면 빈 결과
+    return page, page.locator(_SEL_MAIL_CHK), 0
+
+
 async def _open_and_download(
     page: Page,
     frame,
-    title_cell,
+    chk,
     save_dir: str,
 ) -> list[str]:
     """체크박스 클릭 → 우클릭 → 새 창으로 열기 → 모두저장 → 다운로드"""
     saved: list[str] = []
 
-    try:
-        # 1. 행 체크박스 클릭 (title_cell 기준 2단계 위 = 행 div)
-        # XPath: .../div[N]/div/div[1]  →  ../.. = div[N]
-        row_el = title_cell.locator('xpath=../..')
-        chk = row_el.locator(_SEL_MAIL_CHK)
-        if await chk.count() == 0:
-            chk = frame.locator(_SEL_MAIL_CHK).first
-        await chk.first.click()
-        await asyncio.sleep(0.4)
-    except Exception as e:
-        logger.warning(f"[Mail] 체크박스 클릭 실패: {e}")
+    # 1. 체크박스 클릭 (행 선택)
+    await chk.click()
+    await asyncio.sleep(0.4)
 
-    try:
-        # 2. 제목 셀 우클릭 → 컨텍스트 메뉴
-        await title_cell.click(button="right")
-        await asyncio.sleep(0.5)
+    # 2. JS로 체크박스의 부모 행을 우클릭
+    await chk.evaluate("""el => {
+        const row = el.closest('#DEFAULT_scroll-list > div > div > div')
+                   || el.parentElement;
+        row.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true}));
+    }""")
+    await asyncio.sleep(0.5)
 
-        # 3. "새 창으로 열기" 또는 "새 창으로 보기" 클릭
-        menu_item = None
-        for label in ["새 창으로 열기", "새 창으로 보기"]:
-            for ctx in [page, frame]:
+    # 3. "새 창으로 열기" / "새 창으로 보기" 메뉴 탐색 (모든 프레임)
+    menu_item = None
+    for label in ["새 창으로 열기", "새 창으로 보기"]:
+        for ctx in [page, frame, *page.frames]:
+            try:
                 loc = ctx.locator(f'text="{label}"')
                 if await loc.count() > 0:
                     menu_item = loc.first
                     break
-            if menu_item:
-                break
+            except Exception:
+                continue
+        if menu_item:
+            break
 
-        if menu_item is None:
-            logger.warning("[Mail] 새 창 메뉴 미발견")
-            return saved
+    if menu_item is None:
+        logger.warning("[Mail] 새 창 메뉴 미발견")
+        return saved
 
-        # 4. 새 창 열기
+    # 4. 새 창 열기
+    try:
         async with page.context.expect_page(timeout=8_000) as new_pg:
             await menu_item.click()
         mail_page = await new_pg.value
         await mail_page.wait_for_load_state("domcontentloaded", timeout=15_000)
         await asyncio.sleep(2)
         logger.info("[Mail] 새 창 열림")
-
     except Exception as e:
         logger.warning(f"[Mail] 새 창 열기 실패: {e}")
         return saved
 
+    # 5. 새 창 + 모든 프레임에서 '모두저장' 버튼 탐색
     try:
-        # 5. 새 창 + 모든 프레임에서 '모두저장' 버튼 탐색
         save_btn = None
-        save_owner = mail_page
         for ctx in [mail_page, *mail_page.frames]:
             try:
                 loc = ctx.locator(_SEL_SAVE_ALL)
                 if await loc.count() > 0:
                     save_btn = loc.first
-                    save_owner = ctx
                     break
             except Exception:
                 continue
 
         if save_btn is None or not await save_btn.is_visible(timeout=5_000):
-            logger.warning("[Mail] 모두저장 버튼 없음 — 첨부파일 없는 메일로 간주")
+            logger.warning("[Mail] 모두저장 버튼 없음 — 첨부파일 없는 메일")
             return saved
 
-        # 6. 모두저장 클릭 → 다운로드 인터셉트 (accept_downloads=True 로 팝업 자동 확인)
         logger.info("[Mail] 모두저장 클릭...")
         async with mail_page.expect_download(timeout=30_000) as dl_info:
             await save_btn.click()
