@@ -251,24 +251,31 @@ async def _open_and_download(
     row,
     save_dir: str,
 ) -> list[str]:
-    """메일 행 체크박스 클릭 → 첨부파일 체크 → 저장 버튼 → 다운로드"""
+    """체크박스 클릭 → 우클릭 → '새 창으로 보기' → 첨부파일 체크 → 저장"""
     saved: list[str] = []
-
-    # 행의 체크박스 클릭으로 메일 선택/열기
     mail_page = page
+
     try:
+        # 1. 체크박스 클릭으로 행 선택
         chk = row.locator(_SEL_MAIL_CHK).first
-        async with context.expect_page(timeout=3_000) as new_pg:
-            await chk.click()
+        await chk.click()
+        await asyncio.sleep(0.5)
+
+        # 2. 행 우클릭 → 컨텍스트 메뉴
+        await row.click(button="right")
+        await asyncio.sleep(0.5)
+
+        # 3. "새 창으로 보기" 클릭 → 새 탭
+        new_win_item = page.locator('text="새 창으로 보기"').first
+        async with context.expect_page(timeout=8_000) as new_pg:
+            await new_win_item.click()
         mail_page = await new_pg.value
         await mail_page.wait_for_load_state("domcontentloaded", timeout=15_000)
-    except Exception:
-        try:
-            chk = row.locator(_SEL_MAIL_CHK).first
-            await chk.click()
-        except Exception:
-            await row.click()
-        await asyncio.sleep(2)
+        logger.info("[Mail] 새 창으로 메일 열림")
+
+    except Exception as e:
+        logger.warning(f"[Mail] 메일 열기 실패: {e}")
+        return saved
 
     await asyncio.sleep(2)
 
