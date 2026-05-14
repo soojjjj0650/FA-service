@@ -70,6 +70,16 @@ class Settings(BaseSettings):
     PREFETCH_ENABLED: bool = True         # 평일 9시 자동 사전 쿼리 활성화
     CACHE_MAX_AGE_HOURS: int = 48         # 캐시 유효 시간 (시간)
 
+    # ─── 메일 다운로더 (FA 미결건 엑셀 자동 수집) ───────────────────────────────
+    MAIL_ENABLED: bool = False              # True 시 매일 17시 자동 실행
+    MAIL_URL: str = "https://www.samsung.net"
+    MAIL_USERNAME: str = "sujin06.bae"     # samsung.net 로그인 ID
+    MAIL_PASSWORD: str = "tnwls1094!"      # samsung.net 로그인 PW
+    MAIL_FOLDER_NAME: str = "FA 미결건"     # 대상 메일함 이름
+    MAIL_SAVE_DIR: str = ""                 # 비워두면 CSV_DOWNLOAD_PATH/FAdata 사용
+    MAIL_SCHEDULE_HOUR: int = 17            # 자동 실행 시각 (24h, 기본 17시)
+    MAIL_HEADLESS: bool = False             # 메일 브라우저 headless 여부
+
     # ─── FastAPI 서버 ────────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"
     PORT: int = 80

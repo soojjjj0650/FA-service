@@ -124,6 +124,10 @@ async def startup():
         asyncio.create_task(_prefetch_scheduler())
         logger.info("[Scheduler] 사전 쿼리 스케줄러 시작 (평일 09:00)")
 
+    if settings.MAIL_ENABLED:
+        asyncio.create_task(_mail_scheduler())
+        logger.info(f"[Scheduler] 메일 다운로드 스케줄러 시작 (매일 {settings.MAIL_SCHEDULE_HOUR:02d}:00)")
+
     logger.info("FA Chatbot Service 시작")
 
 
@@ -239,6 +243,30 @@ async def _prefetch_scheduler() -> None:
             await run_daily_prefetch()
         except Exception as e:
             logger.error(f"[Scheduler] 사전 쿼리 오류: {e}", exc_info=True)
+
+
+async def _mail_scheduler() -> None:
+    """매일 MAIL_SCHEDULE_HOUR시에 FA 미결건 메일 첨부파일을 자동 다운로드합니다."""
+    while True:
+        now = datetime.now()
+        target = now.replace(hour=settings.MAIL_SCHEDULE_HOUR, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target = target.replace(day=target.day + 1)
+
+        wait_sec = (target - datetime.now()).total_seconds()
+        logger.info(
+            f"[MailScheduler] 다음 메일 수집: {target.strftime('%Y-%m-%d %H:%M')} "
+            f"(대기 {wait_sec/3600:.1f}h)"
+        )
+        await asyncio.sleep(max(wait_sec, 1))
+
+        logger.info("[MailScheduler] 메일 다운로드 시작")
+        try:
+            from app.scraper.mail_downloader import download_mail_attachments
+            files = await download_mail_attachments()
+            logger.info(f"[MailScheduler] 완료 — {len(files)}개 파일 저장")
+        except Exception as e:
+            logger.error(f"[MailScheduler] 오류: {e}", exc_info=True)
 
 
 async def _run_and_push(sn: str) -> None:
@@ -675,6 +703,17 @@ async def prefetch_trigger(request: PrefetchTriggerRequest):
     else:
         asyncio.create_task(run_daily_prefetch())
         return {"message": "Qings 수집 → 사전 쿼리 시작 (백그라운드 실행)"}
+
+
+@app.post("/api/mail/trigger")
+async def mail_trigger():
+    """FA 미결건 메일 다운로드를 수동으로 즉시 실행합니다."""
+    async def _run():
+        from app.scraper.mail_downloader import download_mail_attachments
+        files = await download_mail_attachments()
+        logger.info(f"[Mail/수동] 완료 — {len(files)}개 파일")
+    asyncio.create_task(_run())
+    return {"status": "started", "message": "메일 다운로드가 백그라운드에서 시작되었습니다."}
 
 
 @app.get("/api/prefetch/status")
