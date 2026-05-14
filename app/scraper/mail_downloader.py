@@ -318,9 +318,22 @@ async def _open_and_download(
     await asyncio.sleep(2)
 
     try:
-        # 첨부파일 체크박스 확인
-        checkboxes = mail_page.locator(_SEL_ATTACH_CHK)
-        chk_count = await checkboxes.count()
+        # 새 창의 모든 프레임에서 첨부파일 체크박스 탐색
+        mail_frame = None
+        checkboxes = None
+        chk_count = 0
+        for ctx in [mail_page, *mail_page.frames]:
+            try:
+                loc = ctx.locator(_SEL_ATTACH_CHK)
+                cnt = await loc.count()
+                if cnt > 0:
+                    mail_frame = ctx
+                    checkboxes = loc
+                    chk_count = cnt
+                    break
+            except Exception:
+                continue
+
         if chk_count == 0:
             logger.debug("[Mail] 첨부파일 없음 — 건너뜀")
             return saved
@@ -330,9 +343,20 @@ async def _open_and_download(
             await checkboxes.nth(j).click()
             await asyncio.sleep(0.3)
 
-        # 저장 버튼 클릭 → 다운로드 인터셉트
-        save_btn = mail_page.locator(_SEL_SAVE_BTN).first
-        if not await save_btn.is_visible(timeout=3_000):
+        # 저장 버튼도 같은 프레임에서 탐색
+        save_btn = None
+        save_frame = mail_frame or mail_page
+        for ctx in [save_frame, mail_page, *mail_page.frames]:
+            try:
+                loc = ctx.locator(_SEL_SAVE_BTN)
+                if await loc.count() > 0:
+                    save_btn = loc.first
+                    save_frame = ctx
+                    break
+            except Exception:
+                continue
+
+        if save_btn is None or not await save_btn.is_visible(timeout=3_000):
             logger.warning("[Mail] 저장 버튼 없음")
             return saved
 
