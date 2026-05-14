@@ -6,12 +6,20 @@ FA 미결건 메일 다운로드 단독 실행 스크립트
 """
 
 import asyncio
+import logging
 import sys
 import traceback
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
 
 
 async def main():
