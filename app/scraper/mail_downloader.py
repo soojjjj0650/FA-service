@@ -338,6 +338,8 @@ async def _open_and_download(
         logger.info("[Mail] 모두저장 클릭...")
         async with mail_page.expect_download(timeout=30_000) as dl_info:
             await save_btn.click()
+            await asyncio.sleep(1)
+            await mail_page.keyboard.press("Enter")  # 저장위치 팝업 확인
         dl: Download = await dl_info.value
         saved = await _save_download(dl, save_dir)
 
