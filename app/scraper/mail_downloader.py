@@ -144,43 +144,43 @@ async def _login(page: Page, context: BrowserContext) -> None:
 
 async def _go_to_mail(page: Page) -> None:
     """메인 화면에서 메일 버튼 클릭"""
-    logger.info("[Mail] 메일 버튼 클릭...")
+    logger.info(f"[Mail] 메일 버튼 클릭... (현재 URL: {page.url})")
     mail_btn = page.locator(_SEL_MAIL_BTN).first
     await mail_btn.wait_for(state="visible", timeout=15_000)
     await mail_btn.click()
     await asyncio.sleep(3)
-    logger.info("[Mail] 메일 화면 진입")
+    logger.info(f"[Mail] 메일 화면 진입 (현재 URL: {page.url})")
 
 
 async def _open_folder(page: Page) -> None:
     """FA 미결건 폴더 클릭"""
     folder_name = settings.MAIL_FOLDER_NAME
-    logger.info(f"[Mail] '{folder_name}' 폴더 클릭...")
+    logger.info(f"[Mail] '{folder_name}' 폴더 클릭... (프레임 수: {len(page.frames)})")
 
-    # 모든 프레임에서 탐색
+    selectors = [
+        f'button:has(span.text:text("{folder_name}"))',
+        f'button:has(span:text("{folder_name}"))',
+        f'button:has-text("{folder_name}")',
+        f':text("{folder_name}")',
+    ]
+
     for ctx in [page, *page.frames]:
-        try:
-            btn = ctx.locator(_SEL_FOLDER).first
-            if await btn.is_visible(timeout=3_000):
-                await btn.click()
-                await asyncio.sleep(4)
-                logger.info(f"[Mail] '{folder_name}' 폴더 열림")
-                return
-        except Exception:
-            continue
+        frame_url = getattr(ctx, 'url', 'main')
+        for sel in selectors:
+            try:
+                btn = ctx.locator(sel).first
+                if await btn.is_visible(timeout=2_000):
+                    logger.info(f"[Mail] 폴더 버튼 발견 (frame={frame_url}, sel={sel})")
+                    await btn.click()
+                    await asyncio.sleep(4)
+                    logger.info(f"[Mail] '{folder_name}' 폴더 열림")
+                    return
+            except Exception:
+                continue
 
-    # fallback: 텍스트만으로 탐색
-    for ctx in [page, *page.frames]:
-        try:
-            btn = ctx.locator(f"button:has-text('{folder_name}')").first
-            if await btn.is_visible(timeout=2_000):
-                await btn.click()
-                await asyncio.sleep(2)
-                return
-        except Exception:
-            continue
-
-    logger.warning(f"[Mail] '{folder_name}' 폴더를 찾지 못했습니다")
+    logger.warning(f"[Mail] '{folder_name}' 폴더를 찾지 못했습니다 — 프레임 URL 목록:")
+    for f in [page, *page.frames]:
+        logger.warning(f"  frame: {getattr(f, 'url', 'main')}")
 
 
 async def _find_frame_with(page: Page, selector: str):
@@ -214,7 +214,9 @@ async def _process_mail_list(
         await asyncio.sleep(2)
 
     if count == 0:
-        logger.warning("[Mail] 메일 목록을 찾지 못했습니다 (체크박스 없음)")
+        logger.warning("[Mail] 메일 목록을 찾지 못했습니다 (체크박스 없음) — 프레임 목록:")
+        for f in [page, *page.frames]:
+            logger.warning(f"  frame: {getattr(f, 'url', 'main')}")
         return saved
 
     for i in range(count):
