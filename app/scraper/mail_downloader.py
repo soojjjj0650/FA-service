@@ -366,8 +366,37 @@ async def _open_and_download(
         logger.info("[Mail] 모두저장 클릭...")
         async with mail_page.expect_download(timeout=30_000) as dl_info:
             await save_btn.click()
-            await asyncio.sleep(1)
-            await mail_page.keyboard.press("Enter")  # 저장위치 팝업 확인
+            await asyncio.sleep(2)  # 저장 팝업 로드 대기
+
+            # 저장 팝업 확인 버튼 직접 탐색 (모든 프레임)
+            confirmed = False
+            for ctx in [mail_page, *mail_page.frames]:
+                if confirmed:
+                    break
+                try:
+                    for sel in [
+                        'button[aria-label="저장"]',
+                        '[role="dialog"] button:has-text("저장")',
+                        '[role="dialog"] button:has-text("확인")',
+                        '.dialog button:has-text("저장")',
+                        '.modal button:has-text("저장")',
+                        'button:has-text("확인")',
+                        'button:has-text("저장")',
+                    ]:
+                        loc = ctx.locator(sel)
+                        cnt = await loc.count()
+                        if cnt > 0 and await loc.first.is_visible():
+                            await loc.first.click()
+                            confirmed = True
+                            logger.info(f"[Mail] 저장 팝업 확인 클릭 ({sel}, frame={getattr(ctx, 'url', 'main')})")
+                            break
+                except Exception:
+                    continue
+
+            if not confirmed:
+                logger.info("[Mail] 저장 버튼 미발견 → Enter 시도")
+                await mail_page.keyboard.press("Enter")
+
         dl: Download = await dl_info.value
         saved = await _save_download(dl, save_dir)
 
