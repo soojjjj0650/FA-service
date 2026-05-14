@@ -222,9 +222,22 @@ async def _process_mail_list(
     for i in range(count):
         try:
             chk = checkboxes.nth(i)
-            subject = await chk.evaluate(
-                "el => (el.closest('div[class]') || el.parentElement)?.innerText?.split('\\n')[0]?.trim() || ''"
-            ) or f"mail_{i}"
+            # #DEFAULT_scroll-list 안에서 해당 체크박스가 속한 행의 제목 추출
+            subject = await chk.evaluate("""el => {
+                const container = document.getElementById('DEFAULT_scroll-list');
+                if (container) {
+                    const rows = container.querySelectorAll(':scope > div > div:nth-child(2) > div');
+                    for (const row of rows) {
+                        if (row.contains(el)) {
+                            const cell = row.querySelector('div > div:first-child');
+                            const t = (cell || row).innerText?.trim()?.split('\\n')[0] || '';
+                            if (t) return t;
+                        }
+                    }
+                }
+                return el.closest('li, tr, [class*="row"], [class*="item"]')
+                         ?.innerText?.split('\\n')[0]?.trim() || '';
+            }""") or f"mail_{i}"
 
             if subject in done_ids or subject in processed_this_run:
                 logger.info(f"[Mail] [{i+1}] '{subject}' 이미 처리됨 — 건너뜀")
