@@ -344,8 +344,20 @@ async def _open_and_download(
             all_ctxs = [mail_page, *mail_page.frames]
             logger.info(f"[Mail] 새 창 프레임 수: {len(all_ctxs)} (시도 {attempt+1})")
             for ctx in all_ctxs:
+                frame_url = getattr(ctx, 'url', 'main')
+                # 디버그: 프레임 안의 모든 버튼 aria-label 출력
                 try:
-                    for sel in [_SEL_SAVE_ALL, 'button:has-text("모두저장")']:
+                    btn_labels = await ctx.evaluate("""() => {
+                        return Array.from(document.querySelectorAll('button'))
+                            .map(b => b.getAttribute('aria-label') || b.innerText?.trim()?.slice(0,30))
+                            .filter(Boolean);
+                    }""")
+                    logger.info(f"[Mail]   frame={frame_url} buttons={btn_labels}")
+                except Exception:
+                    pass
+                try:
+                    for sel in [_SEL_SAVE_ALL, 'button:has-text("모두저장")',
+                                'button[aria-label*="저장"]', 'button[title*="저장"]']:
                         loc = ctx.locator(sel)
                         if await loc.count() > 0:
                             save_btn = loc.first
