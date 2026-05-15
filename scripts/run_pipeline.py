@@ -81,9 +81,10 @@ async def main():
         if excel_files:
             excel_path = max(excel_files, key=lambda f: f.stat().st_mtime)
 
+    fa_data_dir = Path(settings.MAIL_SAVE_DIR) if settings.MAIL_SAVE_DIR else \
+                  Path(settings.CSV_DOWNLOAD_PATH) / "FAdata"
+
     if excel_path is None:
-        fa_data_dir = Path(settings.MAIL_SAVE_DIR) if settings.MAIL_SAVE_DIR else \
-                      Path(settings.CSV_DOWNLOAD_PATH) / "FAdata"
         excel_path = find_latest_excel(fa_data_dir)
 
     if excel_path is None or not excel_path.exists():
