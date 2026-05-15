@@ -268,6 +268,18 @@ async def run_prefetch_for_sns(sns: list[str]) -> dict:
     try:
         await asyncio.gather(*[run_one(i, sn) for i, sn in enumerate(uncached, 1)])
 
+        # 실패한 SN 1회 재시도
+        retry_sns = list(result["failed_sns"])
+        if retry_sns:
+            logger.info(f"[Prefetch] 실패 {len(retry_sns)}개 재시도 중...")
+            result["failed"] = 0
+            result["failed_sns"] = []
+            # sn_results에서 실패 항목 제거 후 재시도 결과로 교체
+            result["sn_results"] = [r for r in result["sn_results"] if r["sn"] not in retry_sns]
+            await asyncio.sleep(5)
+            await asyncio.gather(*[run_one(i, sn) for i, sn in enumerate(retry_sns, 1)])
+            logger.info(f"[Prefetch] 재시도 완료 — 성공 {result['queried']}개 | 최종 실패 {result['failed']}개")
+
         _status["last_result"] = result
         logger.info(
             f"[Prefetch] 완료 — 쿼리 성공 {result['queried']}개 | "
