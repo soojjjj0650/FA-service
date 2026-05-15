@@ -377,7 +377,56 @@ async def _open_and_download(
             await mail_page.close()
             return saved
 
-        # 6. 모두저장 클릭 → "다른 이름으로 저장" 다이얼로그는 accept_downloads=True로 자동 처리
+        # 6. showSaveFilePicker 오버라이드 → 표준 anchor 다운로드로 변환
+        #    Samsung 메일이 OS 레벨 "다른 이름으로 저장" 다이얼로그를 띄우는 API 사용
+        _OVERRIDE = """() => {
+            if (window.__sfpOverridden) return;
+            window.__sfpOverridden = true;
+            window.showSaveFilePicker = async function(opts) {
+                const chunks = [];
+                return {
+                    name: opts?.suggestedName || 'attachment',
+                    createWritable: async () => ({
+                        write: async (data) => {
+                            const raw = (data && typeof data === 'object' && data.type === 'write')
+                                        ? data.data : data;
+                            if (raw instanceof ArrayBuffer)
+                                chunks.push(new Uint8Array(raw));
+                            else if (raw instanceof Blob)
+                                chunks.push(new Uint8Array(await raw.arrayBuffer()));
+                            else if (typeof raw === 'string')
+                                chunks.push(new TextEncoder().encode(raw));
+                            else if (raw)
+                                chunks.push(new Uint8Array(raw));
+                        },
+                        close: async () => {
+                            const blob = new Blob(chunks);
+                            const url  = URL.createObjectURL(blob);
+                            const a    = document.createElement('a');
+                            a.href     = url;
+                            a.download = opts?.suggestedName || 'attachment';
+                            document.body.appendChild(a);
+                            a.click();
+                            setTimeout(() => {
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                            }, 5000);
+                        },
+                        seek:     async () => {},
+                        truncate: async () => {},
+                        abort:    async () => {},
+                    })
+                };
+            };
+        }"""
+        for ctx in [mail_page, *mail_page.frames]:
+            try:
+                await ctx.evaluate(_OVERRIDE)
+                logger.info(f"[Mail] showSaveFilePicker 오버라이드 (frame={getattr(ctx, 'url', 'main')})")
+            except Exception:
+                pass
+
+        # 7. 모두저장 클릭 → anchor 다운로드 이벤트 캡처
         logger.info("[Mail] 모두저장 클릭 → 다운로드 대기...")
         try:
             async with mail_page.expect_download(timeout=30_000) as dl_info:
