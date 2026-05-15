@@ -62,7 +62,8 @@ class Settings(BaseSettings):
     QINGS_HEADLESS: bool = False          # SSO 처리 위해 기본 headful
     QINGS_USERNAME: str = "sujin06.bae"
     QINGS_PASSWORD: str = "tnwls1094!"
-    QINGS_SN_COLUMN: str = "제조번호(SVC)"      # R열 — SN 컬럼명
+    QINGS_SN_COLUMN: str = "제조번호(SVC)"      # SN 컬럼명 (이름으로 못 찾으면 COL_IDX 사용)
+    QINGS_SN_COL_IDX: int = 6                  # G열 (0-based: A=0, B=1, ..., G=6)
     QINGS_DATE_COLUMN: str = "SEQ_NO"          # A열 — 날짜 컬럼명 (앞 8자리 YYYYMMDD)
     QINGS_DATE_LOOKBACK_DAYS: int = 7          # 오늘로부터 몇 일 전까지 포함
     QINGS_SYMPTOM_COLUMN: str = "증상명"        # (미사용 — 날짜 필터로 대체)

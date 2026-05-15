@@ -149,11 +149,18 @@ def extract_sns_from_excel(excel_path: str, sn_column: str | None = None) -> lis
 
     headers, row_iter = _iter_excel_rows(excel_path)
 
-    if sn_column not in headers:
+    if sn_column in headers:
+        sn_idx = headers.index(sn_column)
+        logger.info(f"[Prefetch] SN 열 '{sn_column}' → index {sn_idx}")
+    elif settings.QINGS_SN_COL_IDX >= 0:
+        sn_idx = settings.QINGS_SN_COL_IDX
+        logger.warning(
+            f"[Prefetch] SN 열 '{sn_column}' 없음 → 설정된 열 인덱스 {sn_idx}({chr(65+sn_idx)}열) 사용. "
+            f"헤더: {headers[:10]}"
+        )
+    else:
         logger.warning(f"[Prefetch] SN 열 '{sn_column}' 없음. 헤더: {headers[:10]}")
         return []
-
-    sn_idx = headers.index(sn_column)
 
     # filters.json 로드 및 열 인덱스 매핑
     filter_specs = _load_filters()
