@@ -33,8 +33,8 @@ _EXCEL_EXTS = {".xlsx", ".xls", ".xlsm"}
 # ─── 셀렉터 ───────────────────────────────────────────────────────────────────
 _SEL_MAIL_BTN    = 'button[aria-label="메일"]'
 _SEL_FOLDER      = 'button:has(span.text:text("FA 미결건"))'
-_SEL_MAIL_ROW    = '#DEFAULT_scroll-list > div > div:nth-child(2) > div'
-_SEL_MAIL_CHK    = 'span[role="check"][aria-label="선택"]'
+_SEL_MAIL_ROW    = '#DEFAULT_scroll-list > div > div:nth-child(2) > div:not(:first-child)'
+_SEL_MAIL_CHK    = '#DEFAULT_scroll-list > div > div:nth-child(2) > div:not(:first-child) span[role="check"][aria-label="선택"]'
 _SEL_SCROLL_CTR  = '#DEFAULT_scroll-list'
 _SEL_SAVE_ALL    = 'button[aria-label="모두저장"]'   # 새 창에서 클릭할 버튼
 
