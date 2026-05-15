@@ -53,9 +53,23 @@ def find_latest_excel(folder: str) -> str | None:
 
 
 async def main():
-    if len(sys.argv) > 1:
-        excel_path = sys.argv[1]
-    else:
+    # 인수 파싱: [excel_path] [--limit N] [--last N]
+    args = sys.argv[1:]
+    excel_path = None
+    limit = settings.BATCH_SN_LIMIT  # 0 = 전체
+
+    i = 0
+    while i < len(args):
+        if args[i] in ("--limit", "--last") and i + 1 < len(args):
+            limit = int(args[i + 1])
+            i += 2
+        elif not excel_path and not args[i].startswith("--"):
+            excel_path = args[i]
+            i += 1
+        else:
+            i += 1
+
+    if not excel_path:
         excel_path = find_latest_excel(settings.CSV_DOWNLOAD_PATH)
 
     if not excel_path or not Path(excel_path).exists():
@@ -73,6 +87,12 @@ async def main():
     if not sns:
         print("SN 추출 실패 — 열 이름 확인 필요")
         sys.exit(1)
+
+    if limit and limit > 0:
+        total_before = len(sns)
+        sns = sns[-limit:]
+        print(f"  → 전체 {total_before}개 중 마지막 {len(sns)}개만 실행")
+        print()
 
     # 추출된 SN 목록 Excel 저장
     import openpyxl

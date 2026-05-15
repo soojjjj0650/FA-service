@@ -88,6 +88,7 @@ class Settings(BaseSettings):
 
     # ─── 쿼리 조회 기간 ──────────────────────────────────────────────────────
     QUERY_LOOKBACK_DAYS: int = 14       # SQL INTERVAL N DAY (데이터 조회 기간)
+    BATCH_SN_LIMIT: int = 20            # 마지막 N개만 실행 (0 = 전체)
 
     class Config:
         env_file = ".env"
