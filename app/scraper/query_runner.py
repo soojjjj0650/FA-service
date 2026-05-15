@@ -325,13 +325,25 @@ ORDER by Date,Time"""
         )
         for task in pending:
             task.cancel()
-        # 최대 2초만 기다리고 강제 종료 (Playwright 내부 큐 정리)
         try:
             await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout=2.0)
         except asyncio.TimeoutError:
             pass
 
-        result = done.pop().result()
+        # done 태스크 전부 결과 수거 (미수거 시 "exception was never retrieved" 경고 발생)
+        result = None
+        exc = None
+        for task in done:
+            try:
+                r = task.result()
+                if result is None:
+                    result = r
+            except Exception as e:
+                if exc is None:
+                    exc = e
+
+        if result is None and exc is not None:
+            raise exc
 
         if result == "no_data":
             logger.info("쿼리 결과 없음 (The query returned no data)")
