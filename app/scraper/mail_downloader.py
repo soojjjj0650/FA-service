@@ -289,6 +289,13 @@ async def _process_mail_list(
             logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
             files = await _open_and_download(page, chk_frame, chk, i, save_dir)
 
+            # 처리 후 체크박스 해제 — 다음 메일 처리 시 한 개만 선택 상태 유지
+            try:
+                await chk.click()
+                await asyncio.sleep(0.3)
+            except Exception:
+                pass
+
             if files:
                 saved.extend(files)
                 logger.info(f"[Mail] 저장: {files}")
