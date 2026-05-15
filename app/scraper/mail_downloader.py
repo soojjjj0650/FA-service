@@ -449,34 +449,44 @@ async def _open_and_download(
             return saved
 
         # 6. 모두저장 클릭 → "다른 이름으로 저장" 다이얼로그에 pyautogui로 경로 입력 후 저장
-        #    showSaveFilePicker() API는 Playwright accept_downloads를 우회하므로
-        #    OS 레벨 pyautogui로 네이티브 다이얼로그를 직접 제어
         logger.info("[Mail] 모두저장 클릭 → 다른 이름으로 저장 다이얼로그 대기...")
         try:
             import pyautogui
             import pyperclip
-            import shutil
-
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            dest_path = os.path.join(save_dir, f"{ts}_fa_mail.zip")
 
             await save_btn.click()
             await asyncio.sleep(2)  # 다이얼로그 열릴 때까지 대기
 
-            # 파일명 입력란(이미 포커스)에 전체 저장 경로를 붙여넣기
-            pyperclip.copy(dest_path)
+            # 다이얼로그 파일명 입력란의 원래 파일명 읽기
             pyautogui.hotkey('ctrl', 'a')
             await asyncio.sleep(0.2)
+            pyautogui.hotkey('ctrl', 'c')
+            await asyncio.sleep(0.2)
+            original_name = pyperclip.paste().strip()
+            original_name = os.path.basename(original_name) if original_name else "fa_mail"
+            logger.info(f"[Mail] 다이얼로그 원래 파일명: {original_name}")
+
+            # 타임스탬프 prefix + 원래 파일명으로 저장 경로 구성
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dest_path = os.path.join(save_dir, f"{ts}_{original_name}")
+
+            # 전체 경로 붙여넣기 (이미 전체 선택 상태)
+            pyperclip.copy(dest_path)
             pyautogui.hotkey('ctrl', 'v')
             await asyncio.sleep(0.3)
             pyautogui.press('enter')
-            logger.info(f"[Mail] 저장 경로 입력 완료: {dest_path}")
+            logger.info(f"[Mail] 저장 경로 입력: {dest_path}")
 
             # 파일이 생성될 때까지 최대 30초 대기
             for _ in range(30):
                 if os.path.exists(dest_path):
-                    saved.append(dest_path)
                     logger.info(f"[Mail] 파일 저장 확인: {dest_path}")
+                    # zip이면 Excel 추출, 아니면 그대로
+                    ext = Path(dest_path).suffix.lower()
+                    if ext == ".zip":
+                        saved.extend(_extract_excel_from_zip(dest_path, save_dir, ts))
+                    else:
+                        saved.append(dest_path)
                     break
                 await asyncio.sleep(1)
             else:
