@@ -16,9 +16,9 @@ playwright==1.49.0
 requests==2.32.3
 httpx==0.27.2
 
-# Excel 출력
+# Excel
 openpyxl==3.1.5
 
-# OS 레벨 GUI 자동화 (네이티브 다이얼로그 제어)
+# GUI automation (for native OS dialog control)
 pyautogui==0.9.54
 pyperclip==1.9.0
