@@ -236,8 +236,12 @@ async def run_prefetch_for_sns(sns: list[str]) -> dict:
         f"신규 쿼리 {len(uncached)}개"
     )
 
-    try:
-        for i, sn in enumerate(uncached, 1):
+    concurrency = settings.BATCH_CONCURRENCY
+    sem = asyncio.Semaphore(concurrency)
+    logger.info(f"[Prefetch] 동시 실행: {concurrency}개")
+
+    async def run_one(i: int, sn: str) -> None:
+        async with sem:
             logger.info(f"[Prefetch] [{i}/{len(uncached)}] {sn} 쿼리 중...")
             try:
                 qr = await query_runner.run(sn)
@@ -260,7 +264,9 @@ async def run_prefetch_for_sns(sns: list[str]) -> dict:
                 logger.error(f"[Prefetch] [{sn}] 오류: {e}")
 
             result["sn_results"].append({"sn": sn, "status": status, "detail": detail})
-            await asyncio.sleep(3)  # 서버 부하 분산
+
+    try:
+        await asyncio.gather(*[run_one(i, sn) for i, sn in enumerate(uncached, 1)])
 
         _status["last_result"] = result
         logger.info(
