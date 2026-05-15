@@ -70,11 +70,12 @@ async def main():
             i += 1
 
     if not excel_path:
-        excel_path = find_latest_excel(settings.CSV_DOWNLOAD_PATH)
+        fa_data_dir = str(Path(settings.CSV_DOWNLOAD_PATH) / "FAdata")
+        excel_path = find_latest_excel(fa_data_dir) or find_latest_excel(settings.CSV_DOWNLOAD_PATH)
 
     if not excel_path or not Path(excel_path).exists():
         print(f"엑셀 파일을 찾을 수 없습니다.")
-        print(f"  탐색 경로: {settings.CSV_DOWNLOAD_PATH}")
+        print(f"  탐색 경로: {Path(settings.CSV_DOWNLOAD_PATH) / 'FAdata'}")
         sys.exit(1)
 
     cutoff = (date.today() - timedelta(days=settings.QINGS_DATE_LOOKBACK_DAYS)).strftime("%Y%m%d")
