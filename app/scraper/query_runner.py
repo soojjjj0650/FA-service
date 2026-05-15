@@ -112,6 +112,7 @@ ORDER by Date,Time"""
         days: int = 1,
     ) -> QueryResult:
         page = await context.new_page()
+        page.set_default_timeout(60_000)   # 기본 타임아웃 60초
 
         try:
             # 1. SQL Lab 접속
