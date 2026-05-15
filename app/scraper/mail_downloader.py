@@ -289,13 +289,6 @@ async def _process_mail_list(
             logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
             files = await _open_and_download(page, chk_frame, chk, i, save_dir)
 
-            # 처리 후 체크박스 해제 — 다음 메일 처리 시 한 개만 선택 상태 유지
-            try:
-                await chk.click()
-                await asyncio.sleep(0.3)
-            except Exception:
-                pass
-
             if files:
                 saved.extend(files)
                 logger.info(f"[Mail] 저장: {files}")
@@ -347,7 +340,28 @@ async def _open_and_download(
     """체크박스 클릭 → 제목 셀 우클릭 → 새 창으로 열기 → 모두저장 → 다운로드"""
     saved: list[str] = []
 
-    # 1. 체크박스 클릭 (행 선택)
+    # 1. 기존 선택 해제 — JS로 현재 체크된 행의 체크박스만 직접 클릭
+    #    (locator 재사용 시 DOM 변경으로 전체선택 버튼이 클릭되는 문제 방지)
+    try:
+        await frame.evaluate("""() => {
+            const container = document.getElementById('DEFAULT_scroll-list');
+            if (!container) return;
+            const rows = container.querySelectorAll(':scope > div > div:nth-child(2) > div');
+            rows.forEach(row => {
+                const cls = row.className + ' ' + (row.getAttribute('aria-selected') || '');
+                const isSelected = /select|check|activ/i.test(cls) ||
+                                   row.getAttribute('aria-selected') === 'true';
+                if (isSelected) {
+                    const cb = row.querySelector('span[role="check"]');
+                    if (cb) cb.click();
+                }
+            });
+        }""")
+        await asyncio.sleep(0.3)
+    except Exception:
+        pass
+
+    # 2. 체크박스 클릭 (행 선택)
     await chk.click()
     await asyncio.sleep(0.4)
 
