@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     # ─── 쿼리 조회 기간 ──────────────────────────────────────────────────────
     QUERY_LOOKBACK_DAYS: int = 14       # SQL INTERVAL N DAY (데이터 조회 기간)
     BATCH_SN_LIMIT: int = 100           # 마지막 N개만 실행 (0 = 전체)
-    BATCH_CONCURRENCY: int = 1          # 동시 쿼리 실행 수
+    BATCH_CONCURRENCY: int = 3          # 동시 쿼리 실행 수
 
     class Config:
         env_file = ".env"
