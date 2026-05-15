@@ -33,8 +33,11 @@ _EXCEL_EXTS = {".xlsx", ".xls", ".xlsm"}
 # ─── 셀렉터 ───────────────────────────────────────────────────────────────────
 _SEL_MAIL_BTN    = 'button[aria-label="메일"]'
 _SEL_FOLDER      = 'button:has(span.text:text("FA 미결건"))'
-_SEL_MAIL_ROW    = '#DEFAULT_scroll-list > div > div:nth-child(2) > div:not(:first-child)'
-_SEL_MAIL_CHK    = '#DEFAULT_scroll-list > div > div:nth-child(2) > div:not(:first-child) span[role="check"][aria-label="선택"]'
+_SEL_MAIL_ROW    = '#DEFAULT_scroll-list > div > div:nth-child(2) > div'
+_SEL_MAIL_CHK    = 'span[role="check"][aria-label="선택"]'
+
+# 메일 목록 컬럼 헤더 행에서 나타나는 텍스트 (건너뜀)
+_HEADER_SUBJECTS = {"제목", "발신자", "날짜", "수신일", "받은날짜", "크기", "수신자"}
 _SEL_SCROLL_CTR  = '#DEFAULT_scroll-list'
 _SEL_SAVE_ALL    = 'button[aria-label="모두저장"]'   # 새 창에서 클릭할 버튼
 
@@ -281,6 +284,10 @@ async def _process_mail_list(
                 return el.closest('li, tr, [class*="row"], [class*="item"]')
                          ?.innerText?.split('\\n')[0]?.trim() || '';
             }""") or f"mail_{i}"
+
+            if subject in _HEADER_SUBJECTS:
+                logger.info(f"[Mail] [{i+1}] 헤더 행 건너뜀 ('{subject}')")
+                continue
 
             if subject in done_ids or subject in processed_this_run:
                 logger.info(f"[Mail] [{i+1}] '{subject}' 이미 처리됨 — 건너뜀")
