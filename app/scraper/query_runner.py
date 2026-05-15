@@ -143,13 +143,17 @@ ORDER by Date,Time"""
             )
             has_data = await self._run_and_wait(page)
 
-            # 데이터 없음
+            # 데이터 없음 — 빈 CSV 저장해서 재실행 스킵
             if not has_data:
                 await notify(f"조회 완료 - SN [{sn}] 데이터 없음")
+                empty_path = os.path.join(self.DOWNLOAD_DIR, f"{sn}_inputdata.csv")
+                os.makedirs(self.DOWNLOAD_DIR, exist_ok=True)
+                with open(empty_path, "w", encoding="utf-8-sig") as f:
+                    f.write("")
                 return QueryResult(
                     sn=sn,
                     success=True,
-                    csv_path=None,
+                    csv_path=empty_path,
                     error="해당 SN의 조회 결과가 없습니다.",
                 )
 
