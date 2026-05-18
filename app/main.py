@@ -945,21 +945,18 @@ def _save_processing_files(sn: str, processed) -> None:
     import os
 
     save_dir = settings.CSV_DOWNLOAD_PATH
-    abs_save_dir = os.path.abspath(save_dir)
-    logger.info(f"[저장경로] {abs_save_dir}")
     try:
-        os.makedirs(abs_save_dir, exist_ok=True)
+        os.makedirs(save_dir, exist_ok=True)
     except Exception as e:
-        logger.warning(f"저장 폴더 생성 실패 [{abs_save_dir}]: {e}")
+        logger.warning(f"저장 폴더 생성 실패 [{save_dir}]: {e}")
         return
 
     # 1. AI 입력 텍스트 저장
-    txt_path = os.path.join(abs_save_dir, f"{sn}_ai_input.txt")
+    txt_path = os.path.join(save_dir, f"{sn}_ai_input.txt")
     try:
         with open(txt_path, "w", encoding="utf-8-sig") as f:
             f.write(processed.summary_text)
-        exists = os.path.exists(txt_path)
-        logger.info(f"AI 입력 텍스트 저장 완료: {txt_path} (파일존재={exists})")
+        logger.info(f"AI 입력 텍스트 저장 완료: {txt_path}")
     except Exception as e:
         logger.warning(f"AI 입력 텍스트 저장 실패: {e}")
 
