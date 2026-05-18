@@ -918,6 +918,9 @@ class DataProcessor:
         # ─ DROP ──────────────────────────────────────────────────────────────
         drop = feature_tables.get("DROP")
         if drop and drop.rows:
+            drop_bands = [_col(drop, r, "Band") for r in drop.rows if _col(drop, r, "Band")]
+            drop_unique_bands = set(drop_bands)
+            drop_band_lock = len(drop_unique_bands) == 1 and len(drop_bands) >= 2
             for i, row in enumerate(drop.rows[:3]):
                 ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
                 tac  = _col(drop, row, "TAC")
@@ -938,11 +941,18 @@ class DataProcessor:
                     f"Drop이 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} DLCh {dlch}이고"
                     f" Drop횟수는 {cnt}번 RxP0는 {rxp0}, RxP1은 {rxp1},{snr_str}{sipr_str}{rf_dif_str}"
                 )
+            if drop_band_lock:
+                lines.append(
+                    f"⚠️ 모든 DROP 발생 지역이 Band{next(iter(drop_unique_bands))}에서만 나타남 → 단말 밴드 고정 가능성"
+                )
             lines.append("")
 
         # ─ RLFI ──────────────────────────────────────────────────────────────
         rlfi = feature_tables.get("RLFI")
         if rlfi and rlfi.rows:
+            rlfi_acts = [_col(rlfi, r, "ACT") for r in rlfi.rows if _col(rlfi, r, "ACT")]
+            rlfi_unique_acts = set(rlfi_acts)
+            rlfi_band_lock = len(rlfi_unique_acts) == 1 and len(rlfi_acts) >= 2
             for i, row in enumerate(rlfi.rows[:3]):
                 ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
                 tac  = _col(rlfi, row, "TAC") or _col(rlfi, row, "TAC1")
@@ -955,6 +965,11 @@ class DataProcessor:
                 lines.append(
                     f"RLFI가 {ord_} 많이 발생한 지역은 TAC {tac} PID {pid} DCh {dch}"
                     f" RxP는 {rxp},{cau_str} 총 {cnt}번 발생하였습니다."
+                )
+            if rlfi_band_lock:
+                act_label = next(iter(rlfi_unique_acts))
+                lines.append(
+                    f"⚠️ 모든 RLFI 발생이 ACT {act_label}에서만 나타남 → 단말 밴드 고정 가능성"
                 )
             lines.append("")
 
