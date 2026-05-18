@@ -949,16 +949,26 @@ class DataProcessor:
                 rxp0 = _col(drop, row, "RxP0_avg") or _col(drop, row, "RxP0")
                 rxp1 = _col(drop, row, "RxP1_avg") or _col(drop, row, "RxP1")
                 snr  = _col(drop, row, "SNR0_avg")
-                sipr = _decode_cell("SIPR", _col(drop, row, "SIPR_Counts") or _col(drop, row, "SIPR"))
+                sipr_raw = _col(drop, row, "SIPR_Counts") or _col(drop, row, "SIPR")
+                sipr_code = sipr_raw.split(":")[0].strip() if sipr_raw else ""
+                sipr = _decode_cell("SIPR", sipr_raw)
+                bler_drop = _col(drop, row, "BLER_avg") or _col(drop, row, "BLER")
                 snr_str = f" SNR평균은 {snr}이고" if snr else ""
                 sipr_str = f" SIP값은 {sipr}입니다." if sipr else "."
                 try:
                     rf_dif_str = " RF Dif가 있습니다." if abs(float(rxp0) - float(rxp1)) >= 7 else ""
                 except (ValueError, TypeError):
                     rf_dif_str = ""
+                try:
+                    repeater_str = (
+                        " ⚠️ 중계기 이슈 가능성(BLER 높음 + SIP 1401)"
+                        if float(bler_drop) >= 80 and sipr_code == "1401" else ""
+                    )
+                except (ValueError, TypeError):
+                    repeater_str = ""
                 lines.append(
                     f"Drop이 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} DLCh {dlch}이고"
-                    f" Drop횟수는 {cnt}번 RxP0는 {rxp0}, RxP1은 {rxp1},{snr_str}{sipr_str}{rf_dif_str}"
+                    f" Drop횟수는 {cnt}번 RxP0는 {rxp0}, RxP1은 {rxp1},{snr_str}{sipr_str}{rf_dif_str}{repeater_str}"
                 )
             if drop_band_lock:
                 lines.append(
