@@ -683,7 +683,7 @@ class DataProcessor:
                         pass
                 merged[col_idx[col]] = str(total)
 
-            # 평균 컬럼 (소수점 1자리)
+            # 평균 컬럼 (LEV 컬럼은 정수, 나머지는 소수점 1자리)
             for col in avg_cols:
                 vals = []
                 for r in group_rows:
@@ -693,7 +693,11 @@ class DataProcessor:
                             vals.append(float(v))
                     except (ValueError, TypeError):
                         pass
-                merged[col_idx[col]] = f"{sum(vals)/len(vals):.1f}" if vals else ""
+                if vals:
+                    avg = sum(vals) / len(vals)
+                    merged[col_idx[col]] = f"{int(round(avg))}" if col.startswith("LEV") else f"{avg:.1f}"
+                else:
+                    merged[col_idx[col]] = ""
 
             # 고유값 카운트 (표: "487:2회" / 주석: "487: requested_terminated")
             if vc_col and vc_col in col_idx:
