@@ -979,6 +979,7 @@ class DataProcessor:
                     parts.append(f"{c}는 {v}")
             if parts:
                 lines.append(", ".join(parts) + "입니다.")
+                lines.append("단말 마이크 상태 점검이 필요합니다.")
                 lines.append("")
 
         return "\n".join(lines)
