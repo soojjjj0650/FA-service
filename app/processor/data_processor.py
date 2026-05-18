@@ -129,15 +129,15 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
 
 
 # ─── feature별 고정 주석 ─────────────────────────────────────────────────────────
-_STATIC_FOOTNOTES: dict[str, list[str]] = {
-    "NSVC": [
-        "LEV0: 2분 미만",
-        "LEV1: 5분 미만",
-        "LEV2: 10분 미만",
-        "LEV3: 30분 미만",
-        "LEV4: 60분 미만",
-        "LEV5: 60분 이상",
-    ],
+_STATIC_FOOTNOTES: dict[str, list[str]] = {}
+
+_NSVC_LEV_FOOTNOTES: dict[str, str] = {
+    "LEV0_avg": "LEV0: 2분 미만",
+    "LEV1_avg": "LEV1: 5분 미만",
+    "LEV2_avg": "LEV2: 10분 미만",
+    "LEV3_avg": "LEV3: 30분 미만",
+    "LEV4_avg": "LEV4: 60분 미만",
+    "LEV5_avg": "LEV5: 60분 이상",
 }
 
 # ─── feature별 최종 표시 컬럼 (집계 완료 후 이 컬럼만 남김) ─────────────────────
@@ -492,6 +492,16 @@ class DataProcessor:
                 rename = FEATURE_RENAME_COLS.get(feat)
                 if rename:
                     columns = [rename.get(c, c) for c in columns]
+
+                # NSVC: 값 있는 LEV만 주석 표시
+                if feat == "NSVC" and agg_rows:
+                    col_idx = {c: i for i, c in enumerate(columns)}
+                    row = agg_rows[0]
+                    nsvc_notes = [
+                        note for col, note in _NSVC_LEV_FOOTNOTES.items()
+                        if col in col_idx and row[col_idx[col]] not in ("", "0", None)
+                    ]
+                    footnotes = footnotes + nsvc_notes
 
                 tables[feat] = FeatureTable(
                     feature=feat,
