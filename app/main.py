@@ -1257,7 +1257,7 @@ _FEATURE_DISPLAY_COLS = {
         ("LEV3", "LEV3_avg"), ("LEV4", "LEV4_avg"), ("LEV5", "LEV5_avg"),
     ],
     "ATTF": [
-        ("ACT", "ACT_"), ("TAC", "TAC_"), ("PCI", "PhID_"), ("DLCh", "DLCh"),
+        ("PLMN", "PLMN"), ("ACT", "ACT_"), ("TAC", "TAC_"), ("PCI", "PhID_"), ("DLCh", "DLCh"),
         ("Count", "Count"), ("원인", "EMMC_Counts"),
     ],
     "CRSH": [
