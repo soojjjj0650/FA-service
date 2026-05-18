@@ -854,6 +854,28 @@ class DataProcessor:
         lines.append(f"Feature가 많이 발생한 순서는 {feat_summary} 순입니다.")
         lines.append("")
 
+        def _tag_weak_field(rsrp_str: str, sinr_str: str, bler_str: str) -> str:
+            """RSRP/SINR/BLER 기준으로 전계 점검 필요 여부 판단."""
+            flags = []
+            try:
+                if float(rsrp_str) < -100:
+                    flags.append("RSRP 약전계")
+            except (ValueError, TypeError):
+                pass
+            try:
+                if float(sinr_str) < 0:
+                    flags.append("SINR 불량")
+            except (ValueError, TypeError):
+                pass
+            try:
+                if float(bler_str) >= 30:
+                    flags.append("BLER 높음")
+            except (ValueError, TypeError):
+                pass
+            if flags:
+                return f"⚠️ 전계 점검 필요({', '.join(flags)})"
+            return ""
+
         # ─ MUTE ──────────────────────────────────────────────────────────────
         mute = feature_tables.get("MUTE")
         if mute and mute.rows:
@@ -876,9 +898,11 @@ class DataProcessor:
                 if rnmt: cnt_str += f" RNMT {rnmt}회"
                 if dbmt: cnt_str += f" DBMT {dbmt}회"
                 if ecnt: cnt_str += f" ECNT {ecnt}번"
+                weak_field = _tag_weak_field(rsrp, sinr, bler)
+                weak_str = f" {weak_field}" if weak_field else ""
                 lines.append(
                     f"MUTE가 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} Band{band}이고"
-                    f"{cnt_str} 발생하였고, RSRP는 {rsrp}, SINR {sinr} BLER {bler}입니다."
+                    f"{cnt_str} 발생하였고, RSRP는 {rsrp}, SINR {sinr} BLER {bler}입니다.{weak_str}"
                 )
             lines.append("")
 
