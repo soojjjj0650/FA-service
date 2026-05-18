@@ -1112,18 +1112,16 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "", que
             lines.append("|" + "|".join("---" for _ in headers) + "|")
             lines.append("| " + " | ".join(values) + " |")
         else:
-            # 상위 3행만 마크다운 표로 표시
+            # 전체 행 마크다운 표로 표시
             display_rows = [
                 [_trunc(str(row[table.columns.index(actual)]), 15) for _, actual in valid]
-                for row in table.rows[:3]
+                for row in table.rows
             ]
             headers = [disp for disp, _ in valid]
             lines.append("| " + " | ".join(headers) + " |")
             lines.append("|" + "|".join("---" for _ in headers) + "|")
             for row_vals in display_rows:
                 lines.append("| " + " | ".join(row_vals) + " |")
-            if total > 3:
-                lines.append(f"*... 외 {total - 3}건*")
 
         table_text = "\n".join(lines)
 
