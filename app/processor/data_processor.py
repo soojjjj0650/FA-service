@@ -830,6 +830,16 @@ class DataProcessor:
         def _col(tbl: FeatureTable, row: list, name: str) -> str:
             return row[tbl.columns.index(name)] if name in tbl.columns else ""
 
+        def _decode_cell(field: str, cell: str) -> str:
+            """'1:2회, 5:1회' 형태 셀에서 주요 코드를 추출해 설명을 붙여 반환합니다.
+            예: _decode_cell("SIPR", "1:2회") → "1(max transmission)"
+            """
+            if not cell:
+                return cell
+            first = cell.split(",")[0].strip()
+            code = first.split(":")[0].strip() if ":" in first else first
+            return apply_code(field, code)
+
         # ─ Feature 분포 ───────────────────────────────────────────────────────
         feat_dist: dict[str, int] = {}
         for r in rows:
@@ -884,7 +894,7 @@ class DataProcessor:
                 rxp0 = _col(drop, row, "RxP0_avg") or _col(drop, row, "RxP0")
                 rxp1 = _col(drop, row, "RxP1_avg") or _col(drop, row, "RxP1")
                 snr  = _col(drop, row, "SNR0_avg")
-                sipr = _col(drop, row, "SIPR_Counts") or _col(drop, row, "SIPR")
+                sipr = _decode_cell("SIPR", _col(drop, row, "SIPR_Counts") or _col(drop, row, "SIPR"))
                 snr_str = f" SNR평균은 {snr}이고" if snr else ""
                 sipr_str = f" SIP값은 {sipr}입니다." if sipr else "."
                 lines.append(
@@ -903,7 +913,7 @@ class DataProcessor:
                 dch  = _col(rlfi, row, "DCh") or _col(rlfi, row, "DCh1")
                 cnt  = _col(rlfi, row, "RLFI횟수") or _col(rlfi, row, "발생횟수")
                 rxp  = _col(rlfi, row, "RxP_avg") or _col(rlfi, row, "RxP")
-                cau  = _col(rlfi, row, "CAU_Counts") or _col(rlfi, row, "원인")
+                cau  = _decode_cell("CAU", _col(rlfi, row, "CAU_Counts") or _col(rlfi, row, "원인"))
                 cau_str = f" 원인은 {cau}로" if cau else ""
                 lines.append(
                     f"RLFI가 {ord_} 많이 발생한 지역은 TAC {tac} PID {pid} DCh {dch}"
@@ -949,7 +959,7 @@ class DataProcessor:
                     tac  = _col(tbl, row, "TAC_")
                     pci  = _col(tbl, row, "PhID_")
                     cnt  = _col(tbl, row, "Count")
-                    emmc = _col(tbl, row, "EMMC_Counts") or _col(tbl, row, "EMMC")
+                    emmc = _decode_cell("EMMC", _col(tbl, row, "EMMC_Counts") or _col(tbl, row, "EMMC"))
                     emmc_str = f" 원인은 {emmc}입니다." if emmc else "입니다."
                     lines.append(
                         f"{label}가 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci}이고"
@@ -979,7 +989,7 @@ class DataProcessor:
             row = mute_extra.rows[0]
             parts = []
             for c in mute_extra.columns:
-                v = _col(mute_extra, row, c)
+                v = _decode_cell(c, _col(mute_extra, row, c))
                 if v and v != "-":
                     parts.append(f"{c}는 {v}")
             if parts:
