@@ -879,6 +879,11 @@ class DataProcessor:
         # ─ MUTE ──────────────────────────────────────────────────────────────
         mute = feature_tables.get("MUTE")
         if mute and mute.rows:
+            mute_bands = [_col(mute, r, "Band") for r in mute.rows if _col(mute, r, "Band")]
+            unique_bands = set(mute_bands)
+            band_lock_flag = (
+                len(unique_bands) == 1 and len(mute_bands) >= 2
+            )
             for i, row in enumerate(mute.rows[:3]):
                 ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
                 tac  = _col(mute, row, "TAC")
@@ -903,6 +908,10 @@ class DataProcessor:
                 lines.append(
                     f"MUTE가 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} Band{band}이고"
                     f"{cnt_str} 발생하였고, RSRP는 {rsrp}, SINR {sinr} BLER {bler}입니다.{weak_str}"
+                )
+            if band_lock_flag:
+                lines.append(
+                    f"⚠️ 모든 MUTE 발생 지역이 Band{next(iter(unique_bands))}에서만 나타남 → 단말 밴드 고정 가능성"
                 )
             lines.append("")
 
