@@ -74,13 +74,14 @@ class AgentClient:
             },
         }
         # 프롬프트 템플릿: config 값 우선, 없으면 data/prompt_template.txt 파일 로드
+        import os as _os
         prompt_template = settings.AI_AGENT_PROMPT_TEMPLATE
         if not prompt_template:
-            _prompt_file = os.path.join(
-                os.path.dirname(__file__), "..", "..", "data", "prompt_template.txt"
+            _prompt_file = _os.path.join(
+                _os.path.dirname(__file__), "..", "..", "data", "prompt_template.txt"
             )
             try:
-                with open(os.path.abspath(_prompt_file), encoding="utf-8") as _f:
+                with open(_os.path.abspath(_prompt_file), encoding="utf-8") as _f:
                     prompt_template = _f.read()
                 logger.debug("프롬프트 템플릿 파일 로드 완료")
             except Exception as _e:
