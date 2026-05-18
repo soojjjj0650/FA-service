@@ -1442,10 +1442,16 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             await _push_card_to_chatroom(job)
             return
 
-        # 데이터 없음 처리 (쿼리 성공했으나 결과 없음)
-        if query_result.csv_path is None:
+        # 데이터 없음 처리 (쿼리 성공했으나 결과 없음 — 빈 CSV 포함)
+        import os as _os
+        no_data = (
+            query_result.csv_path is None
+            or not _os.path.exists(query_result.csv_path)
+            or _os.path.getsize(query_result.csv_path) == 0
+        )
+        if no_data:
             job["status"] = "done"
-            job["ai_response"] = f"최근 {days}일간 조회 결과가 없습니다."
+            job["ai_response"] = f"최근 {days}일간 조회되는 데이터가 없습니다."
             job["feature_summary"] = ""
             await _push_card_to_chatroom(job)
             return
