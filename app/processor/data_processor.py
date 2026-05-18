@@ -128,6 +128,18 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
 }
 
 
+# ─── feature별 고정 주석 ─────────────────────────────────────────────────────────
+_STATIC_FOOTNOTES: dict[str, list[str]] = {
+    "NSVC": [
+        "LEV0: 2분 미만",
+        "LEV1: 5분 미만",
+        "LEV2: 10분 미만",
+        "LEV3: 30분 미만",
+        "LEV4: 60분 미만",
+        "LEV5: 60분 이상",
+    ],
+}
+
 # ─── feature별 최종 표시 컬럼 (집계 완료 후 이 컬럼만 남김) ─────────────────────
 # 순서도 여기서 지정한 순서대로 유지됩니다.
 FEATURE_KEEP_COLS: dict[str, list[str]] = {
@@ -485,7 +497,7 @@ class DataProcessor:
                     feature=feat,
                     columns=columns,
                     rows=agg_rows,
-                    footnotes=footnotes,
+                    footnotes=footnotes + _STATIC_FOOTNOTES.get(feat, []),
                 )
             else:
                 # 매핑 미정의 feature: Date / Time / custom_value 축약 표시
