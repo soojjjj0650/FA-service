@@ -792,7 +792,7 @@ class DataProcessor:
             f = str(r.get("feature", "")).strip().upper()
             if f:
                 feat_dist[f] = feat_dist.get(f, 0) + 1
-        top_feats = sorted(feat_dist.items(), key=lambda x: x[1], reverse=True)[:7]
+        top_feats = sorted(feat_dist.items(), key=lambda x: x[1], reverse=True)[:10]
         feat_summary = ", ".join(f"{f} {n}건" for f, n in top_feats)
 
         lines.append(f"[단말기 SN: {sn}]")
@@ -846,7 +846,7 @@ class DataProcessor:
             f = str(r.get("feature", "")).strip().upper()
             if f:
                 feat_dist[f] = feat_dist.get(f, 0) + 1
-        top_feats = sorted(feat_dist.items(), key=lambda x: x[1], reverse=True)[:7]
+        top_feats = sorted(feat_dist.items(), key=lambda x: x[1], reverse=True)[:10]
         feat_summary = " ".join(f"{f}({n}회)" for f, n in top_feats)
 
         lines: list[str] = []
