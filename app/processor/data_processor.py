@@ -897,9 +897,13 @@ class DataProcessor:
                 sipr = _decode_cell("SIPR", _col(drop, row, "SIPR_Counts") or _col(drop, row, "SIPR"))
                 snr_str = f" SNR평균은 {snr}이고" if snr else ""
                 sipr_str = f" SIP값은 {sipr}입니다." if sipr else "."
+                try:
+                    rf_dif_str = " RF Dif가 있습니다." if abs(float(rxp0) - float(rxp1)) >= 7 else ""
+                except (ValueError, TypeError):
+                    rf_dif_str = ""
                 lines.append(
                     f"Drop이 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} DLCh {dlch}이고"
-                    f" Drop횟수는 {cnt}번 RxP0는 {rxp0}, RxP1은 {rxp1},{snr_str}{sipr_str}"
+                    f" Drop횟수는 {cnt}번 RxP0는 {rxp0}, RxP1은 {rxp1},{snr_str}{sipr_str}{rf_dif_str}"
                 )
             lines.append("")
 
