@@ -876,6 +876,12 @@ class DataProcessor:
                 return f"⚠️ 전계 점검 필요({', '.join(flags)})"
             return ""
 
+        def _safe_int(v: str) -> int:
+            try:
+                return int(float(v)) if v else 0
+            except (ValueError, TypeError):
+                return 0
+
         # ─ MUTE ──────────────────────────────────────────────────────────────
         mute = feature_tables.get("MUTE")
         if mute and mute.rows:
@@ -884,6 +890,15 @@ class DataProcessor:
             band_lock_flag = (
                 len(unique_bands) == 1 and len(mute_bands) >= 2
             )
+            # UBMT 비율 계산 (전체 rows 합산)
+            total_ubmt = sum(_safe_int(_col(mute, r, "UBMT")) for r in mute.rows)
+            total_mute_cnt = sum(
+                _safe_int(_col(mute, r, c))
+                for r in mute.rows
+                for c in ["UBMT", "RSMT", "RNMT", "DBMT"]
+            )
+            ubmt_ratio = (total_ubmt / total_mute_cnt * 100) if total_mute_cnt > 0 else 0
+
             for i, row in enumerate(mute.rows[:3]):
                 ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
                 tac  = _col(mute, row, "TAC")
@@ -908,6 +923,10 @@ class DataProcessor:
                 lines.append(
                     f"MUTE가 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} Band{band}이고"
                     f"{cnt_str} 발생하였고, RSRP는 {rsrp}, SINR {sinr} BLER {bler}입니다.{weak_str}"
+                )
+            if ubmt_ratio >= 30:
+                lines.append(
+                    f"⚠️ UBMT 비율 {ubmt_ratio:.0f}% ({total_ubmt}/{total_mute_cnt}회) → Tx 이슈 가능성"
                 )
             if band_lock_flag:
                 lines.append(
