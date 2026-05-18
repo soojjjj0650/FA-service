@@ -904,7 +904,7 @@ class DataProcessor:
                 cnt  = _col(rlfi, row, "RLFI횟수") or _col(rlfi, row, "발생횟수")
                 rxp  = _col(rlfi, row, "RxP_avg") or _col(rlfi, row, "RxP")
                 cau  = _col(rlfi, row, "CAU_Counts") or _col(rlfi, row, "원인")
-                cau_str = f" CAU는 {cau}로" if cau else ""
+                cau_str = f" 원인은 {cau}로" if cau else ""
                 lines.append(
                     f"RLFI가 {ord_} 많이 발생한 지역은 TAC {tac} PID {pid} DCh {dch}"
                     f" RxP는 {rxp},{cau_str} 총 {cnt}번 발생하였습니다."
