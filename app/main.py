@@ -128,7 +128,62 @@ async def startup():
         asyncio.create_task(_mail_scheduler())
         logger.info(f"[Scheduler] 메일 다운로드 스케줄러 시작 (매일 {settings.MAIL_SCHEDULE_HOUR:02d}:00)")
 
+    asyncio.create_task(_startup_postprocess())
     logger.info("FA Chatbot Service 시작")
+
+
+async def _startup_postprocess() -> None:
+    """서비스 시작 시 미처리 CSV를 자동으로 가공 → AI 분석 → 결과 저장합니다."""
+    import glob
+    from pathlib import Path as _Path
+    from app.processor.data_processor import data_processor
+    from app.agent.agent_client import agent_client
+    from app.scraper.query_runner import QueryResult as _QR
+
+    await asyncio.sleep(3)  # 서버 초기화 완료 대기
+
+    csv_dir = _Path(settings.CSV_DOWNLOAD_PATH)
+    pattern = str(csv_dir / "*_inputdata.csv")
+    all_csvs = glob.glob(pattern)
+
+    # result.json 없는 것만 후처리 대상
+    targets = [
+        f for f in all_csvs
+        if not _Path(f).with_name(_Path(f).name.replace("_inputdata.csv", "_result.json")).exists()
+        and _Path(f).stat().st_size > 0  # 빈 파일(no data) 제외
+    ]
+
+    if not targets:
+        logger.info("[후처리] 처리할 CSV 없음 — 스킵")
+        return
+
+    logger.info(f"[후처리] {len(targets)}개 CSV 처리 시작")
+    ok = fail = 0
+
+    for csv_path in targets:
+        sn = _Path(csv_path).name.replace("_inputdata.csv", "")
+        try:
+            qr = _QR(sn=sn, success=True, csv_path=csv_path)
+            processed = data_processor.process(qr)
+            _save_processing_files(sn, processed)
+
+            feature_summary = " > ".join(
+                f"{f}({len(t.rows)}건)"
+                for f, t in sorted(processed.feature_tables.items(), key=lambda x: len(x[1].rows), reverse=True)[:9]
+                if t.rows
+            )
+
+            logger.info(f"[후처리] {sn} AI 분석 중...")
+            ai_response = await agent_client.analyze(processed)
+            _save_result_json(sn, ai_response, feature_summary, [], processed.feature_tables)
+            logger.info(f"[후처리] {sn} 완료")
+            ok += 1
+            await asyncio.sleep(1)
+        except Exception as e:
+            logger.error(f"[후처리] {sn} 실패: {e}")
+            fail += 1
+
+    logger.info(f"[후처리] 완료 — 성공 {ok}개 | 실패 {fail}개")
 
 
 @app.on_event("shutdown")
