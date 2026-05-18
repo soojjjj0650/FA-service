@@ -73,10 +73,22 @@ class AgentClient:
                 "input_value": processed.summary_text,   # 실제 데이터
             },
         }
-        # 프롬프트 템플릿 컴포넌트가 설정된 경우 추가
-        if settings.AI_AGENT_PROMPT_KEY and settings.AI_AGENT_PROMPT_TEMPLATE:
+        # 프롬프트 템플릿: config 값 우선, 없으면 data/prompt_template.txt 파일 로드
+        prompt_template = settings.AI_AGENT_PROMPT_TEMPLATE
+        if not prompt_template:
+            _prompt_file = os.path.join(
+                os.path.dirname(__file__), "..", "..", "data", "prompt_template.txt"
+            )
+            try:
+                with open(os.path.abspath(_prompt_file), encoding="utf-8") as _f:
+                    prompt_template = _f.read()
+                logger.debug("프롬프트 템플릿 파일 로드 완료")
+            except Exception as _e:
+                logger.warning(f"프롬프트 템플릿 파일 로드 실패: {_e}")
+
+        if settings.AI_AGENT_PROMPT_KEY and prompt_template:
             component_inputs[settings.AI_AGENT_PROMPT_KEY] = {
-                "template": settings.AI_AGENT_PROMPT_TEMPLATE,
+                "template": prompt_template,
             }
             logger.debug(f"AI Agent 프롬프트 키 전송: {settings.AI_AGENT_PROMPT_KEY}")
 
