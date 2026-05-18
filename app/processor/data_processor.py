@@ -128,7 +128,10 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
 }
 
 
-# ─── feature별 고정 주석 ─────────────────────────────────────────────────────────
+# ─── ACT 값 매핑 ─────────────────────────────────────────────────────────────
+_ACT_MAP: dict[str, str] = {"2": "3G", "4": "LTE", "6": "5G"}
+
+
 _STATIC_FOOTNOTES: dict[str, list[str]] = {}
 
 _NSVC_LEV_FOOTNOTES: dict[str, str] = {
@@ -446,6 +449,8 @@ class DataProcessor:
                                 val = cv.get(json_key, "")
                             if col_name in HEX_COLUMNS:
                                 val = self._hex_to_dec(val)
+                            if col_name == "ACT":
+                                val = _ACT_MAP.get(val.strip(), val)
                         tr.append(val)
                     table_rows.append(tr)
 
