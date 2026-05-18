@@ -886,7 +886,7 @@ class DataProcessor:
                 snr  = _col(drop, row, "SNR0_avg")
                 sipr = _col(drop, row, "SIPR_Counts") or _col(drop, row, "SIPR")
                 snr_str = f" SNR평균은 {snr}이고" if snr else ""
-                sipr_str = f" SIPR값은 {sipr}입니다." if sipr else "."
+                sipr_str = f" SIP값은 {sipr}입니다." if sipr else "."
                 lines.append(
                     f"Drop이 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} DLCh {dlch}이고"
                     f" Drop횟수는 {cnt}번 RxP0는 {rxp0}, RxP1은 {rxp1},{snr_str}{sipr_str}"
