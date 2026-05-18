@@ -1030,15 +1030,20 @@ class DataProcessor:
         # ─ MUTE_EXTRA (SAMS/SMBU/MCST 전체) ─────────────────────────────────
         mute_extra = feature_tables.get("MUTE_EXTRA")
         if mute_extra and mute_extra.rows:
+            import re as _re
             row = mute_extra.rows[0]
             parts = []
+            total_mic_count = 0
             for c in mute_extra.columns:
-                v = _decode_cell(c, _col(mute_extra, row, c))
+                raw = _col(mute_extra, row, c)
+                total_mic_count += sum(int(n) for n in _re.findall(r':(\d+)회', raw))
+                v = _decode_cell(c, raw)
                 if v and v != "-":
                     parts.append(f"{c}는 {v}")
             if parts:
                 lines.append(", ".join(parts) + "입니다.")
-                lines.append("단말 마이크 상태 점검이 필요합니다.")
+                if total_mic_count >= 10:
+                    lines.append(f"⚠️ SAMS/SMBU/MCST 총 {total_mic_count}회 → 단말기 마이크 점검 필요")
                 lines.append("")
 
         return "\n".join(lines)
