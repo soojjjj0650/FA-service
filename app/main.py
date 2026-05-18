@@ -1241,7 +1241,7 @@ _FEATURE_DISPLAY_COLS = {
     "DROP": [
         ("ACT", "ACT"), ("TAC", "TAC"), ("PCI", "PCI"), ("DLCh", "DLCh"),
         ("발생횟수", "발생횟수"), ("RxP0", "RxP0"), ("RxP1", "RxP1"),
-        ("BLER", "BLER"), ("SIPR", "SIPR"),
+        ("BLER", "BLER"), ("SIP값", "SIPR"),
     ],
     "RLFI": [
         ("ACT", "ACT"), ("TAC", "TAC"), ("PID", "PID"), ("DCh", "DCh"),

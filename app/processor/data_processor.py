@@ -57,7 +57,7 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("SNR0_avg",    "SNR0"),
         ("BLER_avg",    "BLER"),
         ("RSCP_avg",    "RSCP"),
-        ("SIPR",        "SIPR"),
+        ("SIPR",        "SIP값"),
     ]),
     "RLFI": OrderedDict([
         ("ACT",     "ACT1"),
@@ -122,7 +122,7 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("LAC",  "LAC_"),
         ("PCI",  "PhID"),
         ("DLCh", "DLCh"),
-        ("SIPR", "SIPR"),
+        ("SIPR", "SIP값"),
     ]),
     # 추후 추가: ATTS, SIMD 등
 }
@@ -156,7 +156,7 @@ FEATURE_RENAME_COLS: dict[str, dict[str, str]] = {
         "RxP0_avg":   "RxP0",
         "RxP1_avg":   "RxP1",
         "BLER_avg":   "BLER",
-        "SIPR_Counts": "SIPR",
+        "SIPR_Counts": "SIP값",
     },
     "RLFI": {
         "RLFI횟수":  "발생횟수",
