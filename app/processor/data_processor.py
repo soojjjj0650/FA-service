@@ -404,7 +404,9 @@ class DataProcessor:
                 break
 
         # 단말 모델명 추출 (첫 번째 row의 device_model 컬럼)
-        device_model = str(rows[0].get("device_model", "") or "").strip()
+        _dm = str(rows[0].get("device_model", "") or "").strip()
+        device_model = "" if _dm.lower() in ("none", "null", "nan") else _dm
+        logger.info(f"단말정보 - device_model: '{device_model}', PLMN: '{plmn}'")
 
         feature_tables = self._build_feature_tables(rows, apply_keep_cols=True)
         from app.config import settings as _settings
@@ -416,9 +418,12 @@ class DataProcessor:
 
         # 단말정보 헤더 HTML (Feature 테이블 위에 표시)
         _PLMN_DISPLAY = {
-            "45005": "SKT", "45008": "KT", "45006": "LGU+",
+            "45005": "SKT", "45008": "SKT",
+            "45002": "KT",  "45004": "KT",
+            "45006": "LGU+","45018": "LGU+",
         }
         operator_display = _PLMN_DISPLAY.get(plmn, plmn or "-")
+        logger.info(f"사업자 표시: PLMN={plmn!r} → {operator_display!r}")
         query_days = _settings.QUERY_LOOKBACK_DAYS
         device_header = (
             f'<div class="device-info-bar">'
