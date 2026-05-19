@@ -888,11 +888,6 @@ class DataProcessor:
         # ─ MUTE ──────────────────────────────────────────────────────────────
         mute = feature_tables.get("MUTE")
         if mute and mute.rows:
-            mute_bands = [_col(mute, r, "Band") for r in mute.rows if _col(mute, r, "Band")]
-            unique_bands = set(mute_bands)
-            band_lock_flag = (
-                len(unique_bands) == 1 and len(mute_bands) >= 2
-            )
             # UBMT 비율 계산 (전체 rows 합산)
             total_ubmt = sum(_safe_int(_col(mute, r, "UBMT")) for r in mute.rows)
             total_mute_cnt = sum(
@@ -928,21 +923,19 @@ class DataProcessor:
                     f"{cnt_str} 발생하였고, RSRP는 {rsrp}, SINR {sinr} BLER {bler}입니다.{weak_str}"
                 )
             if ubmt_ratio >= 30:
+                top_row  = mute.rows[0]
+                top_tac  = _col(mute, top_row, "TAC")
+                top_pci  = _col(mute, top_row, "PCI")
+                top_band = _col(mute, top_row, "Band")
+                loc_str  = f" (주요 발생지: TAC {top_tac} PCI {top_pci} Band{top_band})" if top_tac else ""
                 lines.append(
-                    f"⚠️ UBMT 비율 {ubmt_ratio:.0f}% ({total_ubmt}/{total_mute_cnt}회) → Tx 이슈 가능성"
-                )
-            if band_lock_flag:
-                lines.append(
-                    f"⚠️ 모든 MUTE 발생 지역이 Band{next(iter(unique_bands))}에서만 나타남 → 단말 밴드 고정 가능성"
+                    f"⚠️ UBMT 비율 {ubmt_ratio:.0f}% ({total_ubmt}/{total_mute_cnt}회) → Tx 이슈 가능성{loc_str}"
                 )
             lines.append("")
 
         # ─ DROP ──────────────────────────────────────────────────────────────
         drop = feature_tables.get("DROP")
         if drop and drop.rows:
-            drop_bands = [_col(drop, r, "Band") for r in drop.rows if _col(drop, r, "Band")]
-            drop_unique_bands = set(drop_bands)
-            drop_band_lock = len(drop_unique_bands) == 1 and len(drop_bands) >= 2
             for i, row in enumerate(drop.rows[:3]):
                 ord_ = _ORDINALS[i] if i < len(_ORDINALS) else f"{i+1}번째로"
                 tac  = _col(drop, row, "TAC")
@@ -972,10 +965,6 @@ class DataProcessor:
                 lines.append(
                     f"Drop이 {ord_} 많이 발생한 지역은 TAC {tac} PCI {pci} DLCh {dlch}이고"
                     f" Drop횟수는 {cnt}번 RxP0는 {rxp0}, RxP1은 {rxp1},{snr_str}{sipr_str}{rf_dif_str}{repeater_str}"
-                )
-            if drop_band_lock:
-                lines.append(
-                    f"⚠️ 모든 DROP 발생 지역이 Band{next(iter(drop_unique_bands))}에서만 나타남 → 단말 밴드 고정 가능성"
                 )
             lines.append("")
 
