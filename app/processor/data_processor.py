@@ -301,10 +301,11 @@ class FeatureTable:
                 f'<div class="feat-label">{display_title}</div>'
                 f'<p class="no-data">데이터 없음</p></div>'
             )
+        check_rows = self.rows[:3] if self.zero_hide_cols else self.rows
         skip = {
             i for i, c in enumerate(self.columns)
             if c in self.zero_hide_cols
-            and all(str(row[i]).strip() in ("0", "") for row in self.rows)
+            and all(str(row[i]).strip() in ("0", "") for row in check_rows)
         }
         disp_cols = [c for i, c in enumerate(self.columns) if i not in skip]
         disp_idx  = [i for i in range(len(self.columns)) if i not in skip]
