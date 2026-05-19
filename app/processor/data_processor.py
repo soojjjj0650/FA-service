@@ -929,7 +929,7 @@ class DataProcessor:
                 top_band = _col(mute, top_row, "Band")
                 loc_str  = f" (주요 발생지: TAC {top_tac} PCI {top_pci} Band{top_band})" if top_tac else ""
                 lines.append(
-                    f"⚠️ UBMT 비율 {ubmt_ratio:.0f}% ({total_ubmt}/{total_mute_cnt}회) → Tx 이슈 가능성{loc_str}"
+                    f"⚠️ UBMT 비율 {ubmt_ratio:.0f}% ({total_ubmt}/{total_mute_cnt}회) → 송신 이슈 가능성{loc_str}"
                 )
             lines.append("")
 
