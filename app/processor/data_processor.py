@@ -215,8 +215,9 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "sort_by":       "RLFI횟수",
     },
     "NSVC": {
-        "sort_by":   "합계",
-        "row_limit": 5,
+        "sort_by":   "Date",
+        "sort_asc":  True,
+        "row_limit": 50,
     },
     "SCGF": {
         "group_by":      ["PLMN", "TAC", "PhID", "Lband", "Nband"],
@@ -485,11 +486,15 @@ class DataProcessor:
                     columns  = [columns[i] for i in keep_idx]
                     agg_rows = [[row[i] for i in keep_idx] for row in agg_rows]
 
-                # 내림차순 정렬
+                # 정렬 (sort_asc=True면 오름차순, 기본 내림차순)
                 sort_col = FEATURE_AGGREGATION.get(feat, {}).get("sort_by")
+                sort_asc = FEATURE_AGGREGATION.get(feat, {}).get("sort_asc", False)
                 if sort_col and sort_col in columns:
                     si = columns.index(sort_col)
-                    agg_rows.sort(key=lambda r: _safe_float(r[si]), reverse=True)
+                    if sort_col == "Date":
+                        agg_rows.sort(key=lambda r: r[si], reverse=not sort_asc)
+                    else:
+                        agg_rows.sort(key=lambda r: _safe_float(r[si]), reverse=not sort_asc)
 
                 # 행 수 제한 (feature별 row_limit, 기본 10)
                 total_count = len(agg_rows)
