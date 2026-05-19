@@ -9,6 +9,7 @@ CSV 구조 (1행=헤더):
   G: SMBU,  H: SMBU_Value
   I: SAMS,  J: SAMS_Value
   K: MCST,  L: MCST_Value
+  M: Ftype, N: Ftype_Value
 """
 
 import csv
@@ -33,6 +34,7 @@ _COLUMN_PAIRS = [
     (6, 7, "SMBU"),
     (8, 9, "SAMS"),
     (10, 11, "MCST"),
+    (12, 13, "Ftype"),
 ]
 
 
