@@ -448,7 +448,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
 
         # 단말정보 헤더를 info_analysis 맨 위에 추가
         _PLMN_DISP = {"45005": "SKT", "45008": "KT", "45002": "KT", "45004": "KT",
-                      "45006": "LGU+", "45018": "LGU+"}
+                      "45006": "LGU+", "45018": "LGU+", "45010": "LGU+"}
         plmn = job.get('plmn', '')
         operator_disp = _PLMN_DISP.get(plmn, plmn or '-')
         device_model = job.get('device_model', '') or '-'

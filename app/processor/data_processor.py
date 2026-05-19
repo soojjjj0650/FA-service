@@ -420,7 +420,7 @@ class DataProcessor:
         _PLMN_DISPLAY = {
             "45005": "SKT",
             "45008": "KT",  "45002": "KT", "45004": "KT",
-            "45006": "LGU+","45018": "LGU+",
+            "45006": "LGU+","45018": "LGU+", "45010": "LGU+",
         }
         operator_display = _PLMN_DISPLAY.get(plmn, plmn or "-")
         logger.info(f"사업자 표시: PLMN={plmn!r} → {operator_display!r}")
