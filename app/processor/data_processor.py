@@ -265,6 +265,7 @@ class FeatureTable:
     label: str = ""        # 표시 제목 (없으면 feature 사용)
     total_count: int = 0   # row_limit 적용 전 전체 행 수 (0이면 len(rows) 그대로 표시)
     count_label: str = ""  # 건수 자리에 표시할 커스텀 문자열 (설정 시 자동 건수 대신 사용)
+    zero_hide_cols: frozenset = field(default_factory=frozenset)  # 전체 행이 0이면 숨길 컬럼
 
     def to_text(self) -> str:
         """AI Agent 전송용 plain-text 테이블 (전체 행, 가로 형식).
@@ -300,9 +301,16 @@ class FeatureTable:
                 f'<div class="feat-label">{display_title}</div>'
                 f'<p class="no-data">데이터 없음</p></div>'
             )
-        th = "".join(f"<th>{c}</th>" for c in self.columns)
+        skip = {
+            i for i, c in enumerate(self.columns)
+            if c in self.zero_hide_cols
+            and all(str(row[i]).strip() in ("0", "") for row in self.rows)
+        }
+        disp_cols = [c for i, c in enumerate(self.columns) if i not in skip]
+        disp_idx  = [i for i in range(len(self.columns)) if i not in skip]
+        th = "".join(f"<th>{c}</th>" for c in disp_cols)
         tbody = "".join(
-            "<tr>" + "".join(f"<td>{v}</td>" for v in row) + "</tr>"
+            "<tr>" + "".join(f"<td>{row[i]}</td>" for i in disp_idx) + "</tr>"
             for row in self.rows
         )
         footnote_html = ""
@@ -562,13 +570,15 @@ class DataProcessor:
                     ]
                     footnotes = footnotes + nsvc_notes
 
+                _zero_hide = frozenset(["UBMT", "RSMT", "RNMT", "DBMT"]) if feat == "MUTE" else frozenset()
                 tables[feat] = FeatureTable(
                     feature=feat,
                     columns=columns,
                     rows=agg_rows,
                     footnotes=footnotes + _STATIC_FOOTNOTES.get(feat, []),
                     total_count=total_count,
-                    count_label="" ,
+                    count_label="",
+                    zero_hide_cols=_zero_hide,
                 )
 
                 # DROP: 개별 발생 행 테이블 (날짜/TAC/PCI, 날짜순)

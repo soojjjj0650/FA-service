@@ -1131,6 +1131,14 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "", que
         else:
             # NSVC: 전체 rows 표시 / 나머지: 상위 3행
             row_limit = len(table.rows) if feat in ("NSVC", "DROP_RAW") else 3
+            # zero_hide_cols: 표시 행에서 전부 0인 컬럼 제외
+            if hasattr(table, "zero_hide_cols") and table.zero_hide_cols:
+                shown = table.rows[:row_limit]
+                valid = [
+                    (disp, actual) for disp, actual in valid
+                    if actual not in table.zero_hide_cols
+                    or any(str(r[table.columns.index(actual)]).strip() not in ("0", "") for r in shown)
+                ]
             display_rows = [
                 [_trunc(str(row[table.columns.index(actual)]), 15) for _, actual in valid]
                 for row in table.rows[:row_limit]
