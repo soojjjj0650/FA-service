@@ -263,6 +263,7 @@ class FeatureTable:
     footnotes: list[str] = field(default_factory=list)
     label: str = ""        # 표시 제목 (없으면 feature 사용)
     total_count: int = 0   # row_limit 적용 전 전체 행 수 (0이면 len(rows) 그대로 표시)
+    count_label: str = ""  # 건수 자리에 표시할 커스텀 문자열 (설정 시 자동 건수 대신 사용)
 
     def to_text(self) -> str:
         """AI Agent 전송용 plain-text 테이블 (전체 행, 가로 형식).
@@ -308,7 +309,9 @@ class FeatureTable:
             text = " / ".join(self.footnotes)
             footnote_html = f'<p class="feat-footnote">※ {text}</p>'
         display_title = self.label or self.feature
-        if self.total_count and self.total_count > len(self.rows):
+        if self.count_label:
+            count_str = self.count_label
+        elif self.total_count and self.total_count > len(self.rows):
             count_str = f"상위 {len(self.rows)}건 / 전체 {self.total_count}건"
         else:
             count_str = f"{len(self.rows)}건"
@@ -535,6 +538,7 @@ class DataProcessor:
                     rows=agg_rows,
                     footnotes=footnotes + _STATIC_FOOTNOTES.get(feat, []),
                     total_count=total_count,
+                    count_label="최근 7일간" if feat == "NSVC" else "",
                 )
 
                 # DROP: 개별 발생 행 테이블 (날짜/TAC/PCI, 날짜순)
