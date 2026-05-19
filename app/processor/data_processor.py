@@ -69,12 +69,13 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("CAU",     "CAU1"),
     ]),
     "NSVC": OrderedDict([
-        ("LEV0_avg", "LEV0"),
-        ("LEV1_avg", "LEV1"),
-        ("LEV2_avg", "LEV2"),
-        ("LEV3_avg", "LEV3"),
-        ("LEV4_avg", "LEV4"),
-        ("LEV5_avg", "LEV5"),
+        ("Date",  "__date__"),
+        ("합계",  "CNT_"),
+        ("LEV1",  "LEV1"),
+        ("LEV2",  "LEV2"),
+        ("LEV3",  "LEV3"),
+        ("LEV4",  "LEV4"),
+        ("LEV5",  "LEV5"),
     ]),
     "SCGF": OrderedDict([
         ("PLMN",  "PLMN"),
@@ -135,12 +136,11 @@ _ACT_MAP: dict[str, str] = {"2": "3G", "4": "LTE", "6": "5G"}
 _STATIC_FOOTNOTES: dict[str, list[str]] = {}
 
 _NSVC_LEV_FOOTNOTES: dict[str, str] = {
-    "LEV0_avg": "LEV0: 2분 미만",
-    "LEV1_avg": "LEV1: 5분 미만",
-    "LEV2_avg": "LEV2: 10분 미만",
-    "LEV3_avg": "LEV3: 30분 미만",
-    "LEV4_avg": "LEV4: 60분 미만",
-    "LEV5_avg": "LEV5: 60분 이상",
+    "LEV1": "LEV1: 5분 미만",
+    "LEV2": "LEV2: 10분 미만",
+    "LEV3": "LEV3: 30분 미만",
+    "LEV4": "LEV4: 60분 미만",
+    "LEV5": "LEV5: 60분 이상",
 }
 
 # ─── feature별 최종 표시 컬럼 (집계 완료 후 이 컬럼만 남김) ─────────────────────
@@ -213,10 +213,8 @@ FEATURE_AGGREGATION: dict[str, dict] = {
         "sort_by":       "RLFI횟수",
     },
     "NSVC": {
-        "group_by":      [],           # 전체를 하나로 집계
-        "count_col":     "NSVC_Count",
-        "count_col_pos": "start",      # 맨 앞에 삽입
-        "avg":           ["LEV0_avg", "LEV1_avg", "LEV2_avg", "LEV3_avg", "LEV4_avg", "LEV5_avg"],
+        "sort_by":   "합계",
+        "row_limit": 5,
     },
     "SCGF": {
         "group_by":      ["PLMN", "TAC", "PhID", "Lband", "Nband"],
@@ -480,8 +478,9 @@ class DataProcessor:
                     si = columns.index(sort_col)
                     agg_rows.sort(key=lambda r: _safe_float(r[si]), reverse=True)
 
-                # 최대 10행 제한
-                agg_rows = agg_rows[:10]
+                # 행 수 제한 (feature별 row_limit, 기본 10)
+                row_limit = FEATURE_AGGREGATION.get(feat, {}).get("row_limit", 10)
+                agg_rows = agg_rows[:row_limit]
 
                 # 표시 컬럼 필터 (FEATURE_KEEP_COLS 지정 시 해당 컬럼만, 순서 유지)
                 # apply_keep_cols=False 이면 모든 컬럼 유지 (서술형 AI 입력용)
@@ -498,13 +497,17 @@ class DataProcessor:
                 if rename:
                     columns = [rename.get(c, c) for c in columns]
 
-                # NSVC: 값 있는 LEV만 주석 표시
+                # NSVC: 값 있는 LEV만 주석 표시 (전체 rows 기준)
                 if feat == "NSVC" and agg_rows:
                     col_idx = {c: i for i, c in enumerate(columns)}
-                    row = agg_rows[0]
+                    active_levs = set()
+                    for r in agg_rows:
+                        for col in _NSVC_LEV_FOOTNOTES:
+                            if col in col_idx and r[col_idx[col]] not in ("", "0", None):
+                                active_levs.add(col)
                     nsvc_notes = [
                         note for col, note in _NSVC_LEV_FOOTNOTES.items()
-                        if col in col_idx and row[col_idx[col]] not in ("", "0", None)
+                        if col in active_levs
                     ]
                     footnotes = footnotes + nsvc_notes
 
@@ -1016,12 +1019,21 @@ class DataProcessor:
         # ─ NSVC ──────────────────────────────────────────────────────────────
         nsvc = feature_tables.get("NSVC")
         if nsvc and nsvc.rows:
-            row = nsvc.rows[0]
-            pairs = [f"LEV{i} {_col(nsvc, row, f'LEV{i}_avg')}" for i in range(6)
-                     if _col(nsvc, row, f"LEV{i}_avg")]
-            if pairs:
-                lines.append(f"NSVC 레벨 분포는 {', '.join(pairs)}입니다.")
-                lines.append("")
+            lev_cols = [c for c in nsvc.columns if c.startswith("LEV")]
+            for row in nsvc.rows:
+                date  = _col(nsvc, row, "Date")
+                total = _col(nsvc, row, "합계")
+                lev_parts = [
+                    f"{c} {_col(nsvc, row, c)}"
+                    for c in lev_cols
+                    if _col(nsvc, row, c) not in ("", "0", None)
+                ]
+                lev_str = ", ".join(lev_parts)
+                date_str = f"{date} " if date else ""
+                lines.append(
+                    f"NSVC {date_str}합계 {total}회" + (f" ({lev_str})" if lev_str else "") + "."
+                )
+            lines.append("")
 
         # ─ ATTF / ATTI ───────────────────────────────────────────────────────
         for feat_key, label in [("ATTF", "접속실패(ATTF)"), ("ATTI", "접속지연(ATTI)")]:
