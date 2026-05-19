@@ -53,7 +53,7 @@ with Data_SN as (
     FROM bigdata-dqa-data.dqa_public_data.tw_term_agree_dvc_bas
     WHERE srl_num like '{sn}%'
 )
-SELECT yymmddcrt as Date, SUBSTR(generation_timestamp,12,8) AS Time, feature,custom_value
+SELECT device_model, yymmddcrt as Date, SUBSTR(generation_timestamp,12,8) AS Time, feature,custom_value
 FROM `bigdata-dqa-data.mobile_udc`.to_udc_modem INNER JOIN Data_SN USING (un)
 WHERE p_yymmddval between DATE_SUB(current_date(), INTERVAL {days} DAY) and current_date()
 ORDER by Date,Time"""
