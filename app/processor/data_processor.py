@@ -84,7 +84,7 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
         ("PhID",  "PhID"),
         ("Lband", ("LBnd", "MBnd")),
         ("Nband", ("NBnd", "SBnd")),
-        ("Ftype", "Ftype"),
+        ("Ftype", "Ftyp"),
     ]),
     "ATTF": OrderedDict([
         ("Feature", "__feature__"),
