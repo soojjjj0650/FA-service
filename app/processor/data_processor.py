@@ -259,6 +259,7 @@ class FeatureTable:
     columns: list[str]
     rows: list[list[str]]
     footnotes: list[str] = field(default_factory=list)
+    label: str = ""   # 표시 제목 (없으면 feature 사용)
 
     def to_text(self) -> str:
         """AI Agent 전송용 plain-text 테이블 (전체 행, 가로 형식).
@@ -288,9 +289,10 @@ class FeatureTable:
     def to_html(self) -> str:
         """챗봇 표시용 HTML 테이블"""
         if not self.rows:
+            display_title = self.label or self.feature
             return (
                 f'<div class="feat-table-wrap">'
-                f'<div class="feat-label">{self.feature}</div>'
+                f'<div class="feat-label">{display_title}</div>'
                 f'<p class="no-data">데이터 없음</p></div>'
             )
         th = "".join(f"<th>{c}</th>" for c in self.columns)
@@ -302,9 +304,10 @@ class FeatureTable:
         if self.footnotes:
             text = " / ".join(self.footnotes)
             footnote_html = f'<p class="feat-footnote">※ {text}</p>'
+        display_title = self.label or self.feature
         return (
             f'<div class="feat-table-wrap">'
-            f'<div class="feat-label">{self.feature}'
+            f'<div class="feat-label">{display_title}'
             f' <span class="feat-count">({len(self.rows)}건)</span></div>'
             f'<div class="tbl-scroll"><table>'
             f'<thead><tr>{th}</tr></thead>'
@@ -524,6 +527,26 @@ class DataProcessor:
                     rows=agg_rows,
                     footnotes=footnotes + _STATIC_FOOTNOTES.get(feat, []),
                 )
+
+                # DROP: 개별 발생 행 테이블 (날짜/TAC/PCI, 날짜순)
+                if feat == "DROP":
+                    raw_rows = []
+                    for raw_row in feat_rows:
+                        cv = self._parse_custom_value(str(raw_row.get("custom_value", "") or ""))
+                        date_val = str(raw_row.get("Date", "") or "")
+                        if date_val and len(date_val) >= 10 and date_val[4] == "-":
+                            date_val = date_val[5:]   # YYYY-MM-DD → MM-DD
+                        tac_val  = self._hex_to_dec(str(cv.get("TAC_", "") or ""))
+                        pci_val  = str(cv.get("PhID", "") or "")
+                        raw_rows.append([date_val, tac_val, pci_val])
+                    raw_rows.sort(key=lambda r: r[0])
+                    tables["DROP_RAW"] = FeatureTable(
+                        feature="DROP_RAW",
+                        label="Drop 발생 현황 (최근 7일)",
+                        columns=["날짜", "TAC", "PCI"],
+                        rows=raw_rows,
+                    )
+
             else:
                 # 매핑 미정의 feature: Date / Time / custom_value 축약 표시
                 table_rows = [
