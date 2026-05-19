@@ -452,7 +452,8 @@ async def _push_card_to_chatroom(job: dict) -> None:
         plmn = job.get('plmn', '')
         operator_disp = _PLMN_DISP.get(plmn, plmn or '-')
         device_model = job.get('device_model', '') or '-'
-        device_header = f"[ 단말정보 ]\n사업자: {operator_disp} | 모델: {device_model}\n\n"
+        query_days_val = job.get('query_days') or settings.QUERY_LOOKBACK_DAYS
+        device_header = f"[ 단말정보 ] 최근 {query_days_val}일간\n사업자: {operator_disp} | 모델: {device_model}\n\n"
         info_analysis = device_header + info_analysis
 
         payload = {
