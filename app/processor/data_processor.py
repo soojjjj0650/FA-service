@@ -497,9 +497,16 @@ class DataProcessor:
                 if rename:
                     columns = [rename.get(c, c) for c in columns]
 
-                # NSVC: 값 있는 LEV만 주석 표시 (전체 rows 기준)
+                # NSVC: Date 연도 제거(MM-DD만 표시) + 값 있는 LEV만 주석 표시
                 if feat == "NSVC" and agg_rows:
                     col_idx = {c: i for i, c in enumerate(columns)}
+                    if "Date" in col_idx:
+                        di = col_idx["Date"]
+                        for r in agg_rows:
+                            d = r[di]
+                            # YYYY-MM-DD → MM-DD
+                            if d and len(d) >= 10 and d[4] == "-":
+                                r[di] = d[5:]
                     active_levs = set()
                     for r in agg_rows:
                         for col in _NSVC_LEV_FOOTNOTES:

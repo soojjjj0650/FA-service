@@ -1250,9 +1250,9 @@ _FEATURE_DISPLAY_COLS = {
         ("발생횟수", "발생횟수"), ("원인", "원인"),
     ],
     "NSVC": [
-        ("수", "NSVC_Count"),
-        ("LEV0", "LEV0_avg"), ("LEV1", "LEV1_avg"), ("LEV2", "LEV2_avg"),
-        ("LEV3", "LEV3_avg"), ("LEV4", "LEV4_avg"), ("LEV5", "LEV5_avg"),
+        ("날짜", "Date"), ("합계", "합계"),
+        ("LEV1", "LEV1"), ("LEV2", "LEV2"), ("LEV3", "LEV3"),
+        ("LEV4", "LEV4"), ("LEV5", "LEV5"),
     ],
     "ATTF": [
         ("PLMN", "PLMN"), ("ACT", "ACT_"), ("TAC", "TAC_"), ("PCI", "PhID_"), ("DLCh", "DLCh"),
