@@ -1020,6 +1020,17 @@ class DataProcessor:
         nsvc = feature_tables.get("NSVC")
         if nsvc and nsvc.rows:
             lev_cols = [c for c in nsvc.columns if c.startswith("LEV")]
+            # 전체 rows 기준으로 판단 (상위 5개 제한 전 full_tables 사용)
+            all_nsvc = feature_tables.get("NSVC")
+            unique_dates = set(
+                _col(nsvc, r, "Date") for r in nsvc.rows
+                if _col(nsvc, r, "Date")
+            )
+            has_lev3 = any(
+                _col(nsvc, r, lev) not in ("", "0", None)
+                for r in nsvc.rows
+                for lev in ("LEV3", "LEV4", "LEV5")
+            )
             for row in nsvc.rows:
                 date  = _col(nsvc, row, "Date")
                 total = _col(nsvc, row, "합계")
@@ -1033,6 +1044,13 @@ class DataProcessor:
                 lines.append(
                     f"NSVC {date_str}합계 {total}회" + (f" ({lev_str})" if lev_str else "") + "."
                 )
+            if len(unique_dates) >= 3 or has_lev3:
+                reasons = []
+                if len(unique_dates) >= 3:
+                    reasons.append(f"{len(unique_dates)}일간 지속 발생")
+                if has_lev3:
+                    reasons.append("LEV3 이상 발생")
+                lines.append(f"⚠️ NSVC {', '.join(reasons)} → 환경 또는 단말 점검 필요")
             lines.append("")
 
         # ─ ATTF / ATTI ───────────────────────────────────────────────────────
