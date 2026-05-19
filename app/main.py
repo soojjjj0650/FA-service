@@ -1249,6 +1249,7 @@ def _station_entries_to_text(entries: list[dict]) -> str:
 _FEATURE_DISPLAY_COLS = {
     "MUTE": [
         ("ACT", "ACT"), ("TAC", "TAC"), ("PCI", "PCI"), ("Band", "Band"),
+        ("UBMT", "UBMT"), ("RSMT", "RSMT"), ("RNMT", "RNMT"), ("DBMT", "DBMT"),
         ("ECNT", "ECNT"), ("RSRP", "RSRP"), ("SINR", "SINR"), ("BLER", "BLER"),
     ],
     "MUTE_EXTRA": [
