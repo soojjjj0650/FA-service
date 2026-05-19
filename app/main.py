@@ -903,8 +903,15 @@ async def _handle_query(websocket: WebSocket, sn: str, send_fn=None):
         await progress(f"SN [{sn}] 조회 시작...")
         await progress(f"현재 대기 중인 브라우저 슬롯: {browser_pool.active_count}/{browser_pool.max_size}")
 
-        # 1. 웹 스크래핑 SQL 쿼리 (5~15분 소요)
-        query_result = await query_runner.run(sn, progress_callback=progress)
+        # 1. 웹 스크래핑 SQL 쿼리 (5~15분 소요) — 기존 CSV 있으면 스킵
+        import os as _os
+        from app.scraper.query_runner import QueryResult as _QR
+        _existing_csv = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_inputdata.csv")
+        if _os.path.exists(_existing_csv) and _os.path.getsize(_existing_csv) > 0:
+            await progress(f"기존 CSV 파일 재사용 (쿼리 생략): {_existing_csv}")
+            query_result = _QR(sn=sn, success=True, csv_path=_existing_csv)
+        else:
+            query_result = await query_runner.run(sn, progress_callback=progress)
 
         if not query_result.success:
             await send_fn("error", query_result.error or "데이터 조회 실패",
