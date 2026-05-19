@@ -1112,10 +1112,11 @@ def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "", que
             lines.append("|" + "|".join("---" for _ in headers) + "|")
             lines.append("| " + " | ".join(values) + " |")
         else:
-            # 상위 3행만 마크다운 표로 표시
+            # NSVC: 전체 rows 표시 / 나머지: 상위 3행
+            row_limit = len(table.rows) if feat in ("NSVC", "DROP_RAW") else 3
             display_rows = [
                 [_trunc(str(row[table.columns.index(actual)]), 15) for _, actual in valid]
-                for row in table.rows[:3]
+                for row in table.rows[:row_limit]
             ]
             headers = [disp for disp, _ in valid]
             lines.append("| " + " | ".join(headers) + " |")
@@ -1254,8 +1255,8 @@ _FEATURE_DISPLAY_COLS = {
     ],
     "NSVC": [
         ("날짜", "Date"), ("합계", "합계"),
-        ("LEV1", "LEV1"), ("LEV2", "LEV2"), ("LEV3", "LEV3"),
-        ("LEV4", "LEV4"), ("LEV5", "LEV5"),
+        ("LEV0", "LEV0"), ("LEV1", "LEV1"), ("LEV2", "LEV2"),
+        ("LEV3", "LEV3"), ("LEV4", "LEV4"), ("LEV5", "LEV5"),
     ],
     "ATTF": [
         ("PLMN", "PLMN"), ("ACT", "ACT_"), ("TAC", "TAC_"), ("PCI", "PhID_"), ("DLCh", "DLCh"),

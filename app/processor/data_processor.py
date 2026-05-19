@@ -71,6 +71,7 @@ FEATURE_COLUMNS: dict[str, OrderedDict] = {
     "NSVC": OrderedDict([
         ("Date",  "__date__"),
         ("합계",  "CNT_"),
+        ("LEV0",  "LEV0"),
         ("LEV1",  "LEV1"),
         ("LEV2",  "LEV2"),
         ("LEV3",  "LEV3"),
@@ -136,6 +137,7 @@ _ACT_MAP: dict[str, str] = {"2": "3G", "4": "LTE", "6": "5G"}
 _STATIC_FOOTNOTES: dict[str, list[str]] = {}
 
 _NSVC_LEV_FOOTNOTES: dict[str, str] = {
+    "LEV0": "LEV0: 2분 미만",
     "LEV1": "LEV1: 5분 미만",
     "LEV2": "LEV2: 10분 미만",
     "LEV3": "LEV3: 30분 미만",
@@ -259,7 +261,8 @@ class FeatureTable:
     columns: list[str]
     rows: list[list[str]]
     footnotes: list[str] = field(default_factory=list)
-    label: str = ""   # 표시 제목 (없으면 feature 사용)
+    label: str = ""        # 표시 제목 (없으면 feature 사용)
+    total_count: int = 0   # row_limit 적용 전 전체 행 수 (0이면 len(rows) 그대로 표시)
 
     def to_text(self) -> str:
         """AI Agent 전송용 plain-text 테이블 (전체 행, 가로 형식).
@@ -305,10 +308,14 @@ class FeatureTable:
             text = " / ".join(self.footnotes)
             footnote_html = f'<p class="feat-footnote">※ {text}</p>'
         display_title = self.label or self.feature
+        if self.total_count and self.total_count > len(self.rows):
+            count_str = f"상위 {len(self.rows)}건 / 전체 {self.total_count}건"
+        else:
+            count_str = f"{len(self.rows)}건"
         return (
             f'<div class="feat-table-wrap">'
             f'<div class="feat-label">{display_title}'
-            f' <span class="feat-count">({len(self.rows)}건)</span></div>'
+            f' <span class="feat-count">({count_str})</span></div>'
             f'<div class="tbl-scroll"><table>'
             f'<thead><tr>{th}</tr></thead>'
             f'<tbody>{tbody}</tbody>'
@@ -482,6 +489,7 @@ class DataProcessor:
                     agg_rows.sort(key=lambda r: _safe_float(r[si]), reverse=True)
 
                 # 행 수 제한 (feature별 row_limit, 기본 10)
+                total_count = len(agg_rows)
                 row_limit = FEATURE_AGGREGATION.get(feat, {}).get("row_limit", 10)
                 agg_rows = agg_rows[:row_limit]
 
@@ -526,6 +534,7 @@ class DataProcessor:
                     columns=columns,
                     rows=agg_rows,
                     footnotes=footnotes + _STATIC_FOOTNOTES.get(feat, []),
+                    total_count=total_count,
                 )
 
                 # DROP: 개별 발생 행 테이블 (날짜/TAC/PCI, 날짜순)
