@@ -1085,7 +1085,7 @@ def _col_pad(s: str, width: int) -> str:
 
 def _feature_tables_to_text(feature_tables: dict, feature_summary: str = "", query_days: int | None = None) -> str:
     """Feature 분포 + 각 feature 테이블(상위 3행, MUTE_EXTRA 전체)을 마크다운 표로 변환합니다."""
-    _FEAT_ORDER = ["MUTE", "MUTE_EXTRA", "DROP", "RLFI", "SCGF", "NSVC", "ATTF", "CRSH"]
+    _FEAT_ORDER = ["MUTE", "MUTE_EXTRA", "DROP", "DROP_RAW", "RLFI", "SCGF", "NSVC", "ATTF", "CRSH"]
     parts = []
 
     if feature_summary:
@@ -1241,6 +1241,9 @@ _FEATURE_DISPLAY_COLS = {
         ("발생횟수", "발생횟수"), ("RxP0", "RxP0"), ("RxP1", "RxP1"),
         ("BLER", "BLER"), ("SIP값", "SIPR"),
     ],
+    "DROP_RAW": [
+        ("날짜", "날짜"), ("TAC", "TAC"), ("PCI", "PCI"),
+    ],
     "RLFI": [
         ("ACT", "ACT"), ("TAC", "TAC"), ("PID", "PID"), ("DCh", "DCh"),
         ("발생횟수", "발생횟수"), ("RxP", "RxP"), ("원인", "원인"),
@@ -1269,6 +1272,7 @@ _FEATURE_LABELS = {
     "MUTE":       "MUTE",
     "MUTE_EXTRA": "MUTE 추가정보 (SAMS/SMBU/MCST 발생횟수)",
     "DROP":       "DROP",
+    "DROP_RAW":   "Drop 발생 현황 (최근 7일)",
     "RLFI":       "RLFI",
     "SCGF":       "SCGF",
     "NSVC":       "NSVC",
