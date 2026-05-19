@@ -446,6 +446,15 @@ async def _push_card_to_chatroom(job: dict) -> None:
         feature_summary = job.get('feature_summary', '')
         info_analysis = _feature_tables_to_text(feature_tables, feature_summary, job.get('query_days'))
 
+        # 단말정보 헤더를 info_analysis 맨 위에 추가
+        _PLMN_DISP = {"45005": "SKT", "45008": "KT", "45002": "KT", "45004": "KT",
+                      "45006": "LGU+", "45018": "LGU+"}
+        plmn = job.get('plmn', '')
+        operator_disp = _PLMN_DISP.get(plmn, plmn or '-')
+        device_model = job.get('device_model', '') or '-'
+        device_header = f"[ 단말정보 ]\nSN: {sn} | 사업자: {operator_disp} | 모델: {device_model}\n"
+        info_analysis = device_header + info_analysis
+
         payload = {
             "chatRoomId":    chat_room_id,
             "userId":        user_id,
@@ -1491,6 +1500,8 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
         job["station_entries"] = station_entries  # 기지국 구조화 데이터
         job["station_text"] = _station_entries_to_text(station_entries)  # push용 텍스트
         job["feature_tables"] = processed.feature_tables  # MUTE/DROP 표 데이터
+        job["device_model"] = processed.device_model
+        job["plmn"] = processed.plmn
 
         # 5. 결과 JSON 저장 (대시보드용)
         _save_result_json(sn, ai_response, feature_summary, station_entries, processed.feature_tables)

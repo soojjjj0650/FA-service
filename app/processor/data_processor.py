@@ -418,8 +418,8 @@ class DataProcessor:
 
         # 단말정보 헤더 HTML (Feature 테이블 위에 표시)
         _PLMN_DISPLAY = {
-            "45005": "SKT", "45008": "SKT",
-            "45002": "KT",  "45004": "KT",
+            "45005": "SKT",
+            "45008": "KT",  "45002": "KT", "45004": "KT",
             "45006": "LGU+","45018": "LGU+",
         }
         operator_display = _PLMN_DISPLAY.get(plmn, plmn or "-")
