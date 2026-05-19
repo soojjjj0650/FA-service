@@ -543,7 +543,7 @@ class DataProcessor:
                     rows=agg_rows,
                     footnotes=footnotes + _STATIC_FOOTNOTES.get(feat, []),
                     total_count=total_count,
-                    count_label="최근 7일간" if feat == "NSVC" else "",
+                    count_label="" ,
                 )
 
                 # DROP: 개별 발생 행 테이블 (날짜/TAC/PCI, 날짜순)
@@ -560,7 +560,7 @@ class DataProcessor:
                     raw_rows.sort(key=lambda r: r[0])
                     tables["DROP_RAW"] = FeatureTable(
                         feature="DROP_RAW",
-                        label="Drop 발생 현황 (최근 7일)",
+                        label="Drop 발생현황",
                         columns=["날짜", "TAC", "PCI"],
                         rows=raw_rows,
                     )

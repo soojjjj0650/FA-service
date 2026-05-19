@@ -1273,7 +1273,7 @@ _FEATURE_LABELS = {
     "MUTE":       "MUTE",
     "MUTE_EXTRA": "MUTE 추가정보 (SAMS/SMBU/MCST 발생횟수)",
     "DROP":       "DROP",
-    "DROP_RAW":   "Drop 발생 현황 (최근 7일)",
+    "DROP_RAW":   "Drop 발생현황",
     "RLFI":       "RLFI",
     "SCGF":       "SCGF",
     "NSVC":       "NSVC",
