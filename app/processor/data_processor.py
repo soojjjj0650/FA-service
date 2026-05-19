@@ -337,6 +337,7 @@ class ProcessedData:
     html_tables: str = ""   # 챗봇 HTML 렌더링용
     error: str | None = None
     plmn: str = ""          # 원시 데이터에서 추출한 PLMN (사업자 판단용)
+    device_model: str = ""  # 단말 모델명
 
     # main.py 기존 코드 호환 (processed.device.*)
     @property
@@ -402,6 +403,9 @@ class DataProcessor:
             if plmn:
                 break
 
+        # 단말 모델명 추출 (첫 번째 row의 device_model 컬럼)
+        device_model = str(rows[0].get("device_model", "") or "").strip()
+
         feature_tables = self._build_feature_tables(rows, apply_keep_cols=True)
         from app.config import settings as _settings
         if _settings.AI_AGENT_INPUT_FORMAT == "narrative":
@@ -409,7 +413,22 @@ class DataProcessor:
             summary = self._build_summary_narrative(query_result.sn, rows, full_tables)
         else:
             summary = self._build_summary(query_result.sn, rows, feature_tables)
-        html_tables = "".join(t.to_html() for t in feature_tables.values())
+
+        # 단말정보 헤더 HTML (Feature 테이블 위에 표시)
+        _PLMN_DISPLAY = {
+            "45005": "SKT", "45008": "KT", "45006": "LGU+",
+        }
+        operator_display = _PLMN_DISPLAY.get(plmn, plmn or "-")
+        query_days = _settings.QUERY_LOOKBACK_DAYS
+        device_header = (
+            f'<div class="device-info-bar">'
+            f'<span><b>SN</b>&nbsp;{query_result.sn}</span>'
+            f'<span><b>사업자</b>&nbsp;{operator_display}</span>'
+            f'<span><b>모델</b>&nbsp;{device_model or "-"}</span>'
+            f'<span class="query-period">최근 {query_days}일간의 데이터</span>'
+            f'</div>'
+        )
+        html_tables = device_header + "".join(t.to_html() for t in feature_tables.values())
 
         logger.info(
             f"데이터 가공 완료 - SN: {query_result.sn}, "
@@ -422,6 +441,7 @@ class DataProcessor:
             feature_tables=feature_tables,
             html_tables=html_tables,
             plmn=plmn,
+            device_model=device_model,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
