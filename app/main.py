@@ -1521,7 +1521,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             f"{settings.BASE_URL}/analysis/{sn}" if _analysis_html_path else None
         )
 
-        # 2-3. Knox Teams 파일 전송 (설정된 경우)
+        # 2-3. Knox Teams 채널 파일 전송 (설정된 경우)
         if _analysis_html_path and settings.TEAMS_FILE_API_URL:
             from app.messenger.teams_sender import send_html_to_teams
             await send_html_to_teams(
@@ -1530,6 +1530,29 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
                 settings.TEAMS_API_KEY,
                 settings.TEAMS_CHANNEL_ID,
             )
+
+        # 2-4. Knox Messenger PDF 전송 (설정된 경우)
+        if settings.KNOX_MESSENGER_ENABLED and settings.KNOX_MESSENGER_BASE_URL:
+            from app.analysis.pdf_generator import html_to_pdf
+            from app.messenger.knox_messenger import send_pdf_via_knox
+            _pdf_path = None
+            if _analysis_html_path:
+                import os as _os2
+                _pdf_path = _os2.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
+                _pdf_ok = await html_to_pdf(_analysis_html_path, _pdf_path)
+                if not _pdf_ok:
+                    _pdf_path = None
+                    logger.warning(f"[Chatbot Job {job_id}] PDF 생성 실패 - Knox 전송 스킵")
+            if _pdf_path:
+                await send_pdf_via_knox(
+                    pdf_path=_pdf_path,
+                    sn=sn,
+                    base_url=settings.KNOX_MESSENGER_BASE_URL,
+                    access_token=settings.KNOX_ACCESS_TOKEN,
+                    system_id=settings.KNOX_SYSTEM_ID,
+                    device_id=settings.KNOX_DEVICE_ID,
+                    receiver_user_id=settings.KNOX_RECEIVER_USER_ID,
+                )
 
         # 3. AI 분석 (사용자 데이터만 전송)
         if settings.AI_AGENT_ENABLED:

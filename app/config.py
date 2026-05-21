@@ -51,8 +51,14 @@ class Settings(BaseSettings):
     CHATBOT_PUSH_URL: str = ""
     CHATBOT_PUSH_API_KEY: str = ""   # push API 인증 키 (필요 시)
 
-    # ─── Knox Teams 메신저 파일 전송 ────────────────────────────────────────
-    # 분석 HTML을 Knox Teams 채널에 파일로 전송 (비워두면 비활성화)
+    # ─── Knox Messenger API ──────────────────────────────────────────────────
+    KNOX_MESSENGER_BASE_URL: str = ""       # 예: https://messenger.sec.samsung.net
+    KNOX_ACCESS_TOKEN: str = ""             # Bearer 토큰
+    KNOX_SYSTEM_ID: str = "C60LD0001"       # System-ID
+    KNOX_DEVICE_ID: str = ""               # x-device-id (Knox Portal 발급)
+    KNOX_RECEIVER_USER_ID: str = ""         # 파일 받을 사용자 ID (FA 담당자)
+    KNOX_MESSENGER_ENABLED: bool = False    # Knox Messenger 전송 활성화 여부
+    # ─── Knox Teams (채널 파일 전송) ─────────────────────────────────────────
     TEAMS_FILE_API_URL: str = ""     # Knox Teams 파일 전송 API URL
     TEAMS_API_KEY: str = ""          # Knox Teams API 인증 키 (필요 시)
     TEAMS_CHANNEL_ID: str = ""       # 전송할 채널/채팅방 ID
