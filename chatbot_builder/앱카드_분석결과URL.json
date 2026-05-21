@@ -12,17 +12,15 @@
     },
     {
       "type": "TextBlock",
-      "text": "아래 버튼을 눌러 상세 분석 결과를 확인하세요.",
-      "wrap": true,
-      "isSubtle": true,
-      "spacing": "Small"
-    }
-  ],
-  "actions": [
+      "text": "[ 상세 분석 보기 ]",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
     {
-      "type": "Action.OpenUrl",
-      "title": "상세 분석 보기",
-      "url": "${body.analysis_url}"
+      "type": "TextBlock",
+      "text": "${body.analysis_url}",
+      "wrap": true,
+      "spacing": "Small"
     }
   ]
 }
