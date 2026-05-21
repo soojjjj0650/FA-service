@@ -459,8 +459,6 @@ async def _push_card_to_chatroom(job: dict) -> None:
         info_analysis = device_header + info_analysis
 
         analysis_url = job.get("analysis_url") or ""
-        if analysis_url:
-            info_analysis = info_analysis + f"\n\n[ 상세 분석 보기 ]\n{analysis_url}"
         payload = {
             "chatRoomId":    chat_room_id,
             "userId":        user_id,
@@ -468,6 +466,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
             "info_analysis": info_analysis,
             "ai_result":     ai_text,
             "station_info":  station_text,
+            "analysis_url":  analysis_url,
         }
     else:
         payload = {
