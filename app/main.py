@@ -481,11 +481,16 @@ async def _push_card_to_chatroom(job: dict) -> None:
     if settings.CHATBOT_PUSH_API_KEY:
         headers["x-api-key"] = settings.CHATBOT_PUSH_API_KEY
 
+    # URL 끝에 chatRoomId 추가: https://botbuilder.samsung.net/webhook/fa.service/{chatRoomId}
+    push_url = settings.CHATBOT_PUSH_URL.rstrip("/")
+    if chat_room_id:
+        push_url = f"{push_url}/{chat_room_id}"
+
     try:
         async with httpx.AsyncClient(timeout=30, verify=False, trust_env=False) as client:
-            resp = await client.post(settings.CHATBOT_PUSH_URL, json=payload, headers=headers)
+            resp = await client.post(push_url, json=payload, headers=headers)
             logger.info(
-                f"[Push] 결과 push 완료 | SN={sn} | status={resp.status_code}"
+                f"[Push] 결과 push 완료 | SN={sn} | url={push_url} | status={resp.status_code}"
             )
             if resp.status_code >= 400:
                 logger.warning(f"[Push] push 응답 오류: {resp.status_code} - {resp.text[:200]}")

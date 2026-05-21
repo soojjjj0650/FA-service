@@ -46,9 +46,10 @@ class Settings(BaseSettings):
 
     # ─── 회사 챗봇 웹훅 (FA 분석 완료 시 결과 push) ──────────────────────────
     CHATBOT_WEBHOOK_URL: str = "https://botbuilder.samsung.net/webhook/fa.service"
-    # 분석 완료 후 채팅방으로 결과 카드를 push하는 URL (비워두면 push 비활성화)
-    # 삼성 챗봇 Builder 아웃바운드 API URL 입력 필요
-    CHATBOT_PUSH_URL: str = ""
+    # 분석 완료 후 채팅방으로 결과 카드를 push하는 URL
+    # chatRoomId가 URL 끝에 자동으로 붙음: {CHATBOT_PUSH_URL}/{chatRoomId}
+    # 예: https://botbuilder.samsung.net/webhook/fa.service
+    CHATBOT_PUSH_URL: str = "https://botbuilder.samsung.net/webhook/fa.service"
     CHATBOT_PUSH_API_KEY: str = ""   # push API 인증 키 (필요 시)
 
     # ─── Knox Messenger API ──────────────────────────────────────────────────
