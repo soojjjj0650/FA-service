@@ -228,52 +228,72 @@ class KnoxMessengerClient:
         device_id = await self.register_device()
         return device_id is not None
 
-    async def upload_file(self, file_path: str) -> str | None:
+    async def upload_file(self, file_path: str, aes_key: bytes = b"", aes_iv: bytes = b"") -> str | None:
         """
-        PDF 파일을 Knox Messenger 서버에 업로드합니다.
-        반환: 파일 key/ID, 실패 시 None
+        파일을 Knox Messenger 파일 서버에 업로드합니다.
+        PUT /messenger/file/api/v2.0/file/v1s/file/{filename}
+
+        파일명 규칙: "r" + YYYYMMDDHHmmss + 확장자 (예: r20240521143022.pdf)
+        반환: download_url (성공), None (실패)
         """
-        filename = os.path.basename(file_path)
-        url = f"{self.base_url}/messenger/file/api/v2.0/file/v1sfile/{filename}"
+        import time as _time
 
         if not os.path.exists(file_path):
             logger.error(f"[Knox] 업로드 파일 없음: {file_path}")
             return None
 
+        ext = os.path.splitext(file_path)[1]  # .pdf
+        timestamp = _time.strftime("%Y%m%d%H%M%S")
+        upload_filename = f"r{timestamp}{ext}"
+        url = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
+
         try:
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
 
-            files = {"file": (filename, file_bytes, "application/pdf")}
+            file_size = len(file_bytes)
+
+            # 헤더 구성
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "System-ID": self.system_id,
+                "Content-Length": str(file_size),
+                "Content-Type": "binary/octet-stream",
+                "filename": upload_filename,
+            }
+
+            # x-device-id, x-device-type, x-request-time: AES256 암호화 필요
+            # 암호화 키가 있는 경우에만 암호화, 없으면 평문 전송 (테스트용)
+            if aes_key and aes_iv and self.device_id:
+                headers["x-device-id"]   = _aes256_encrypt(self.device_id, aes_key, aes_iv)
+                headers["x-device-type"] = _aes256_encrypt("relation", aes_key, aes_iv)
+                headers["x-request-time"] = _aes256_encrypt(str(int(_time.time() * 1000)), aes_key, aes_iv)
+            else:
+                # 암호화 키 미확보 시 평문 (추후 파일서버 암호화 Key API 연동 후 교체)
+                headers["x-device-id"]   = self.device_id
+                headers["x-device-type"] = "relation"
+                headers["x-request-time"] = str(int(_time.time() * 1000))
 
             async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
-                resp = await client.post(url, headers=self._headers(), files=files)
+                resp = await client.put(url, content=file_bytes, headers=headers)
 
             logger.info(
                 f"[Knox] 파일 업로드 | status={resp.status_code} "
-                f"| body={resp.text[:300]}"
+                f"| url={url} | body={resp.text[:300]}"
             )
 
             if resp.status_code >= 400:
                 logger.error(f"[Knox] 파일 업로드 실패: {resp.status_code} {resp.text[:200]}")
                 return None
 
-            try:
-                data = resp.json()
-                file_key = (
-                    data.get("fileKey")
-                    or data.get("file_key")
-                    or data.get("key")
-                    or data.get("id")
-                    or data.get("data", {}).get("fileKey")
-                )
-                if file_key:
-                    logger.info(f"[Knox] 파일 업로드 완료: fileKey={file_key}")
-                    return str(file_key)
-            except Exception:
-                pass
+            data = resp.json()
+            download_url = data.get("download_url") or data.get("downloadUrl")
+            if download_url:
+                logger.info(f"[Knox] 파일 업로드 완료: {download_url}")
+                return download_url
 
-            return resp.text.strip() or None
+            logger.warning(f"[Knox] download_url 파싱 실패: {resp.text[:200]}")
+            return None
 
         except Exception as e:
             logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
@@ -372,26 +392,20 @@ class KnoxMessengerClient:
     async def send_file_message(
         self,
         chatroom_id: str,
-        file_key: str,
+        download_url: str,
         filename: str,
         message_text: str = "",
     ) -> bool:
         """채팅방에 파일과 텍스트 메시지를 전송합니다."""
         url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
 
-        encrypted_text = message_text
-        keys = await self.get_encryption_keys()
-        if keys and message_text:
-            aes_key, aes_iv = keys
-            encrypted_text = _aes256_encrypt(message_text, aes_key, aes_iv)
-
         payload = {
             "chatroomId": chatroom_id,
             "receiverUserId": self.receiver_user_id,
             "messageType": "file",
-            "fileKey": file_key,
+            "downloadUrl": download_url,
             "fileName": filename,
-            "message": encrypted_text,
+            "message": message_text,
         }
 
         try:
@@ -470,8 +484,8 @@ async def send_pdf_via_knox(
         return False
 
     # 2. 파일 업로드
-    file_key = await client.upload_file(pdf_path)
-    if not file_key:
+    download_url = await client.upload_file(pdf_path)
+    if not download_url:
         logger.error(f"[Knox] 파일 업로드 실패 - 전송 중단 (SN: {sn})")
         return False
 
@@ -479,7 +493,7 @@ async def send_pdf_via_knox(
     message = f"[FA 분석] SN: {sn}\n상세 분석 결과 PDF를 확인하세요."
     success = await client.send_file_message(
         chatroom_id=chatroom_id,
-        file_key=file_key,
+        download_url=download_url,
         filename=filename,
         message_text=message,
     )

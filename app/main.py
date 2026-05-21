@@ -1006,17 +1006,19 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         logger.error(f"[Knox Pipeline] 대화방 확보 실패 (SN: {sn})")
         return
 
-    file_key = await client.upload_file(pdf_path)
-    if not file_key:
+    download_url = await client.upload_file(pdf_path)
+    if not download_url:
         logger.error(f"[Knox Pipeline] 파일 업로드 실패 (SN: {sn})")
         return
 
     feature_summary = job.get("feature_summary", "")
     message = f"[FA 분석 완료] SN: {sn}\n{feature_summary}\n상세 분석 결과 PDF를 확인하세요."
+    import time as _t
+    pdf_filename = f"r{_t.strftime('%Y%m%d%H%M%S')}.pdf"
     success = await client.send_file_message(
         chatroom_id=chatroom_id,
-        file_key=file_key,
-        filename=f"{sn}_analysis.pdf",
+        download_url=download_url,
+        filename=pdf_filename,
         message_text=message,
     )
 
