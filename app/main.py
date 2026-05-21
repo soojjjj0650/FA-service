@@ -1522,12 +1522,20 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
         )
 
         # 3. AI 분석 (사용자 데이터만 전송)
-        ai_response = await agent_client.analyze(processed)
+        if settings.AI_AGENT_ENABLED:
+            ai_response = await agent_client.analyze(processed)
+        else:
+            ai_response = ""
+            logger.info(f"[Chatbot Job {job_id}] AI Agent 비활성화 - 스킵")
 
         # 4. 기지국 정보 조회 (별도 - AI에 보내지 않고 챗봇에만 표시)
-        station_entries = await _fetch_station_info(processed)
-        if station_entries:
-            logger.info(f"[Chatbot Job {job_id}] 기지국 정보 조회 완료 ({len(station_entries)}건)")
+        if settings.STATION_SCRAPER_ENABLED:
+            station_entries = await _fetch_station_info(processed)
+            if station_entries:
+                logger.info(f"[Chatbot Job {job_id}] 기지국 정보 조회 완료 ({len(station_entries)}건)")
+        else:
+            station_entries = []
+            logger.info(f"[Chatbot Job {job_id}] 기지국 조회 비활성화 - 스킵")
 
         feature_summary = " > ".join(
             f"{f}({len(t.rows)}건)"

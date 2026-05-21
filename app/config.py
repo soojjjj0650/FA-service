@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     MOCK_MODE: bool = False
     # GROUPED_TABLE_DISPLAY=true 시 표를 그룹별(위치/횟수/품질) 형식으로 표시
     GROUPED_TABLE_DISPLAY: bool = False
+    # AI Agent 분석 활성화 여부 (false 시 스킵)
+    AI_AGENT_ENABLED: bool = True
+    # 기지국 정보 조회 활성화 여부 (false 시 스킵)
+    STATION_SCRAPER_ENABLED: bool = True
 
     # ─── Qings 사전 쿼리 (Pre-fetch) ─────────────────────────────────────────
     QINGS_URL: str = "qings.sec.samsung.net"
