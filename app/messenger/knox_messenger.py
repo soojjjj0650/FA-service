@@ -3,17 +3,19 @@ Knox Messenger API 클라이언트
 PDF 파일을 Knox Messenger를 통해 지정 사용자에게 전송합니다.
 
 API 흐름:
-  0. Device 등록 (GET /messenger/contact/api/v2.0/device/o1/reg) → Device ID 획득
-  1. 파일 업로드 (POST /messenger/file/api/v2.0/file/v1sfile/{filename})
-  2. 채팅방 생성 (POST /messenger/message/api/v2.0/message/createChatroomRequest)
-  3. 메시지 전송 (POST /messenger/message/api/v2.0/message/chatRequest)
-     - 메시지 본문은 AES256-CBC + Base64 암호화 필요
+  0. Device 등록   GET  /messenger/contact/api/v2.0/device/o1/reg
+  1. 메시지키 조회  GET  /messenger/msgctx/api/v2.0/key/getkeys
+  2. 파일 업로드   PUT  /messenger/file/api/v2.0/file/v1s/file/{filename}
+  3. 대화방 생성   POST /messenger/message/api/v2.0/message/createChatroomRequest
+  4. 메시지 발신   POST /messenger/message/api/v2.0/message/chatRequest
+     - 메시지 API payload: 평문 JSON → AES256 → Base64
 """
 
 import base64
 import json
 import logging
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -25,10 +27,10 @@ _DEVICE_ID_CACHE   = Path(__file__).parent.parent.parent / "data" / "knox_device
 _CHATROOM_ID_CACHE = Path(__file__).parent.parent.parent / "data" / "knox_chatroom_id.txt"
 
 
-# ─── AES256 암호화 헬퍼 ───────────────────────────────────────────────────────
+# ─── AES256 암호화/복호화 헬퍼 ───────────────────────────────────────────────
 
 def _aes256_encrypt(plaintext: str, key: bytes, iv: bytes) -> str:
-    """AES256-CBC로 암호화 후 Base64 반환."""
+    """평문 문자열 → AES256-CBC → Base64 인코딩."""
     try:
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
         from cryptography.hazmat.primitives import padding as sym_padding
@@ -43,6 +45,35 @@ def _aes256_encrypt(plaintext: str, key: bytes, iv: bytes) -> str:
     except ImportError:
         logger.warning("[Knox] cryptography 미설치 - 평문 Base64 사용 (운영 불가)")
         return base64.b64encode(plaintext.encode("utf-8")).decode("ascii")
+
+
+def _aes256_decrypt(ciphertext_b64: str, key: bytes, iv: bytes) -> dict:
+    """Base64 → AES256-CBC 복호화 → dict 반환."""
+    try:
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from cryptography.hazmat.primitives import padding as sym_padding
+
+        ciphertext = base64.b64decode(ciphertext_b64)
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+        decryptor = cipher.decryptor()
+        padded = decryptor.update(ciphertext) + decryptor.finalize()
+
+        unpadder = sym_padding.PKCS7(128).unpadder()
+        plaintext = unpadder.update(padded) + unpadder.finalize()
+        return json.loads(plaintext.decode("utf-8"))
+    except Exception as e:
+        logger.error(f"[Knox] 복호화 실패: {e}")
+        return {}
+
+
+def _encrypt_payload(payload: dict, key: bytes, iv: bytes) -> str:
+    """dict → JSON 직렬화 → AES256 → Base64 (메시지 API 공통)."""
+    return _aes256_encrypt(json.dumps(payload, ensure_ascii=False), key, iv)
+
+
+def _decrypt_payload(ciphertext_b64: str, key: bytes, iv: bytes) -> dict:
+    """Base64 → AES256 복호화 → dict (메시지 API 공통)."""
+    return _aes256_decrypt(ciphertext_b64, key, iv)
 
 
 # ─── Device ID 캐시 관리 ─────────────────────────────────────────────────────
@@ -359,32 +390,41 @@ class KnoxMessengerClient:
             logger.error(f"[Knox] 채팅방 생성 예외: {type(e).__name__}: {e}", exc_info=True)
             return None
 
-    async def get_encryption_keys(self) -> tuple[bytes, bytes] | None:
+    async def get_message_key(self) -> bytes | None:
         """
-        메시지 암호화용 AES256 키 + IV를 서버에서 조회합니다.
-        반환: (key_bytes, iv_bytes) 또는 None
+        메시지 서버 암호화 Key 조회.
+        GET /messenger/msgctx/api/v2.0/key/getkeys
+        응답: {"key": "4cc~~~~~", "channelauthkey": "~~~~~"}
+
+        반환: key bytes (Base64 디코딩), None (실패)
         """
         url = f"{self.base_url}/messenger/msgctx/api/v2.0/key/getkeys"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "System-ID": self.system_id,
+            "x-device-id": self.device_id,
+            "x-device-type": "relation",
+        }
         try:
             async with httpx.AsyncClient(timeout=30, verify=False) as client:
-                resp = await client.get(url, headers=self._headers())
+                resp = await client.get(url, headers=headers)
+
+            logger.info(f"[Knox] 메시지 키 조회 | status={resp.status_code} | body={resp.text[:200]}")
 
             if resp.status_code >= 400:
-                logger.warning(f"[Knox] 암호화키 조회 실패: {resp.status_code} - 평문 사용")
+                logger.error(f"[Knox] 메시지 키 조회 실패: {resp.status_code}")
                 return None
 
             data = resp.json()
-            key_b64 = data.get("aesKey") or data.get("key") or data.get("data", {}).get("aesKey")
-            iv_b64 = data.get("aesIv") or data.get("iv") or data.get("data", {}).get("aesIv")
+            key_b64 = data.get("key")
+            if key_b64:
+                return base64.b64decode(key_b64)
 
-            if key_b64 and iv_b64:
-                return base64.b64decode(key_b64), base64.b64decode(iv_b64)
-
-            logger.warning(f"[Knox] 암호화키 파싱 불가: {resp.text[:200]}")
+            logger.warning(f"[Knox] key 필드 없음: {data}")
             return None
 
         except Exception as e:
-            logger.warning(f"[Knox] 암호화키 조회 예외: {e}")
+            logger.error(f"[Knox] 메시지 키 조회 예외: {e}")
             return None
 
     async def send_file_message(
@@ -394,10 +434,10 @@ class KnoxMessengerClient:
         filename: str,
         message_text: str = "",
     ) -> bool:
-        """채팅방에 파일과 텍스트 메시지를 전송합니다."""
+        """채팅방에 파일 메시지를 전송합니다. payload는 AES256→Base64 암호화."""
         url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
 
-        payload = {
+        plain_payload = {
             "chatroomId": chatroom_id,
             "receiverUserId": self.receiver_user_id,
             "messageType": "file",
@@ -406,9 +446,24 @@ class KnoxMessengerClient:
             "message": message_text,
         }
 
+        # 메시지 키 조회 → payload 암호화
+        msg_key = await self.get_message_key()
+        if msg_key:
+            iv = msg_key[:16]  # 앞 16바이트를 IV로 사용
+            encrypted = _encrypt_payload(plain_payload, msg_key, iv)
+            body = encrypted  # 암호화된 문자열을 body로 전송
+            headers = {**self._headers(), "Content-Type": "text/plain"}
+        else:
+            logger.warning("[Knox] 메시지 키 없음 - 평문 전송 (테스트용)")
+            body = None
+            headers = self._headers()
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
-                resp = await client.post(url, json=payload, headers=self._headers())
+                if body:
+                    resp = await client.post(url, content=body, headers=headers)
+                else:
+                    resp = await client.post(url, json=plain_payload, headers=headers)
 
             logger.info(
                 f"[Knox] 메시지 전송 | status={resp.status_code} "
