@@ -137,16 +137,24 @@ class KnoxMessengerClient:
         Device Registration API를 호출하여 Device ID를 획득합니다.
 
         GET /messenger/contact/api/v2.0/device/o1/reg
-        헤더: Authorization: Bearer {token}, System-ID: {system_id}
+        응답: {"userID": 123456789, "deviceServerID": 1234556789, "newDevice": true}
 
-        반환: device_id (성공), None (실패)
+        반환: deviceServerID (성공), None (실패)
         """
         url = f"{self.base_url}/messenger/contact/api/v2.0/device/o1/reg"
         logger.info(f"[Knox] Device 등록 요청: {url}")
 
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "System-ID": self.system_id,
+            "x-device-type": "relation",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
         try:
             async with httpx.AsyncClient(timeout=30, verify=False) as client:
-                resp = await client.get(url, headers=self._base_headers())
+                resp = await client.get(url, headers=headers)
 
             logger.info(
                 f"[Knox] Device 등록 응답 | status={resp.status_code} "
@@ -160,42 +168,32 @@ class KnoxMessengerClient:
                 )
                 return None
 
-            # 응답 JSON에서 device_id 추출
-            try:
-                data = resp.json()
-            except Exception:
-                # JSON이 아닌 경우 텍스트 자체가 device_id일 수 있음
-                device_id = resp.text.strip()
-                if device_id:
-                    logger.info(f"[Knox] Device ID (text 응답): {device_id}")
-                    self.device_id = device_id
-                    _save_device_id(device_id)
-                    return device_id
-                return None
+            data = resp.json()
+            logger.info(f"[Knox] Device 등록 응답 파싱: {data}")
 
-            # 가능한 응답 필드 탐색
-            device_id = (
-                data.get("deviceId")
-                or data.get("device_id")
+            # deviceServerID가 실제 x-device-id로 사용되는 값
+            device_server_id = data.get("deviceServerID")
+            user_id = data.get("userID")
+            new_device = data.get("newDevice", False)
+
+            if device_server_id:
+                device_id = str(device_server_id)
+                logger.info(
+                    f"[Knox] Device 등록 완료 | deviceServerID={device_id} "
+                    f"| userID={user_id} | newDevice={new_device}"
+                )
+                self.device_id = device_id
+                _save_device_id(device_id)
+                return device_id
+
+            logger.warning(f"[Knox] deviceServerID 없음 - 응답: {data}")
+            return None
                 or data.get("id")
                 or data.get("devId")
                 or data.get("data", {}).get("deviceId")
                 or data.get("data", {}).get("device_id")
                 or data.get("result", {}).get("deviceId")
             )
-
-            if device_id:
-                device_id = str(device_id)
-                logger.info(f"[Knox] Device ID 획득 성공: {device_id}")
-                self.device_id = device_id
-                _save_device_id(device_id)
-                return device_id
-
-            # 응답 전체를 로그에 남겨 수동 확인 가능하게
-            logger.warning(
-                f"[Knox] Device ID 파싱 실패 - 응답 전문: {json.dumps(data, ensure_ascii=False)}"
-            )
-            return None
 
         except httpx.ConnectError as e:
             logger.error(f"[Knox] 서버 연결 실패 ({self.base_url}): {e}")
