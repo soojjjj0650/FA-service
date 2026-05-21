@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     CHATBOT_PUSH_URL: str = ""
     CHATBOT_PUSH_API_KEY: str = ""   # push API 인증 키 (필요 시)
 
+    # ─── Knox Teams 메신저 파일 전송 ────────────────────────────────────────
+    # 분석 HTML을 Knox Teams 채널에 파일로 전송 (비워두면 비활성화)
+    TEAMS_FILE_API_URL: str = ""     # Knox Teams 파일 전송 API URL
+    TEAMS_API_KEY: str = ""          # Knox Teams API 인증 키 (필요 시)
+    TEAMS_CHANNEL_ID: str = ""       # 전송할 채널/채팅방 ID
+
     # ─── 개발/테스트 옵션 ────────────────────────────────────────────────────
     # MOCK_MODE=true 시 Superset 실제 조회 없이 더미 데이터로 파이프라인 테스트
     MOCK_MODE: bool = False

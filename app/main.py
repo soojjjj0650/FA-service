@@ -1521,6 +1521,16 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             f"{settings.BASE_URL}/analysis/{sn}" if _analysis_html_path else None
         )
 
+        # 2-3. Knox Teams 파일 전송 (설정된 경우)
+        if _analysis_html_path and settings.TEAMS_FILE_API_URL:
+            from app.messenger.teams_sender import send_html_to_teams
+            await send_html_to_teams(
+                _analysis_html_path, sn,
+                settings.TEAMS_FILE_API_URL,
+                settings.TEAMS_API_KEY,
+                settings.TEAMS_CHANNEL_ID,
+            )
+
         # 3. AI 분석 (사용자 데이터만 전송)
         if settings.AI_AGENT_ENABLED:
             ai_response = await agent_client.analyze(processed)
