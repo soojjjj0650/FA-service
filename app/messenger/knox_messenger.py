@@ -257,21 +257,119 @@ class KnoxMessengerClient:
         device_id = await self.register_device()
         return device_id is not None
 
-    async def upload_file(self, file_path: str, aes_key: bytes = b"", aes_iv: bytes = b"") -> str | None:
+    async def get_file_server_time(self, word: str) -> tuple[str, str] | None:
+        """
+        파일 서버 암호화 Key 조회.
+        GET /messenger/file/api/v2.0/file/v1/getCurrentTime?word={filename_or_path}
+
+        반환: (serverTime, word_key) - 파일 업로드 헤더 암호화에 사용
+        """
+        url = f"{self.base_url}/messenger/file/api/v2.0/file/v1/getCurrentTime"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "System-ID": self.system_id,
+            "x-device-id": self.device_id,
+            "x-device-type": "relation",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30, verify=False) as client:
+                resp = await client.get(url, params={"word": word}, headers=headers)
+
+            logger.info(f"[Knox] 파일서버 Time 조회 | status={resp.status_code} | body={resp.text[:200]}")
+
+            if resp.status_code >= 400:
+                logger.error(f"[Knox] 파일서버 Time 조회 실패: {resp.status_code}")
+                return None
+
+            data = resp.json()
+            server_time = data.get("serverTime", "")
+            word_key    = data.get("word", "")
+
+            if server_time and word_key:
+                return server_time, word_key
+
+            logger.warning(f"[Knox] 파일서버 Time 파싱 실패: {data}")
+            return None
+
+        except Exception as e:
+            logger.error(f"[Knox] 파일서버 Time 조회 예외: {e}")
+            return None
+
+    async def upload_file(self, file_path: str) -> str | None:
         """
         파일을 Knox Messenger 파일 서버에 업로드합니다.
-        PUT /messenger/file/api/v2.0/file/v1s/file/{filename}
 
-        파일명 규칙: "r" + YYYYMMDDHHmmss + 확장자 (예: r20240521143022.pdf)
+        1. getCurrentTime?word={파일명} → serverTime, word(암호화 키) 획득
+        2. word로 x-device-id, x-device-type, x-request-time 암호화
+        3. PUT /messenger/file/api/v2.0/file/v1s/file/{파일명}
+
+        파일명 규칙: "r" + YYYYMMDDHHmmss + 확장자
         반환: download_url (성공), None (실패)
         """
-        import time as _time
-
         if not os.path.exists(file_path):
             logger.error(f"[Knox] 업로드 파일 없음: {file_path}")
             return None
 
         ext = os.path.splitext(file_path)[1]  # .pdf
+        upload_filename = f"r{time.strftime('%Y%m%d%H%M%S')}{ext}"
+        url = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
+
+        # 1. 파일서버 암호화 키 + serverTime 조회
+        time_result = await self.get_file_server_time(upload_filename)
+        if not time_result:
+            logger.error("[Knox] 파일서버 Time 조회 실패 - 업로드 중단")
+            return None
+
+        server_time, word_key = time_result
+
+        # 2. word_key로 헤더값 AES256 암호화
+        try:
+            key_bytes = word_key.encode("utf-8")
+            key_bytes = key_bytes[:32].ljust(32, b"\0")  # 32바이트 맞춤
+            iv_bytes  = key_bytes[:16]
+            enc_device_id   = _aes256_encrypt(self.device_id, key_bytes, iv_bytes)
+            enc_device_type = _aes256_encrypt("relation", key_bytes, iv_bytes)
+            enc_server_time = _aes256_encrypt(server_time, key_bytes, iv_bytes)
+        except Exception as e:
+            logger.error(f"[Knox] 헤더 암호화 실패: {e}")
+            return None
+
+        try:
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "System-ID": self.system_id,
+                "Content-Type": "binary/octet-stream",
+                "Content-Length": str(len(file_bytes)),
+                "filename": upload_filename,
+                "x-device-id":    enc_device_id,
+                "x-device-type":  enc_device_type,
+                "x-request-time": enc_server_time,
+            }
+
+            async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
+                resp = await client.put(url, content=file_bytes, headers=headers)
+
+            logger.info(f"[Knox] 파일 업로드 | status={resp.status_code} | body={resp.text[:300]}")
+
+            if resp.status_code >= 400:
+                logger.error(f"[Knox] 파일 업로드 실패: {resp.status_code} {resp.text[:200]}")
+                return None
+
+            data = resp.json()
+            download_url = data.get("download_url") or data.get("downloadUrl")
+            if download_url:
+                logger.info(f"[Knox] 파일 업로드 완료: {download_url}")
+                return download_url
+
+            logger.warning(f"[Knox] download_url 파싱 실패: {resp.text[:200]}")
+            return None
+
+        except Exception as e:
+            logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
+            return None
         timestamp = _time.strftime("%Y%m%d%H%M%S")
         upload_filename = f"r{timestamp}{ext}"
         url = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
