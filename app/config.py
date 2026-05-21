@@ -85,6 +85,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 80
     LOG_LEVEL: str = "INFO"
+    # 외부에서 접근 가능한 서버 base URL (챗봇에 분석 결과 URL 전송 시 사용)
+    BASE_URL: str = "http://localhost"
 
     # ─── 쿼리 조회 기간 ──────────────────────────────────────────────────────
     QUERY_LOOKBACK_DAYS: int = 14       # SQL INTERVAL N DAY (데이터 조회 기간)

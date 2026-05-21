@@ -36,8 +36,10 @@ import httpx
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+
+from app.analysis.runner import generate_analysis_html
 from pydantic import BaseModel, field_validator
 
 from app.config import settings
@@ -456,6 +458,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         device_header = f"[ 단말정보 ] 최근 {query_days_val}일간\n\n사업자: {operator_disp} | 모델: {device_model}\n\n"
         info_analysis = device_header + info_analysis
 
+        analysis_url = job.get("analysis_url") or ""
         payload = {
             "chatRoomId":    chat_room_id,
             "userId":        user_id,
@@ -463,6 +466,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
             "info_analysis": info_analysis,
             "ai_result":     ai_text,
             "station_info":  station_text,
+            "analysis_url":  analysis_url,
         }
     else:
         payload = {
@@ -662,6 +666,7 @@ async def get_appcard(sn: str = "", userId: str = ""):
             matched_job.get("station_entries"),
             matched_job.get("station_text", ""),
             matched_job.get("feature_tables"),
+            matched_job.get("analysis_url", ""),
         )
         return JSONResponse(card)
     elif status == "error":
@@ -779,6 +784,17 @@ async def dashboard_ui():
     if html_file.exists():
         return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>Dashboard</h1><p>frontend/dashboard.html을 확인하세요.</p>")
+
+
+@app.get("/analysis/{sn}", response_class=HTMLResponse)
+async def serve_analysis_html(sn: str):
+    """생성된 {sn}_analysis.html 파일을 브라우저에 직접 반환합니다."""
+    import os
+    sn = sn.upper().replace(".html", "")
+    path = os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.html")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"분석 결과 HTML 없음: {sn}")
+    return HTMLResponse(content=open(path, encoding="utf-8").read())
 
 
 @app.get("/api/dashboard/results")
@@ -1497,6 +1513,14 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
         # 2-1. AI 입력 텍스트 및 처리 결과 CSV 저장
         _save_processing_files(sn, processed)
 
+        # 2-2. log_analyzer HTML 생성
+        _analysis_html_path = generate_analysis_html(
+            sn, query_result.csv_path, settings.CSV_DOWNLOAD_PATH
+        )
+        job["analysis_url"] = (
+            f"{settings.BASE_URL}/analysis/{sn}" if _analysis_html_path else None
+        )
+
         # 3. AI 분석 (사용자 데이터만 전송)
         ai_response = await agent_client.analyze(processed)
 
@@ -1709,7 +1733,7 @@ async def webhook_handler(request: Request):
             status = job.get("status", "unknown")
 
             if status == "done":
-                return JSONResponse(_build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_entries"), job.get("station_text", ""), job.get("feature_tables")))
+                return JSONResponse(_build_result_card(sn, job.get("ai_response", ""), job.get("feature_summary", ""), job.get("station_entries"), job.get("station_text", ""), job.get("feature_tables"), job.get("analysis_url", "")))
             elif status == "error":
                 return _webhook_error_card(job.get("error", "처리 중 오류가 발생했습니다."))
             else:
@@ -1938,7 +1962,7 @@ def _build_status_card(sn: str, job_id: str) -> dict:
     }
 
 
-def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_entries: list | None = None, station_text: str = "", feature_tables: dict | None = None) -> dict:
+def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_entries: list | None = None, station_text: str = "", feature_tables: dict | None = None, analysis_url: str = "") -> dict:
     """분석 완료 결과 카드"""
     MAX_AI_LEN = 800
     ai_text = ai_response if len(ai_response) <= MAX_AI_LEN else ai_response[:MAX_AI_LEN] + "..."
@@ -2005,12 +2029,23 @@ def _build_result_card(sn: str, ai_response: str, feature_summary: str, station_
         })
         body.extend(_build_station_card_blocks(station_entries))
 
-    return {
+    actions = []
+    if analysis_url:
+        actions.append({
+            "type": "Action.OpenUrl",
+            "title": "상세 분석 보기",
+            "url": analysis_url,
+        })
+
+    card: dict = {
         "type": "AdaptiveCard",
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "version": "1.3",
         "body": body,
     }
+    if actions:
+        card["actions"] = actions
+    return card
 
 
 def _webhook_error_card(message: str) -> JSONResponse:
