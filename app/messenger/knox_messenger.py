@@ -3,6 +3,7 @@ Knox Messenger API 클라이언트
 PDF 파일을 Knox Messenger를 통해 지정 사용자에게 전송합니다.
 
 API 흐름:
+  0. Device 등록 (GET /messenger/contact/api/v2.0/device/o1/reg) → Device ID 획득
   1. 파일 업로드 (POST /messenger/file/api/v2.0/file/v1sfile/{filename})
   2. 채팅방 생성 (POST /messenger/message/api/v2.0/message/createChatroomRequest)
   3. 메시지 전송 (POST /messenger/message/api/v2.0/message/chatRequest)
@@ -10,12 +11,18 @@ API 흐름:
 """
 
 import base64
+import json
 import logging
 import os
+from pathlib import Path
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Device ID 캐시 파일 (등록 후 재사용)
+_DEVICE_ID_CACHE = Path(__file__).parent.parent.parent / "data" / "knox_device_id.txt"
+
 
 # ─── AES256 암호화 헬퍼 ───────────────────────────────────────────────────────
 
@@ -33,9 +40,30 @@ def _aes256_encrypt(plaintext: str, key: bytes, iv: bytes) -> str:
         ciphertext = encryptor.update(padded) + encryptor.finalize()
         return base64.b64encode(ciphertext).decode("ascii")
     except ImportError:
-        # cryptography 미설치 시 평문 Base64로 fallback (개발용)
         logger.warning("[Knox] cryptography 미설치 - 평문 Base64 사용 (운영 불가)")
         return base64.b64encode(plaintext.encode("utf-8")).decode("ascii")
+
+
+# ─── Device ID 캐시 관리 ─────────────────────────────────────────────────────
+
+def _load_cached_device_id() -> str:
+    """저장된 Device ID를 읽어옵니다."""
+    try:
+        if _DEVICE_ID_CACHE.exists():
+            return _DEVICE_ID_CACHE.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _save_device_id(device_id: str) -> None:
+    """Device ID를 파일에 저장합니다."""
+    try:
+        _DEVICE_ID_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _DEVICE_ID_CACHE.write_text(device_id, encoding="utf-8")
+        logger.info(f"[Knox] Device ID 저장 완료: {_DEVICE_ID_CACHE}")
+    except Exception as e:
+        logger.warning(f"[Knox] Device ID 저장 실패: {e}")
 
 
 # ─── Knox Messenger 클라이언트 ────────────────────────────────────────────────
@@ -48,7 +76,7 @@ class KnoxMessengerClient:
       KNOX_MESSENGER_BASE_URL  : 서버 주소 (예: https://messenger.sec.samsung.net)
       KNOX_ACCESS_TOKEN        : Bearer 토큰 (Knox Portal에서 발급)
       KNOX_SYSTEM_ID           : System-ID 헤더값 (예: C60LD0001)
-      KNOX_DEVICE_ID           : x-device-id 헤더값 (Knox Portal에서 발급)
+      KNOX_DEVICE_ID           : x-device-id (비워두면 register_device()로 자동 획득)
       KNOX_RECEIVER_USER_ID    : 파일 받을 사용자 ID
     """
 
@@ -57,8 +85,8 @@ class KnoxMessengerClient:
         base_url: str,
         access_token: str,
         system_id: str,
-        device_id: str,
-        receiver_user_id: str,
+        device_id: str = "",
+        receiver_user_id: str = "",
         timeout: int = 60,
     ):
         self.base_url = base_url.rstrip("/")
@@ -68,20 +96,121 @@ class KnoxMessengerClient:
         self.receiver_user_id = receiver_user_id
         self.timeout = timeout
 
-    def _headers(self) -> dict:
-        h = {
+    def _base_headers(self) -> dict:
+        """Device ID 없이 기본 헤더만 반환 (등록 API 호출용)."""
+        return {
             "Authorization": f"Bearer {self.access_token}",
             "System-ID": self.system_id,
         }
+
+    def _headers(self) -> dict:
+        """Device ID 포함 전체 헤더 반환."""
+        h = self._base_headers()
         if self.device_id:
             h["x-device-id"] = self.device_id
             h["x-device-type"] = "relation"
         return h
 
+    async def register_device(self) -> str | None:
+        """
+        Device Registration API를 호출하여 Device ID를 획득합니다.
+
+        GET /messenger/contact/api/v2.0/device/o1/reg
+        헤더: Authorization: Bearer {token}, System-ID: {system_id}
+
+        반환: device_id (성공), None (실패)
+        """
+        url = f"{self.base_url}/messenger/contact/api/v2.0/device/o1/reg"
+        logger.info(f"[Knox] Device 등록 요청: {url}")
+
+        try:
+            async with httpx.AsyncClient(timeout=30, verify=False) as client:
+                resp = await client.get(url, headers=self._base_headers())
+
+            logger.info(
+                f"[Knox] Device 등록 응답 | status={resp.status_code} "
+                f"| body={resp.text[:500]}"
+            )
+
+            if resp.status_code >= 400:
+                logger.error(
+                    f"[Knox] Device 등록 실패: {resp.status_code} | "
+                    f"body={resp.text[:300]}"
+                )
+                return None
+
+            # 응답 JSON에서 device_id 추출
+            try:
+                data = resp.json()
+            except Exception:
+                # JSON이 아닌 경우 텍스트 자체가 device_id일 수 있음
+                device_id = resp.text.strip()
+                if device_id:
+                    logger.info(f"[Knox] Device ID (text 응답): {device_id}")
+                    self.device_id = device_id
+                    _save_device_id(device_id)
+                    return device_id
+                return None
+
+            # 가능한 응답 필드 탐색
+            device_id = (
+                data.get("deviceId")
+                or data.get("device_id")
+                or data.get("id")
+                or data.get("devId")
+                or data.get("data", {}).get("deviceId")
+                or data.get("data", {}).get("device_id")
+                or data.get("result", {}).get("deviceId")
+            )
+
+            if device_id:
+                device_id = str(device_id)
+                logger.info(f"[Knox] Device ID 획득 성공: {device_id}")
+                self.device_id = device_id
+                _save_device_id(device_id)
+                return device_id
+
+            # 응답 전체를 로그에 남겨 수동 확인 가능하게
+            logger.warning(
+                f"[Knox] Device ID 파싱 실패 - 응답 전문: {json.dumps(data, ensure_ascii=False)}"
+            )
+            return None
+
+        except httpx.ConnectError as e:
+            logger.error(f"[Knox] 서버 연결 실패 ({self.base_url}): {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[Knox] Device 등록 예외: {type(e).__name__}: {e}", exc_info=True)
+            return None
+
+    async def ensure_device_id(self) -> bool:
+        """
+        Device ID가 없으면 자동으로 등록합니다.
+        1) config에서 설정된 값 사용
+        2) 캐시 파일에서 로드
+        3) 없으면 register_device() 호출
+
+        반환: device_id 확보 여부
+        """
+        if self.device_id:
+            return True
+
+        # 캐시 파일 확인
+        cached = _load_cached_device_id()
+        if cached:
+            logger.info(f"[Knox] 캐시된 Device ID 사용: {cached}")
+            self.device_id = cached
+            return True
+
+        # 신규 등록
+        logger.info("[Knox] Device ID 없음 → 자동 등록 시도")
+        device_id = await self.register_device()
+        return device_id is not None
+
     async def upload_file(self, file_path: str) -> str | None:
         """
         PDF 파일을 Knox Messenger 서버에 업로드합니다.
-        반환: 파일 key/ID (메시지 전송 시 사용), 실패 시 None
+        반환: 파일 key/ID, 실패 시 None
         """
         filename = os.path.basename(file_path)
         url = f"{self.base_url}/messenger/file/api/v2.0/file/v1sfile/{filename}"
@@ -94,19 +223,20 @@ class KnoxMessengerClient:
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
 
-            headers = self._headers()
             files = {"file": (filename, file_bytes, "application/pdf")}
 
             async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
-                resp = await client.post(url, headers=headers, files=files)
+                resp = await client.post(url, headers=self._headers(), files=files)
 
-            logger.info(f"[Knox] 파일 업로드 | status={resp.status_code} | body={resp.text[:300]}")
+            logger.info(
+                f"[Knox] 파일 업로드 | status={resp.status_code} "
+                f"| body={resp.text[:300]}"
+            )
 
             if resp.status_code >= 400:
                 logger.error(f"[Knox] 파일 업로드 실패: {resp.status_code} {resp.text[:200]}")
                 return None
 
-            # 응답에서 파일 key 추출 (API 스펙에 따라 조정 필요)
             try:
                 data = resp.json()
                 file_key = (
@@ -122,8 +252,6 @@ class KnoxMessengerClient:
             except Exception:
                 pass
 
-            # key를 못 파싱하면 응답 텍스트를 그대로 반환
-            logger.warning(f"[Knox] 파일 key 파싱 불가 - 응답: {resp.text[:200]}")
             return resp.text.strip() or None
 
         except Exception as e:
@@ -139,13 +267,16 @@ class KnoxMessengerClient:
         payload = {
             "receiverUserId": self.receiver_user_id,
             "roomTitle": title,
-            "roomType": "1to1",  # API 스펙에 따라 조정 필요
+            "roomType": "1to1",
         }
         try:
             async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
                 resp = await client.post(url, json=payload, headers=self._headers())
 
-            logger.info(f"[Knox] 채팅방 생성 | status={resp.status_code} | body={resp.text[:300]}")
+            logger.info(
+                f"[Knox] 채팅방 생성 | status={resp.status_code} "
+                f"| body={resp.text[:300]}"
+            )
 
             if resp.status_code >= 400:
                 logger.error(f"[Knox] 채팅방 생성 실패: {resp.status_code} {resp.text[:200]}")
@@ -182,7 +313,7 @@ class KnoxMessengerClient:
                 resp = await client.get(url, headers=self._headers())
 
             if resp.status_code >= 400:
-                logger.warning(f"[Knox] 암호화키 조회 실패: {resp.status_code} - 기본 키 사용")
+                logger.warning(f"[Knox] 암호화키 조회 실패: {resp.status_code} - 평문 사용")
                 return None
 
             data = resp.json()
@@ -206,13 +337,9 @@ class KnoxMessengerClient:
         filename: str,
         message_text: str = "",
     ) -> bool:
-        """
-        채팅방에 파일과 텍스트 메시지를 전송합니다.
-        반환: 성공 여부
-        """
+        """채팅방에 파일과 텍스트 메시지를 전송합니다."""
         url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
 
-        # 메시지 암호화 시도
         encrypted_text = message_text
         keys = await self.get_encryption_keys()
         if keys and message_text:
@@ -232,7 +359,10 @@ class KnoxMessengerClient:
             async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
                 resp = await client.post(url, json=payload, headers=self._headers())
 
-            logger.info(f"[Knox] 메시지 전송 | status={resp.status_code} | body={resp.text[:300]}")
+            logger.info(
+                f"[Knox] 메시지 전송 | status={resp.status_code} "
+                f"| body={resp.text[:300]}"
+            )
 
             if resp.status_code >= 400:
                 logger.error(f"[Knox] 메시지 전송 실패: {resp.status_code} {resp.text[:200]}")
@@ -258,12 +388,7 @@ async def send_pdf_via_knox(
 ) -> bool:
     """
     PDF 파일을 Knox Messenger로 전송합니다.
-
-    호출 전 확인 사항:
-      - KNOX_MESSENGER_BASE_URL 설정 필요
-      - KNOX_ACCESS_TOKEN 설정 필요
-      - KNOX_DEVICE_ID 설정 필요 (Knox Portal에서 발급)
-      - KNOX_RECEIVER_USER_ID 설정 필요 (받는 사람 ID)
+    device_id가 비어있으면 register_device()를 호출해 자동 획득합니다.
 
     반환: 성공 여부
     """
@@ -291,8 +416,13 @@ async def send_pdf_via_knox(
         receiver_user_id=receiver_user_id,
     )
 
+    # Device ID 확보 (config → 캐시 → 자동 등록)
+    if not await client.ensure_device_id():
+        logger.error(f"[Knox] Device ID 확보 실패 - 전송 중단 (SN: {sn})")
+        return False
+
     filename = os.path.basename(pdf_path)
-    logger.info(f"[Knox] PDF 전송 시작 | SN={sn} | 파일={filename}")
+    logger.info(f"[Knox] PDF 전송 시작 | SN={sn} | 파일={filename} | device_id={client.device_id}")
 
     # 1. 파일 업로드
     file_key = await client.upload_file(pdf_path)
@@ -321,3 +451,22 @@ async def send_pdf_via_knox(
         logger.error(f"[Knox] PDF 전송 실패 | SN={sn}")
 
     return success
+
+
+async def register_device_only(
+    base_url: str,
+    access_token: str,
+    system_id: str,
+) -> str | None:
+    """
+    Device ID만 등록하고 반환합니다.
+    서버 시작 시 또는 /api/knox/register 엔드포인트에서 수동 호출용.
+
+    반환: device_id (성공), None (실패)
+    """
+    client = KnoxMessengerClient(
+        base_url=base_url,
+        access_token=access_token,
+        system_id=system_id,
+    )
+    return await client.register_device()
