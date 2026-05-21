@@ -428,7 +428,8 @@ function buildStationMap(){
     if(s.weakRsrp)s.level='weak_sig';else if(s.weakSinr)s.level='inter';else if(s.avgBler!==null&&s.avgBler>=40)s.level='high_bler';else if(s.probCount>=3)s.level='issue';else s.level='normal';
   });
 }
-function getOperator(){const cnt={};allRows.forEach(r=>{const p=(r.PLMN||'').replace(/[^0-9]/g,'');if(PLMN_OP[p])cnt[p]=(cnt[p]||0)+1;});allRlfEvents.forEach(e=>{const p=(e.PLMN||'').replace(/[^0-9]/g,'');if(PLMN_OP[p])cnt[p]=(cnt[p]||0)+1;});const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];return top?PLMN_OP[top[0]]||''：'';}
+function getOperator(){const cnt={};allRows.forEach(r=>{const p=(r.PLMN||'').replace(/[^0-9]/g,'');if(PLMN_OP[p])cnt[p]=(cnt[p]||0)+1;});allRlfEvents.forEach(e=>{const p=(e.PLMN||'').replace(/[^0-9]/g,'');if(PLMN_OP[p])cnt[p]=(cnt[p]||0)+1;});const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];return top?PLMN_OP[top[0]]||'':'';}
+
 function getChipset(){const jver=(allRows.find(r=>r.JVER)||{}).JVER||'';if(jver.startsWith('S'))return'LSI';if(jver.startsWith('Q'))return'QC';if(jver.startsWith('M'))return'MTK';return jver?'Unknown':'';}
 function annotateSIMD(){
   const EXCL=new Set(['Date','Time','Feature','TR1D','NS1D']);const dates=getDates();let prevSnap=null;
