@@ -370,69 +370,12 @@ class KnoxMessengerClient:
         except Exception as e:
             logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
             return None
-        timestamp = _time.strftime("%Y%m%d%H%M%S")
-        upload_filename = f"r{timestamp}{ext}"
-        url = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
-
-        try:
-            with open(file_path, "rb") as f:
-                file_bytes = f.read()
-
-            file_size = len(file_bytes)
-
-            # 헤더 구성
-            headers = {
-                "Authorization": f"Bearer {self.access_token}",
-                "System-ID": self.system_id,
-                "Content-Length": str(file_size),
-                "Content-Type": "binary/octet-stream",
-                "filename": upload_filename,
-            }
-
-            # x-device-id, x-device-type, x-request-time: AES256 암호화 필요
-            # 암호화 키가 있는 경우에만 암호화, 없으면 평문 전송 (테스트용)
-            if aes_key and aes_iv and self.device_id:
-                headers["x-device-id"]   = _aes256_encrypt(self.device_id, aes_key, aes_iv)
-                headers["x-device-type"] = _aes256_encrypt("relation", aes_key, aes_iv)
-                headers["x-request-time"] = _aes256_encrypt(str(int(_time.time() * 1000)), aes_key, aes_iv)
-            else:
-                # 암호화 키 미확보 시 평문 (추후 파일서버 암호화 Key API 연동 후 교체)
-                headers["x-device-id"]   = self.device_id
-                headers["x-device-type"] = "relation"
-                headers["x-request-time"] = str(int(_time.time() * 1000))
-
-            async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
-                resp = await client.put(url, content=file_bytes, headers=headers)
-
-            logger.info(
-                f"[Knox] 파일 업로드 | status={resp.status_code} "
-                f"| url={url} | body={resp.text[:300]}"
-            )
-
-            if resp.status_code >= 400:
-                logger.error(f"[Knox] 파일 업로드 실패: {resp.status_code} {resp.text[:200]}")
-                return None
-
-            data = resp.json()
-            download_url = data.get("download_url") or data.get("downloadUrl")
-            if download_url:
-                logger.info(f"[Knox] 파일 업로드 완료: {download_url}")
-                return download_url
-
-            logger.warning(f"[Knox] download_url 파싱 실패: {resp.text[:200]}")
-            return None
-
-        except Exception as e:
-            logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
-            return None
 
     async def ensure_chatroom(self) -> str | None:
         """
         대화방 ID를 확보합니다.
         1) 캐시 파일에서 로드
         2) 없으면 create_chatroom() 호출하여 신규 생성
-
-        반환: chatroom_id, 실패 시 None
         """
         cached = _load_cached_chatroom_id()
         if cached:
@@ -442,11 +385,78 @@ class KnoxMessengerClient:
         logger.info("[Knox] 대화방 없음 → 신규 생성")
         return await self.create_chatroom()
 
-    async def create_chatroom(self, title: str = "FA 분석 결과") -> str | None:
+    async def create_chatroom(self) -> str | None:
         """
-        대화방을 생성합니다. 생성된 ID는 캐시에 저장하여 재사용합니다.
+        대화방을 생성합니다.
+        POST /messenger/message/api/v2.0/message/createChatroomRequest
+
+        body (암호화 전):
+        {"chatType": 2, "requestId": {timestamp_ms}, "receivers": [{userID}]}
+
+        생성된 chatroomId는 캐시에 저장하여 재사용합니다.
         반환: chatroom_id, 실패 시 None
         """
+        url = f"{self.base_url}/messenger/message/api/v2.0/message/createChatroomRequest"
+
+        request_id = int(time.time() * 1000)
+        plain_payload = {
+            "chatType": 2,
+            "requestId": request_id,
+            "receivers": [int(self.receiver_user_id)],
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "System-ID": self.system_id,
+            "x-device-id": self.device_id,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            # 메시지 키로 payload 암호화
+            msg_key = await self.get_message_key()
+            if msg_key:
+                iv = msg_key[:16]
+                body = _encrypt_payload(plain_payload, msg_key, iv)
+                headers["Content-Type"] = "text/plain"
+                async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
+                    resp = await client.post(url, content=body, headers=headers)
+            else:
+                logger.warning("[Knox] 메시지 키 없음 - 평문 전송 (테스트용)")
+                async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
+                    resp = await client.post(url, json=plain_payload, headers=headers)
+
+            logger.info(f"[Knox] 대화방 생성 | status={resp.status_code} | body={resp.text[:300]}")
+
+            if resp.status_code >= 400:
+                logger.error(f"[Knox] 대화방 생성 실패: {resp.status_code} {resp.text[:200]}")
+                return None
+
+            # 응답 복호화
+            if msg_key:
+                iv = msg_key[:16]
+                data = _decrypt_payload(resp.text.strip(), msg_key, iv)
+            else:
+                data = resp.json()
+
+            logger.info(f"[Knox] 대화방 생성 응답: {data}")
+
+            chatroom_id = data.get("chatroomId")
+            result_code = data.get("result", {}).get("code")
+
+            if chatroom_id and result_code == 1000:
+                chatroom_id = str(chatroom_id)
+                logger.info(f"[Knox] 대화방 생성 완료: chatroomId={chatroom_id}")
+                _save_chatroom_id(chatroom_id)
+                return chatroom_id
+
+            logger.warning(f"[Knox] 대화방 생성 실패 - code={result_code} data={data}")
+            return None
+
+        except Exception as e:
+            logger.error(f"[Knox] 대화방 생성 예외: {type(e).__name__}: {e}", exc_info=True)
+            return None
         url = f"{self.base_url}/messenger/message/api/v2.0/message/createChatroomRequest"
         payload = {
             "receiverUserId": self.receiver_user_id,
