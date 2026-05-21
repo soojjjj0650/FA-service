@@ -786,43 +786,59 @@ async def list_jobs():
 @app.post("/api/knox/register")
 async def knox_register_device():
     """
-    Knox Messenger Device 등록 API를 호출하여 Device ID를 획득합니다.
-    KNOX_MESSENGER_BASE_URL, KNOX_ACCESS_TOKEN, KNOX_SYSTEM_ID 설정 필요.
+    Knox Messenger 초기 설정:
+    1. Device ID 획득 (등록 API 호출)
+    2. 대화방 생성 (최초 1회)
 
-    획득한 Device ID는 data/knox_device_id.txt에 저장되어 이후 자동 재사용됩니다.
+    결과는 data/knox_device_id.txt, data/knox_chatroom_id.txt에 저장되어 재사용됩니다.
     """
     if not settings.KNOX_MESSENGER_BASE_URL:
         raise HTTPException(status_code=400, detail="KNOX_MESSENGER_BASE_URL이 설정되지 않았습니다.")
     if not settings.KNOX_ACCESS_TOKEN:
         raise HTTPException(status_code=400, detail="KNOX_ACCESS_TOKEN이 설정되지 않았습니다.")
+    if not settings.KNOX_RECEIVER_USER_ID:
+        raise HTTPException(status_code=400, detail="KNOX_RECEIVER_USER_ID가 설정되지 않았습니다.")
 
-    from app.messenger.knox_messenger import register_device_only
-    device_id = await register_device_only(
+    from app.messenger.knox_messenger import KnoxMessengerClient
+
+    client = KnoxMessengerClient(
         base_url=settings.KNOX_MESSENGER_BASE_URL,
         access_token=settings.KNOX_ACCESS_TOKEN,
         system_id=settings.KNOX_SYSTEM_ID,
+        device_id=settings.KNOX_DEVICE_ID,
+        receiver_user_id=settings.KNOX_RECEIVER_USER_ID,
     )
 
-    if device_id:
-        logger.info(f"[Knox] Device 등록 완료: {device_id}")
-        return {"status": "ok", "device_id": device_id, "message": "Device ID 획득 성공. data/knox_device_id.txt에 저장되었습니다."}
-    else:
-        logger.error("[Knox] Device 등록 실패 - 로그를 확인하세요.")
+    # 1. Device ID 획득
+    if not await client.ensure_device_id():
         raise HTTPException(status_code=502, detail="Device 등록 실패. 서버 로그를 확인하세요.")
+
+    # 2. 대화방 생성
+    chatroom_id = await client.ensure_chatroom()
+    if not chatroom_id:
+        raise HTTPException(status_code=502, detail="대화방 생성 실패. 서버 로그를 확인하세요.")
+
+    logger.info(f"[Knox] 초기 설정 완료 | device_id={client.device_id} | chatroom_id={chatroom_id}")
+    return {
+        "status": "ok",
+        "device_id": client.device_id,
+        "chatroom_id": chatroom_id,
+        "message": "Device ID 및 대화방 생성 완료. 이후 자동 재사용됩니다.",
+    }
 
 
 @app.get("/api/knox/status")
 async def knox_status():
     """Knox Messenger 설정 상태를 확인합니다."""
-    from app.messenger.knox_messenger import _load_cached_device_id
-    cached_device_id = _load_cached_device_id()
+    from app.messenger.knox_messenger import _load_cached_device_id, _load_cached_chatroom_id
+    cached_device_id  = _load_cached_device_id()
+    cached_chatroom_id = _load_cached_chatroom_id()
     return {
-        "base_url_set": bool(settings.KNOX_MESSENGER_BASE_URL),
+        "base_url": settings.KNOX_MESSENGER_BASE_URL or "(미설정)",
         "access_token_set": bool(settings.KNOX_ACCESS_TOKEN),
         "system_id": settings.KNOX_SYSTEM_ID,
-        "device_id_config": settings.KNOX_DEVICE_ID or "(미설정)",
-        "device_id_cached": cached_device_id or "(없음)",
-        "device_id_active": settings.KNOX_DEVICE_ID or cached_device_id or "(없음)",
+        "device_id": settings.KNOX_DEVICE_ID or cached_device_id or "(없음 → /api/knox/register 호출 필요)",
+        "chatroom_id": cached_chatroom_id or "(없음 → /api/knox/register 호출 필요)",
         "receiver_user_id": settings.KNOX_RECEIVER_USER_ID or "(미설정)",
         "enabled": settings.KNOX_MESSENGER_ENABLED,
     }
@@ -984,10 +1000,10 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         logger.error(f"[Knox Pipeline] Device ID 확보 실패 (SN: {sn})")
         return
 
-    # 기존 채팅방 재사용 또는 신규 생성
-    chatroom_id = job.get("chatRoomId") or await client.create_chatroom(title=f"FA 분석 - {sn}")
+    # 대화방 확보 (캐시 → 없으면 신규 생성)
+    chatroom_id = await client.ensure_chatroom()
     if not chatroom_id:
-        logger.error(f"[Knox Pipeline] 채팅방 없음 (SN: {sn})")
+        logger.error(f"[Knox Pipeline] 대화방 확보 실패 (SN: {sn})")
         return
 
     file_key = await client.upload_file(pdf_path)

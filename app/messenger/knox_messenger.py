@@ -20,8 +20,9 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Device ID 캐시 파일 (등록 후 재사용)
-_DEVICE_ID_CACHE = Path(__file__).parent.parent.parent / "data" / "knox_device_id.txt"
+# 캐시 파일 경로
+_DEVICE_ID_CACHE   = Path(__file__).parent.parent.parent / "data" / "knox_device_id.txt"
+_CHATROOM_ID_CACHE = Path(__file__).parent.parent.parent / "data" / "knox_chatroom_id.txt"
 
 
 # ─── AES256 암호화 헬퍼 ───────────────────────────────────────────────────────
@@ -64,6 +65,26 @@ def _save_device_id(device_id: str) -> None:
         logger.info(f"[Knox] Device ID 저장 완료: {_DEVICE_ID_CACHE}")
     except Exception as e:
         logger.warning(f"[Knox] Device ID 저장 실패: {e}")
+
+
+def _load_cached_chatroom_id() -> str:
+    """저장된 대화방 ID를 읽어옵니다."""
+    try:
+        if _CHATROOM_ID_CACHE.exists():
+            return _CHATROOM_ID_CACHE.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _save_chatroom_id(chatroom_id: str) -> None:
+    """대화방 ID를 파일에 저장합니다."""
+    try:
+        _CHATROOM_ID_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _CHATROOM_ID_CACHE.write_text(chatroom_id, encoding="utf-8")
+        logger.info(f"[Knox] 대화방 ID 저장 완료: {_CHATROOM_ID_CACHE}")
+    except Exception as e:
+        logger.warning(f"[Knox] 대화방 ID 저장 실패: {e}")
 
 
 # ─── Knox Messenger 클라이언트 ────────────────────────────────────────────────
@@ -258,9 +279,25 @@ class KnoxMessengerClient:
             logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
             return None
 
+    async def ensure_chatroom(self) -> str | None:
+        """
+        대화방 ID를 확보합니다.
+        1) 캐시 파일에서 로드
+        2) 없으면 create_chatroom() 호출하여 신규 생성
+
+        반환: chatroom_id, 실패 시 None
+        """
+        cached = _load_cached_chatroom_id()
+        if cached:
+            logger.info(f"[Knox] 캐시된 대화방 ID 사용: {cached}")
+            return cached
+
+        logger.info("[Knox] 대화방 없음 → 신규 생성")
+        return await self.create_chatroom()
+
     async def create_chatroom(self, title: str = "FA 분석 결과") -> str | None:
         """
-        1:1 채팅방을 생성합니다.
+        대화방을 생성합니다. 생성된 ID는 캐시에 저장하여 재사용합니다.
         반환: chatroom_id, 실패 시 None
         """
         url = f"{self.base_url}/messenger/message/api/v2.0/message/createChatroomRequest"
@@ -291,8 +328,10 @@ class KnoxMessengerClient:
                     or data.get("data", {}).get("chatroomId")
                 )
                 if room_id:
+                    room_id = str(room_id)
                     logger.info(f"[Knox] 채팅방 생성 완료: roomId={room_id}")
-                    return str(room_id)
+                    _save_chatroom_id(room_id)
+                    return room_id
             except Exception:
                 pass
 
@@ -424,16 +463,16 @@ async def send_pdf_via_knox(
     filename = os.path.basename(pdf_path)
     logger.info(f"[Knox] PDF 전송 시작 | SN={sn} | 파일={filename} | device_id={client.device_id}")
 
-    # 1. 파일 업로드
+    # 1. 대화방 확보 (캐시 → 없으면 신규 생성)
+    chatroom_id = await client.ensure_chatroom()
+    if not chatroom_id:
+        logger.error(f"[Knox] 대화방 확보 실패 - 전송 중단 (SN: {sn})")
+        return False
+
+    # 2. 파일 업로드
     file_key = await client.upload_file(pdf_path)
     if not file_key:
         logger.error(f"[Knox] 파일 업로드 실패 - 전송 중단 (SN: {sn})")
-        return False
-
-    # 2. 채팅방 생성
-    chatroom_id = await client.create_chatroom(title=f"FA 분석 결과 - {sn}")
-    if not chatroom_id:
-        logger.error(f"[Knox] 채팅방 생성 실패 - 전송 중단 (SN: {sn})")
         return False
 
     # 3. 파일 메시지 전송
