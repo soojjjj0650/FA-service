@@ -39,10 +39,12 @@ def generate_analysis_html(sn: str, csv_path: str, save_dir: str) -> str | None:
             html = f.read()
 
         # </body> 직전에 자동 실행 스크립트 주입
+        # </script> 문자열이 CSV에 있으면 스크립트 태그가 중간에 닫히므로 이스케이프
+        csv_json = json.dumps(csv_content).replace("</script>", "<\\/script>")
         inject = (
             "<script>\n"
             "(function(){\n"
-            f"  var _d={json.dumps(csv_content)};\n"
+            f"  var _d={csv_json};\n"
             f"  var _f={json.dumps(sn+'_inputdata.csv')};\n"
             "  function _run(){\n"
             "    console.log('[FA] _run called, doParse type:', typeof doParse);\n"
