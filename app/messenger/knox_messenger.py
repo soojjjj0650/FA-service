@@ -125,9 +125,9 @@ class KnoxMessengerClient:
     Knox Messenger API 클라이언트.
 
     설정:
-      KNOX_MESSENGER_BASE_URL  : 서버 주소 (예: https://messenger.sec.samsung.net)
+      KNOX_MESSENGER_BASE_URL  : 서버 주소 (예: https://openapi.stage.samsung.net)
       KNOX_ACCESS_TOKEN        : Bearer 토큰 (Knox Portal에서 발급)
-      KNOX_SYSTEM_ID           : System-ID 헤더값 (예: C60LD0001)
+      KNOX_SYSTEM_ID           : System-ID 헤더값 (예: KCC10BOT01508)
       KNOX_DEVICE_ID           : x-device-id (비워두면 register_device()로 자동 획득)
       KNOX_RECEIVER_USER_ID    : 파일 받을 사용자 ID
     """
@@ -219,12 +219,6 @@ class KnoxMessengerClient:
 
             logger.warning(f"[Knox] deviceServerID 없음 - 응답: {data}")
             return None
-                or data.get("id")
-                or data.get("devId")
-                or data.get("data", {}).get("deviceId")
-                or data.get("data", {}).get("device_id")
-                or data.get("result", {}).get("deviceId")
-            )
 
         except httpx.ConnectError as e:
             logger.error(f"[Knox] 서버 연결 실패 ({self.base_url}): {e}")
@@ -457,46 +451,6 @@ class KnoxMessengerClient:
         except Exception as e:
             logger.error(f"[Knox] 대화방 생성 예외: {type(e).__name__}: {e}", exc_info=True)
             return None
-        url = f"{self.base_url}/messenger/message/api/v2.0/message/createChatroomRequest"
-        payload = {
-            "receiverUserId": self.receiver_user_id,
-            "roomTitle": title,
-            "roomType": "1to1",
-        }
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
-                resp = await client.post(url, json=payload, headers=self._headers())
-
-            logger.info(
-                f"[Knox] 채팅방 생성 | status={resp.status_code} "
-                f"| body={resp.text[:300]}"
-            )
-
-            if resp.status_code >= 400:
-                logger.error(f"[Knox] 채팅방 생성 실패: {resp.status_code} {resp.text[:200]}")
-                return None
-
-            try:
-                data = resp.json()
-                room_id = (
-                    data.get("chatroomId")
-                    or data.get("roomId")
-                    or data.get("chatroom_id")
-                    or data.get("data", {}).get("chatroomId")
-                )
-                if room_id:
-                    room_id = str(room_id)
-                    logger.info(f"[Knox] 채팅방 생성 완료: roomId={room_id}")
-                    _save_chatroom_id(room_id)
-                    return room_id
-            except Exception:
-                pass
-
-            return None
-
-        except Exception as e:
-            logger.error(f"[Knox] 채팅방 생성 예외: {type(e).__name__}: {e}", exc_info=True)
-            return None
 
     async def get_message_key(self) -> bytes | None:
         """
@@ -535,42 +489,66 @@ class KnoxMessengerClient:
             logger.error(f"[Knox] 메시지 키 조회 예외: {e}")
             return None
 
-    async def send_file_message(
+    async def send_message(
         self,
         chatroom_id: str,
-        download_url: str,
-        filename: str,
-        message_text: str = "",
+        message_text: str,
     ) -> bool:
-        """채팅방에 파일 메시지를 전송합니다. payload는 AES256→Base64 암호화."""
-        url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
+        """
+        채팅방에 텍스트 메시지를 전송합니다.
+        POST /messenger/message/api/v2.0/message/chatRequest
 
-        plain_payload = {
-            "chatroomId": chatroom_id,
-            "receiverUserId": self.receiver_user_id,
-            "messageType": "file",
-            "downloadUrl": download_url,
-            "fileName": filename,
-            "message": message_text,
+        payload (암호화 전):
+        {
+            "requestId": {timestamp_ms},
+            "chatroomId": {int},
+            "chatMessageParams": [
+                {
+                    "msgId": {timestamp_ms},
+                    "msgType": 0,
+                    "chatMsg": {message_text},
+                    "msgTtl": 7200
+                }
+            ]
         }
 
-        # 메시지 키 조회 → payload 암호화
-        msg_key = await self.get_message_key()
-        if msg_key:
-            iv = msg_key[:16]  # 앞 16바이트를 IV로 사용
-            encrypted = _encrypt_payload(plain_payload, msg_key, iv)
-            body = encrypted  # 암호화된 문자열을 body로 전송
-            headers = {**self._headers(), "Content-Type": "text/plain"}
-        else:
-            logger.warning("[Knox] 메시지 키 없음 - 평문 전송 (테스트용)")
-            body = None
-            headers = self._headers()
+        반환: 성공 여부
+        """
+        url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
+
+        request_id = int(time.time() * 1000)
+        plain_payload = {
+            "requestId": request_id,
+            "chatroomId": int(chatroom_id),
+            "chatMessageParams": [
+                {
+                    "msgId": request_id,
+                    "msgType": 0,
+                    "chatMsg": message_text,
+                    "msgTtl": 7200,
+                }
+            ],
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "System-ID": self.system_id,
+            "x-device-id": self.device_id,  # 평문 그대로 전송
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
-                if body:
+            msg_key = await self.get_message_key()
+            if msg_key:
+                iv = msg_key[:16]
+                body = _encrypt_payload(plain_payload, msg_key, iv)
+                headers["Content-Type"] = "text/plain"
+                async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
                     resp = await client.post(url, content=body, headers=headers)
-                else:
+            else:
+                logger.warning("[Knox] 메시지 키 없음 - 평문 전송 (테스트용)")
+                async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
                     resp = await client.post(url, json=plain_payload, headers=headers)
 
             logger.info(
@@ -582,11 +560,44 @@ class KnoxMessengerClient:
                 logger.error(f"[Knox] 메시지 전송 실패: {resp.status_code} {resp.text[:200]}")
                 return False
 
-            return True
+            # 응답 복호화 및 결과 확인
+            if msg_key:
+                iv = msg_key[:16]
+                data = _decrypt_payload(resp.text.strip(), msg_key, iv)
+            else:
+                data = resp.json()
+
+            result_code = data.get("result", {}).get("code")
+            if result_code == 1000:
+                entries = data.get("processedMessageEntries", [])
+                sent_time = entries[0].get("sentTime") if entries else None
+                logger.info(f"[Knox] 메시지 전송 완료 | chatroomId={chatroom_id} | sentTime={sent_time}")
+                return True
+
+            logger.warning(f"[Knox] 메시지 전송 실패 - code={result_code} data={data}")
+            return False
 
         except Exception as e:
             logger.error(f"[Knox] 메시지 전송 예외: {type(e).__name__}: {e}", exc_info=True)
             return False
+
+    async def send_file_message(
+        self,
+        chatroom_id: str,
+        download_url: str,
+        filename: str,
+        message_text: str = "",
+    ) -> bool:
+        """
+        채팅방에 파일 다운로드 링크를 텍스트 메시지로 전송합니다.
+        download_url과 안내 문구를 합쳐 send_message()로 전달합니다.
+        """
+        if message_text:
+            full_message = f"{message_text}\n\n파일 다운로드: {download_url}"
+        else:
+            full_message = f"[FA 분석 결과] {filename}\n파일 다운로드: {download_url}"
+
+        return await self.send_message(chatroom_id, full_message)
 
 
 # ─── 메인 전송 함수 ───────────────────────────────────────────────────────────
