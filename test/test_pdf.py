@@ -14,7 +14,10 @@ async def test_simple_pdf():
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        try:
+            browser = await p.chromium.launch(channel="msedge")
+        except Exception:
+            browser = await p.chromium.launch()
         page = await browser.new_page()
         await page.set_content("""
         <html><body style="font-family: sans-serif; padding: 40px;">

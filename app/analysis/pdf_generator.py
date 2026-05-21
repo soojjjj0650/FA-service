@@ -25,7 +25,11 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
+            # Edge가 이미 설치되어 있으면 Edge 사용, 없으면 Chromium 사용
+            try:
+                browser = await p.chromium.launch(channel="msedge")
+            except Exception:
+                browser = await p.chromium.launch()
             page = await browser.new_page()
             await page.goto(f"file:///{html_path.replace(os.sep, '/')}", wait_until="networkidle", timeout=30000)
             await page.pdf(path=pdf_path, format="A4", print_background=True)
