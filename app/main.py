@@ -828,6 +828,188 @@ async def knox_status():
     }
 
 
+# ─── Knox Messenger 수신 웹훅 ─────────────────────────────────────────────────
+@app.post("/api/knox/webhook")
+async def knox_webhook(request: Request):
+    """
+    Knox Messenger 수신 웹훅.
+
+    Knox 서버가 사용자 메시지를 이 엔드포인트로 전달합니다.
+    메시지에서 SN을 추출하여 FA 분석 파이프라인을 실행하고,
+    완료 후 Knox Messenger로 PDF를 전송합니다.
+
+    Knox 서버 출발지 IP (방화벽 허용 필요):
+      스테이지: 112.106.197.161, 112.106.197.162
+      운  영:  182.195.35.15, 182.195.35.16
+    """
+    raw_body = await request.body()
+    raw_text = raw_body.decode("utf-8", errors="replace")
+
+    logger.info(
+        f"[Knox Webhook] 수신 | content-type={request.headers.get('content-type','-')} "
+        f"| body={raw_text[:500]}"
+    )
+
+    # ── JSON 파싱 ─────────────────────────────────────────────────────────────
+    import json as _json
+    data: dict = {}
+    try:
+        data = _json.loads(raw_text) if raw_text else {}
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        pass
+
+    if not data:
+        logger.warning(f"[Knox Webhook] 파싱 실패 - raw={raw_text[:200]}")
+        return JSONResponse(status_code=200, content={"status": "ignored"})
+
+    # ── 메시지 내용 추출 ──────────────────────────────────────────────────────
+    # Knox Messenger 페이로드 예시:
+    # {"sendUserId": "user01", "chatroomId": "room123", "message": "R3CUFHDJF", "messageType": "text"}
+    message_text = (
+        data.get("message")
+        or data.get("content")
+        or data.get("text")
+        or data.get("body")
+        or data.get("data", {}).get("message")
+        or ""
+    ).strip()
+
+    sender_id = (
+        data.get("sendUserId")
+        or data.get("userId")
+        or data.get("senderId")
+        or data.get("sender")
+        or data.get("data", {}).get("sendUserId")
+        or ""
+    ).strip()
+
+    chatroom_id = (
+        data.get("chatroomId")
+        or data.get("chatroom_id")
+        or data.get("roomId")
+        or data.get("data", {}).get("chatroomId")
+        or ""
+    ).strip()
+
+    message_type = (data.get("messageType") or data.get("type") or "text").lower()
+
+    logger.info(
+        f"[Knox Webhook] 파싱 완료 | sender={sender_id} | "
+        f"chatroom={chatroom_id} | type={message_type} | message={message_text[:100]}"
+    )
+
+    # 텍스트 메시지만 처리 (파일/이미지 등은 무시)
+    if message_type not in ("text", ""):
+        return JSONResponse(status_code=200, content={"status": "ignored", "reason": "non-text message"})
+
+    if not message_text:
+        return JSONResponse(status_code=200, content={"status": "ignored", "reason": "empty message"})
+
+    # ── SN 추출 ───────────────────────────────────────────────────────────────
+    sn_raw = message_text.strip().upper()
+    # SN 형식 검증 (영문+숫자+하이픈, 5~20자)
+    if not re.match(r'^[A-Z0-9\-]{5,20}$', sn_raw):
+        logger.warning(f"[Knox Webhook] SN 형식 불일치: '{sn_raw}' - 무시")
+        return JSONResponse(status_code=200, content={"status": "ignored", "reason": "not a valid SN"})
+
+    # ── Job 등록 및 파이프라인 실행 ───────────────────────────────────────────
+    job_id = str(uuid.uuid4())
+    _chatbot_jobs[job_id] = {
+        "job_id":      job_id,
+        "sn":          sn_raw,
+        "status":      "pending",
+        "userId":      sender_id,
+        "chatRoomId":  chatroom_id,
+        "created_at":  time.time(),
+        "source":      "knox",          # 수신 채널 구분
+    }
+
+    logger.info(f"[Knox Webhook] FA 분석 시작 | SN={sn_raw} | job_id={job_id} | sender={sender_id}")
+    asyncio.create_task(_run_knox_pipeline(job_id, sn_raw))
+
+    return JSONResponse(status_code=200, content={"status": "accepted", "job_id": job_id, "sn": sn_raw})
+
+
+async def _run_knox_pipeline(job_id: str, sn: str) -> None:
+    """
+    Knox Messenger 전용 파이프라인:
+    FA 분석 실행 → PDF 생성 → Knox Messenger로 전송
+    """
+    job = _chatbot_jobs[job_id]
+
+    # 기존 챗봇 파이프라인 재사용 (분석 + HTML 생성)
+    await _run_chatbot_full_pipeline(job_id, sn)
+
+    # PDF 생성 및 Knox 전송
+    if job.get("status") != "done":
+        logger.warning(f"[Knox Pipeline] 분석 실패 - PDF 전송 스킵 (SN: {sn})")
+        return
+
+    if not settings.KNOX_MESSENGER_BASE_URL or not settings.KNOX_ACCESS_TOKEN:
+        logger.warning(f"[Knox Pipeline] Knox 설정 미완료 - PDF 전송 스킵 (SN: {sn})")
+        return
+
+    import os as _os
+    from app.analysis.pdf_generator import html_to_pdf
+    from app.messenger.knox_messenger import KnoxMessengerClient, _load_cached_device_id
+
+    html_path = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.html")
+    pdf_path  = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
+
+    if not _os.path.exists(html_path):
+        logger.error(f"[Knox Pipeline] 분석 HTML 없음: {html_path}")
+        return
+
+    # HTML → PDF 변환
+    pdf_ok = await html_to_pdf(html_path, pdf_path)
+    if not pdf_ok:
+        logger.error(f"[Knox Pipeline] PDF 변환 실패 (SN: {sn})")
+        return
+
+    # Knox Messenger 전송
+    device_id = settings.KNOX_DEVICE_ID or _load_cached_device_id()
+    receiver  = job.get("userId") or settings.KNOX_RECEIVER_USER_ID
+
+    client = KnoxMessengerClient(
+        base_url=settings.KNOX_MESSENGER_BASE_URL,
+        access_token=settings.KNOX_ACCESS_TOKEN,
+        system_id=settings.KNOX_SYSTEM_ID,
+        device_id=device_id,
+        receiver_user_id=receiver,
+    )
+
+    if not await client.ensure_device_id():
+        logger.error(f"[Knox Pipeline] Device ID 확보 실패 (SN: {sn})")
+        return
+
+    # 기존 채팅방 재사용 또는 신규 생성
+    chatroom_id = job.get("chatRoomId") or await client.create_chatroom(title=f"FA 분석 - {sn}")
+    if not chatroom_id:
+        logger.error(f"[Knox Pipeline] 채팅방 없음 (SN: {sn})")
+        return
+
+    file_key = await client.upload_file(pdf_path)
+    if not file_key:
+        logger.error(f"[Knox Pipeline] 파일 업로드 실패 (SN: {sn})")
+        return
+
+    feature_summary = job.get("feature_summary", "")
+    message = f"[FA 분석 완료] SN: {sn}\n{feature_summary}\n상세 분석 결과 PDF를 확인하세요."
+    success = await client.send_file_message(
+        chatroom_id=chatroom_id,
+        file_key=file_key,
+        filename=f"{sn}_analysis.pdf",
+        message_text=message,
+    )
+
+    if success:
+        logger.info(f"[Knox Pipeline] PDF 전송 완료 | SN={sn} | receiver={receiver}")
+    else:
+        logger.error(f"[Knox Pipeline] PDF 전송 실패 | SN={sn}")
+
+
 # ─── 대시보드 엔드포인트 ──────────────────────────────────────────────────────
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_ui():
