@@ -39,13 +39,18 @@ def generate_analysis_html(sn: str, csv_path: str, save_dir: str) -> str | None:
             html = f.read()
 
         # </body> 직전에 자동 실행 스크립트 주입
+        # body 끝에 위치하므로 doParse는 이미 정의된 상태 → 직접 호출
         inject = (
             "<script>\n"
             "(function(){\n"
             f"  var _d={json.dumps(csv_content)};\n"
-            f"  window.addEventListener('load',function(){{"
-            f"if(typeof doParse==='function')doParse(_d,{json.dumps(sn+'_inputdata.csv')});"
-            f"}});\n"
+            f"  var _f={json.dumps(sn+'_inputdata.csv')};\n"
+            "  function _run(){if(typeof doParse==='function'){doParse(_d,_f);}}\n"
+            "  if(document.readyState==='complete'||document.readyState==='interactive'){\n"
+            "    setTimeout(_run,0);\n"
+            "  } else {\n"
+            "    window.addEventListener('DOMContentLoaded',_run);\n"
+            "  }\n"
             "})();\n"
             "</script>\n"
         )
