@@ -52,15 +52,19 @@ class Settings(BaseSettings):
     CHATBOT_PUSH_URL: str = "https://botbuilder.samsung.net/webhook/fa.service"
     CHATBOT_PUSH_API_KEY: str = ""   # push API 인증 키 (필요 시)
 
-    # ─── Knox Messenger API ──────────────────────────────────────────────────
-    KNOX_MESSENGER_BASE_URL: str = ""       # 예: https://messenger.sec.samsung.net
+    # ─── Knox Messenger / Teams API ──────────────────────────────────────────
+    # 스테이지: https://openapi.stage.samsung.net  (IP: 203.254.214.131, Port: 80/443)
+    # 운  영:  https://openapi.samsung.net         (IP: 112.107.220.134, Port: 80/443)
+    KNOX_MESSENGER_BASE_URL: str = "https://openapi.stage.samsung.net"   # 스테이지 기본값
     KNOX_ACCESS_TOKEN: str = ""             # Bearer 토큰
     KNOX_SYSTEM_ID: str = "C60LD0001"       # System-ID
-    KNOX_DEVICE_ID: str = ""               # x-device-id (Knox Portal 발급)
+    KNOX_DEVICE_ID: str = ""               # x-device-id (미설정 시 자동 등록)
     KNOX_RECEIVER_USER_ID: str = ""         # 파일 받을 사용자 ID (FA 담당자)
     KNOX_MESSENGER_ENABLED: bool = False    # Knox Messenger 전송 활성화 여부
     # ─── Knox Teams (채널 파일 전송) ─────────────────────────────────────────
-    TEAMS_FILE_API_URL: str = ""     # Knox Teams 파일 전송 API URL
+    # 스테이지: https://openapi.stage.samsung.net/...
+    # 운  영:  https://openapi.samsung.net/...
+    TEAMS_FILE_API_URL: str = ""     # Knox Teams 파일 전송 API URL (전체 경로)
     TEAMS_API_KEY: str = ""          # Knox Teams API 인증 키 (필요 시)
     TEAMS_CHANNEL_ID: str = ""       # 전송할 채널/채팅방 ID
 
