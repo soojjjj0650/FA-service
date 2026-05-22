@@ -83,11 +83,28 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
             except Exception:
                 logger.warning("[PDF] allRows 대기 타임아웃 — 그대로 진행")
 
-            # lazy 렌더 강제 실행 + PDF용 전체 탭 표시 (raw 탭 제외)
+            # lazy 렌더 강제 실행 + PDF용 전체 탭 표시
             await page.evaluate("""() => {
                 if (typeof renderStationTable === 'function') renderStationTable();
                 if (typeof renderDropTab === 'function')      renderDropTab();
                 if (typeof renderTrend === 'function')        renderTrend();
+
+                // 원본 데이터: 페이징 해제 후 전체 표시
+                if (typeof rawFiltered !== 'undefined' && rawFiltered.length > 0) {
+                    window.RP = 999999;
+                    window.rawPage = 1;
+                    if (typeof renderRaw === 'function') renderRaw();
+                    const pager = document.getElementById('rawPager');
+                    if (pager) pager.style.display = 'none';
+                }
+
+                // 차트 너비 A4에 맞게 고정 (오른쪽 잘림 방지)
+                const style = document.createElement('style');
+                style.textContent = `
+                    canvas { max-width: 100% !important; box-sizing: border-box; }
+                    [id="trendContent"] > div { max-width: 100% !important; overflow: hidden !important; }
+                `;
+                document.head.appendChild(style);
 
                 const TAB_NAMES = {
                     overview: '전체 요약',
@@ -96,6 +113,7 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     drop:     'DROP 분석',
                     daily:    '일별 상세',
                     trend:    '추이 그래프',
+                    raw:      '원본 데이터',
                 };
 
                 Object.entries(TAB_NAMES).forEach(([id, label], i) => {
@@ -111,16 +129,12 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     }
                 });
 
-                // 원본 데이터 탭은 PDF에서 제외 (데이터 많아 수백 페이지)
-                const rawTab = document.getElementById('tab-raw');
-                if (rawTab) rawTab.style.display = 'none';
-
                 const tabBar = document.querySelector('.tab-bar');
                 if (tabBar) tabBar.style.display = 'none';
             }""")
 
-            # 차트 렌더링 완료 대기
-            await page.wait_for_timeout(2500)
+            # 차트 + 원본 데이터 렌더링 완료 대기
+            await page.wait_for_timeout(3000)
             await page.pdf(path=pdf_path, format="A4", print_background=True)
             await browser.close()
         logger.info(f"[PDF] 변환 완료: {pdf_path}")
