@@ -462,7 +462,7 @@ function renderInsights(){
   const items=[];const push=(lv,t,grp)=>items.push({lv,t,grp});
   const totalDrop=byFeat('DROP').length,totalCend=byFeat('CEND').length,totalCall=totalDrop+totalCend;
   const stList=Object.values(stationMap);const muteRows=byFeat('MUTE');const dropRows=byFeat('DROP');
-  if(totalCall>0){const dr=totalDrop/totalCall*100;if(dr>=10)push('danger',`전체 DROP률 ${dr.toFixed(1)}% — 심각 수준`,'drop');else if(dr>=5)push('warn',`전체 DROP률 ${dr.toFixed(1)}% — 주의`,'drop');}
+  if(totalDrop>0){const dr=totalCall>0?totalDrop/totalCall*100:0;if(dr>=10)push('danger',`전체 DROP률 ${dr.toFixed(1)}% — 심각 수준`,'drop');else if(dr>=5)push('warn',`전체 DROP률 ${dr.toFixed(1)}% — 주의`,'drop');else push('info',`Calldrop ${totalDrop}건 발생 (DROP률 ${dr.toFixed(1)}%)`,'drop');}
   const rlfTotal=byFeat('RLFC').reduce((s,r)=>s+parseFloat(r.LRLF||0),0)||allRlfEvents.length;
   if(rlfTotal>=3)push(rlfTotal>=7?'danger':'warn',`RLF 이벤트 ${rlfTotal}건 발생`,'radio');
   const scgfRows=byFeat('SCGF');if(scgfRows.length>=3)push(scgfRows.length>=7?'danger':'warn',`SCG Failure ${scgfRows.length}건 발생`,'radio');
@@ -501,10 +501,12 @@ function renderMuteTab(){
   const rxTypes=SOUND_TYPES.filter(t=>t.cat==='rx');const txTypes=SOUND_TYPES.filter(t=>t.cat==='tx');
   const rxRows=muteRows.filter(r=>rxTypes.some(t=>isOne(r[t.key])));const txRows=muteRows.filter(r=>txTypes.some(t=>isOne(r[t.key])));
   const micRowsAll=muteRows.filter(r=>MIC_TYPES.some(t=>(t.key==='SAMS'||t.key==='MCST')?parseInt(r[t.key]||0,10)>0:isOne(r[t.key])));
+  const userIntentRows=muteRows.filter(r=>isOne(r.TXSF));
   const rsrps=muteRows.map(r=>fNum(r.RSRP)).filter(v=>v!==null);
   const sinrs=muteRows.map(r=>fNum(r.CINR??r.SINR)).filter(v=>v!==null);
+  const blers=muteRows.map(r=>fNum(r.BLER)).filter(v=>v!==null&&v>0);
   const fmtV=v=>v!==null?v.toFixed(1):'-';
-  let html=`<div class="st">전체 기간 MUTE 유형 분포</div><div class="mg">${mCard('전체 MUTE',total+'건','')}${mCard('Rx (수화) 이상',rxRows.length+'건',pct(rxRows.length,total)+'%',rxRows.length>0?'warn':'')}${mCard('Tx (송화) 이상',txRows.length+'건',pct(txRows.length,total)+'%',txRows.length>0?'warn':'')}${mCard('마이크 이상',micRowsAll.length+'건',pct(micRowsAll.length,total)+'%',micRowsAll.length>0?'warn':'')}${mCard('avg RSRP',fmtV(avgArr(rsrps)),'수신전력 평균',avgArr(rsrps)<-100?'warn':'')}${mCard('avg SINR',fmtV(avgArr(sinrs)),'SINR 평균',avgArr(sinrs)<0?'warn':'')}</div>`;
+  let html=`<div class="st">전체 기간 MUTE 유형 분포</div><div class="mg">${mCard('전체 MUTE',total+'건','')}${mCard('Rx (수화) 이상',rxRows.length+'건',pct(rxRows.length,total)+'%',rxRows.length>0?'warn':'')}${mCard('Tx (송화) 이상',txRows.length+'건',pct(txRows.length,total)+'%',txRows.length>0?'warn':'')}${mCard('마이크 이상',micRowsAll.length+'건',pct(micRowsAll.length,total)+'%',micRowsAll.length>0?'warn':'')}${mCard('사용자 의도',userIntentRows.length+'건',pct(userIntentRows.length,total)+'%','')}${mCard('avg RSRP',fmtV(avgArr(rsrps)),'수신전력 평균',avgArr(rsrps)<-100?'warn':'')}${mCard('avg SINR',fmtV(avgArr(sinrs)),'SINR 평균',avgArr(sinrs)<0?'warn':'')}${mCard('avg BLER',fmtV(avgArr(blers)),'BLER 평균',avgArr(blers)>0?'warn':'')}</div>`;
   // 유형별 breakdown
   const allTypes=[...SOUND_TYPES,...MIC_TYPES,{key:'TXSF',label:'송화음 차단',cat:'tx'}];
   const typeRows=allTypes.map(t=>{const cnt=muteRows.filter(r=>(t.key==='SAMS'||t.key==='MCST')?parseInt(r[t.key]||0,10)>0:isOne(r[t.key])).length;return cnt>0?`<tr><td>${t.label}</td><td style="text-align:center">${t.cat==='rx'?'수화':'송화'}</td><td style="text-align:center;font-weight:700;color:#c0392b">${cnt}건</td><td style="text-align:center">${pct(cnt,total)}%</td></tr>`:''}).join('');
