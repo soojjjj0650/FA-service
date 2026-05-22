@@ -820,12 +820,19 @@ async def knox_register_device():
     if not chatroom_id:
         raise HTTPException(status_code=502, detail="대화방 생성 실패. 서버 로그를 확인하세요.")
 
-    logger.info(f"[Knox] 초기 설정 완료 | device_id={client.device_id} | chatroom_id={chatroom_id}")
+    # 3. SN 입력 Adaptive Card 전송
+    from app.messenger.knox_messenger import build_sn_input_card
+    receive_url = f"http://{settings.HOST}:{settings.PORT}/message"
+    card = build_sn_input_card(receive_url)
+    card_sent = await client.send_adaptive_card(chatroom_id, card)
+
+    logger.info(f"[Knox] 초기 설정 완료 | device_id={client.device_id} | chatroom_id={chatroom_id} | card_sent={card_sent}")
     return {
         "status": "ok",
         "device_id": client.device_id,
         "chatroom_id": chatroom_id,
-        "message": "Device ID 및 대화방 생성 완료. 이후 자동 재사용됩니다.",
+        "card_sent": card_sent,
+        "message": "Device ID 및 대화방 생성 완료. SN 입력 카드를 전송했습니다.",
     }
 
 

@@ -659,6 +659,128 @@ class KnoxMessengerClient:
             return False
 
 
+    async def send_adaptive_card(
+        self,
+        chatroom_id: str,
+        card: dict,
+    ) -> bool:
+        """
+        Adaptive Card를 채팅방에 전송합니다.
+        msgType: 2 (Knox Messenger Adaptive Card)
+        chatMsg: Adaptive Card JSON 문자열
+
+        card 예시 (SN 입력 폼):
+        {
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "type": "AdaptiveCard",
+            "version": "1.0",
+            "body": [
+                {"type": "TextBlock", "text": "FA 분석 요청"},
+                {"type": "Input.Text", "id": "sn", "placeholder": "SN 입력"}
+            ],
+            "actions": [{
+                "type": "Action.Submit",
+                "title": "분석 요청",
+                "data": {"requestUrl": "http://10.246.9.74:8000/message"}
+            }]
+        }
+        """
+        url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
+
+        request_id = int(time.time() * 1000)
+        plain_payload = {
+            "requestId": request_id,
+            "chatroomId": int(chatroom_id),
+            "chatMessageParams": [
+                {
+                    "msgId": request_id,
+                    "msgType": 2,
+                    "chatMsg": json.dumps(card, ensure_ascii=False),
+                    "msgTtl": 7200,
+                }
+            ],
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "System-ID": self.system_id,
+            "x-device-id": self.device_id,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            msg_key = await self.get_message_key()
+            if msg_key:
+                iv = msg_key[:16]
+                body = _encrypt_payload(plain_payload, msg_key, iv)
+                headers["Content-Type"] = "text/plain"
+                async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
+                    resp = await client.post(url, content=body, headers=headers)
+            else:
+                async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
+                    resp = await client.post(url, json=plain_payload, headers=headers)
+
+            logger.info(f"[Knox] Adaptive Card 전송 | status={resp.status_code} | body={resp.text[:300]}")
+
+            if resp.status_code >= 400:
+                logger.error(f"[Knox] Adaptive Card 전송 실패: {resp.status_code}")
+                return False
+
+            if msg_key:
+                data = _decrypt_payload(resp.text.strip(), msg_key, msg_key[:16])
+            else:
+                data = resp.json()
+
+            result_code = data.get("result", {}).get("code")
+            if result_code == 1000:
+                logger.info(f"[Knox] Adaptive Card 전송 완료 | chatroomId={chatroom_id}")
+                return True
+
+            logger.warning(f"[Knox] Adaptive Card 전송 실패 - code={result_code}")
+            return False
+
+        except Exception as e:
+            logger.error(f"[Knox] Adaptive Card 전송 예외: {type(e).__name__}: {e}", exc_info=True)
+            return False
+
+
+def build_sn_input_card(receive_url: str) -> dict:
+    """SN 입력 Adaptive Card 생성."""
+    return {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.0",
+        "body": [
+            {
+                "type": "TextBlock",
+                "text": "FA 분석 요청",
+                "size": "Large",
+                "weight": "Bolder",
+                "color": "Accent",
+            },
+            {
+                "type": "TextBlock",
+                "text": "분석할 단말기 SN을 입력해주세요.",
+                "wrap": True,
+            },
+            {
+                "type": "Input.Text",
+                "id": "sn",
+                "placeholder": "SN 입력 (예: R3CUFHDJF)",
+                "maxLength": 20,
+            },
+        ],
+        "actions": [
+            {
+                "type": "Action.Submit",
+                "title": "분석 요청",
+                "data": {"requestUrl": receive_url},
+            }
+        ],
+    }
+
+
 # ─── 메인 전송 함수 ───────────────────────────────────────────────────────────
 
 async def send_pdf_via_knox(
