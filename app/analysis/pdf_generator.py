@@ -107,9 +107,6 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     '#tab-raw .tw { overflow-x:visible !important; overflow:visible !important; }',
                     '#tab-raw table { font-size:9px !important; table-layout:fixed; width:100%; }',
                     '#tab-raw th, #tab-raw td { white-space:normal !important; word-break:break-all; padding:2px 3px !important; }',
-                    '#tab-raw .det-btn { display:none !important; }',
-                    '#tab-raw tbody td:last-child { display:none !important; }',
-                    '#tab-raw thead th:last-child { display:none !important; }',
                     // 상단 고정 탭 네비게이션 바
                     '#pdf-nav { position:fixed; top:0; left:0; right:0; height:26px; background:linear-gradient(135deg,#1e3a5f 0%,#2d5a9e 100%); display:flex; align-items:center; padding:0 12px; gap:1px; z-index:9999; box-sizing:border-box; box-shadow:0 2px 6px rgba(0,0,0,0.3); }',
                     '#pdf-nav .nav-logo { color:#93c5fd; font-size:9px; font-weight:800; letter-spacing:1px; margin-right:10px; padding-right:10px; border-right:1px solid rgba(255,255,255,0.2); white-space:nowrap; }',
@@ -184,17 +181,27 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     el.insertBefore(h, el.firstChild);
                 });
 
-                // 원본 데이터 테이블 TAC(HEX) 컬럼 제거 (index 6)
-                // rawHead: Call(0),Date(1),Time(2),Feature(3),PLMN(4),ACT(5),TAC(HEX)(6),...
+                // 원본 데이터 테이블 TAC(HEX) 컬럼 제거 + det-btn 열 제거
+                // rawHead: Call(0),Date(1),Time(2),Feature(3),PLMN(4),ACT(5),TAC(HEX)(6),...,빈th(last)
                 (function() {
                     const rawHead = document.getElementById('rawHead');
                     const rawBody = document.getElementById('rawBody');
                     if (!rawHead || !rawBody) return;
                     const hRow = rawHead.querySelector('tr');
-                    if (hRow) { const ths = hRow.querySelectorAll('th'); if (ths[6]) ths[6].remove(); }
+                    if (hRow) {
+                        const ths = hRow.querySelectorAll('th');
+                        if (ths[6]) ths[6].remove();          // TAC(HEX)
+                        const ths2 = hRow.querySelectorAll('th');
+                        const last = ths2[ths2.length - 1];
+                        if (last && last.textContent.trim() === '') last.remove(); // det-btn 헤더
+                    }
                     rawBody.querySelectorAll('tr').forEach(row => {
                         const tds = row.querySelectorAll('td');
-                        if (tds[6]) tds[6].remove();
+                        if (tds[6]) tds[6].remove();          // TAC(HEX)
+                        // det-btn 셀 제거: 마지막 td 안에 .det-btn 이 있으면 삭제
+                        const tds2 = row.querySelectorAll('td');
+                        const lastTd = tds2[tds2.length - 1];
+                        if (lastTd && lastTd.querySelector('.det-btn')) lastTd.remove();
                     });
                 })();
             }""")
