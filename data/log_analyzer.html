@@ -501,7 +501,22 @@ function renderMuteTab(){
   const rxTypes=SOUND_TYPES.filter(t=>t.cat==='rx');const txTypes=SOUND_TYPES.filter(t=>t.cat==='tx');
   const rxRows=muteRows.filter(r=>rxTypes.some(t=>isOne(r[t.key])));const txRows=muteRows.filter(r=>txTypes.some(t=>isOne(r[t.key])));
   const micRowsAll=muteRows.filter(r=>MIC_TYPES.some(t=>(t.key==='SAMS'||t.key==='MCST')?parseInt(r[t.key]||0,10)>0:isOne(r[t.key])));
-  let html=`<div class="st">전체 기간 MUTE 유형 분포</div><div class="mg">${mCard('전체 MUTE',total+'건','')}${mCard('Rx (수화) 이상',rxRows.length+'건',pct(rxRows.length,total)+'%',rxRows.length>0?'warn':'')}${mCard('Tx (송화) 이상',txRows.length+'건',pct(txRows.length,total)+'%',txRows.length>0?'warn':'')}${mCard('마이크 이상',micRowsAll.length+'건',pct(micRowsAll.length,total)+'%',micRowsAll.length>0?'warn':'')}</div>`;
+  const rsrps=muteRows.map(r=>fNum(r.RSRP)).filter(v=>v!==null);
+  const sinrs=muteRows.map(r=>fNum(r.CINR??r.SINR)).filter(v=>v!==null);
+  const fmtV=v=>v!==null?v.toFixed(1):'-';
+  let html=`<div class="st">전체 기간 MUTE 유형 분포</div><div class="mg">${mCard('전체 MUTE',total+'건','')}${mCard('Rx (수화) 이상',rxRows.length+'건',pct(rxRows.length,total)+'%',rxRows.length>0?'warn':'')}${mCard('Tx (송화) 이상',txRows.length+'건',pct(txRows.length,total)+'%',txRows.length>0?'warn':'')}${mCard('마이크 이상',micRowsAll.length+'건',pct(micRowsAll.length,total)+'%',micRowsAll.length>0?'warn':'')}${mCard('avg RSRP',fmtV(avgArr(rsrps)),'수신전력 평균',avgArr(rsrps)<-100?'warn':'')}${mCard('avg SINR',fmtV(avgArr(sinrs)),'SINR 평균',avgArr(sinrs)<0?'warn':'')}</div>`;
+  // 유형별 breakdown
+  const allTypes=[...SOUND_TYPES,...MIC_TYPES,{key:'TXSF',label:'송화음 차단',cat:'tx'}];
+  const typeRows=allTypes.map(t=>{const cnt=muteRows.filter(r=>(t.key==='SAMS'||t.key==='MCST')?parseInt(r[t.key]||0,10)>0:isOne(r[t.key])).length;return cnt>0?`<tr><td>${t.label}</td><td style="text-align:center">${t.cat==='rx'?'수화':'송화'}</td><td style="text-align:center;font-weight:700;color:#c0392b">${cnt}건</td><td style="text-align:center">${pct(cnt,total)}%</td></tr>`:''}).join('');
+  if(typeRows)html+=`<div class="st" style="margin-top:18px">MUTE 유형별 상세</div><div class="tw"><table><thead><tr><th>유형</th><th>구분</th><th>건수</th><th>비율</th></tr></thead><tbody>${typeRows}</tbody></table></div>`;
+  // 이벤트 테이블
+  const tblRows=muteRows.map(r=>{
+    const types=allTypes.filter(t=>(t.key==='SAMS'||t.key==='MCST')?parseInt(r[t.key]||0,10)>0:isOne(r[t.key])).map(t=>`<span class="badge ta" style="font-size:10px">${t.label}</span>`).join(' ');
+    const rsrpV=fNum(r.RSRP);const sinrV=fNum(r.CINR??r.SINR);
+    const rsrpBad=rsrpV!==null&&rsrpV<=-100;const sinrBad=sinrV!==null&&sinrV<0;
+    return`<tr><td>${r.Date}</td><td>${r.Time}</td><td style="text-align:center">${r.TAC_??''}</td><td style="text-align:center">${r.PhID??''}</td><td style="text-align:center;color:${rsrpBad?'#c0392b':'inherit'};font-weight:${rsrpBad?700:400}">${rsrpV!==null?rsrpV:'-'}</td><td style="text-align:center;color:${sinrBad?'#c0392b':'inherit'};font-weight:${sinrBad?700:400}">${sinrV!==null?sinrV:'-'}</td><td style="text-align:center">${r.BLER&&fNum(r.BLER)>0?r.BLER:'-'}</td><td>${types||'-'}</td></tr>`;
+  }).join('');
+  html+=`<div class="st" style="margin-top:18px">MUTE 이벤트 목록 (${total}건)</div><div class="tw"><table><thead><tr><th>날짜</th><th>시간</th><th>TAC</th><th>PCI</th><th>RSRP</th><th>SINR</th><th>BLER</th><th>유형</th></tr></thead><tbody>${tblRows}</tbody></table></div>`;
   document.getElementById('muteContent').innerHTML=html;
 }
 function renderDropTab(){
@@ -510,6 +525,15 @@ function renderDropTab(){
   const rsrps=dropRows.map(getDropRSRP).filter(v=>v!==null);const sinrs=dropRows.map(getDropSINR).filter(v=>v!==null);
   const fmtV=v=>v!==null?v.toFixed(1):'-';
   let html=`<div class="st">전체 DROP 요약</div><div class="mg">${mCard('총 DROP',total+'건','')}${mCard('avg RSRP',fmtV(avgArr(rsrps)),'수신전력 평균',avgArr(rsrps)<-100?'warn':'')}${mCard('avg SINR',fmtV(avgArr(sinrs)),'SINR 평균',avgArr(sinrs)<0?'warn':'')}</div>`;
+  // 이벤트 테이블
+  const tblRows=dropRows.map(r=>{
+    const rsrp=getDropRSRP(r);const sinr=getDropSINR(r);
+    const rsrpBad=rsrp!==null&&rsrp<=-100;const sinrBad=sinr!==null&&sinr<0;
+    const cause=DROP_CAUSES[String(r.Cause??r.CAUSE??'')] ||r.Cause||r.CAUSE||'-';
+    const r0=fNum(r.RxP0),r1=fNum(r.RxP1);const antDiff=r0!==null&&r1!==null?Math.abs(r0-r1):null;
+    return`<tr><td>${r.Date}</td><td>${r.Time}</td><td style="text-align:center">${r.TAC_??''}</td><td style="text-align:center">${r.PhID??''}</td><td style="text-align:center;color:${rsrpBad?'#c0392b':'inherit'};font-weight:${rsrpBad?700:400}">${rsrp!==null?rsrp.toFixed(1):'-'}</td><td style="text-align:center;color:${sinrBad?'#c0392b':'inherit'};font-weight:${sinrBad?700:400}">${sinr!==null?sinr.toFixed(1):'-'}</td><td style="text-align:center${antDiff!==null&&antDiff>=20?';color:#e67e22;font-weight:700':''}">${antDiff!==null?antDiff.toFixed(0):'-'}</td><td style="font-size:11px">${cause}</td></tr>`;
+  }).join('');
+  html+=`<div class="st" style="margin-top:18px">DROP 이벤트 목록 (${total}건)</div><div class="tw"><table><thead><tr><th>날짜</th><th>시간</th><th>TAC</th><th>PCI</th><th>RSRP</th><th>SINR</th><th>안테나차이</th><th>원인</th></tr></thead><tbody>${tblRows}</tbody></table></div>`;
   document.getElementById('dropContent').innerHTML=html;
 }
 let stSortCol='default',stSortDir='desc';
