@@ -100,9 +100,14 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     if (pager) pager.style.display = 'none';
                 }
 
-                // 추이 그래프 canvas만 타겟
                 const style = document.createElement('style');
-                style.textContent = '#trendContent canvas { max-width: 100% !important; } #trendContent > div { overflow: hidden !important; }';
+                style.textContent = [
+                    '#trendContent canvas { max-width:100% !important; }',
+                    '#trendContent > div { overflow:hidden !important; }',
+                    // 원본 데이터 테이블: 폰트 축소 + 텍스트 줄바꿈 허용 → 가로 맞춤
+                    '#tab-raw table { font-size:9px !important; table-layout:fixed; width:100%; }',
+                    '#tab-raw th, #tab-raw td { white-space:normal !important; word-break:break-all; padding:2px 3px !important; }',
+                ].join(' ');
                 document.head.appendChild(style);
 
                 // 기지국 테이블 TAC(HEX) 컬럼 제거
@@ -173,7 +178,7 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
             await page.wait_for_timeout(3000)
             await page.pdf(
                 path=pdf_path, format="A4", print_background=True, scale=0.75,
-                margin={"top": "10mm", "bottom": "10mm", "left": "4mm", "right": "4mm"},
+                margin={"top": "8mm", "bottom": "8mm", "left": "0mm", "right": "0mm"},
             )
             await browser.close()
         logger.info(f"[PDF] 변환 완료: {pdf_path}")
