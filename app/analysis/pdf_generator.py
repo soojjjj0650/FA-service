@@ -89,21 +89,20 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                 if (typeof renderDropTab === 'function')      renderDropTab();
                 if (typeof renderTrend === 'function')        renderTrend();
 
-                // 원본 데이터: 페이징 해제 후 전체 표시
+                // 원본 데이터: RP가 const라 재할당 불가 → slice 오버라이드로 전체 표시
                 if (typeof rawFiltered !== 'undefined' && rawFiltered.length > 0) {
-                    window.RP = 999999;
-                    window.rawPage = 1;
+                    rawPage = 1;
+                    const origSlice = rawFiltered.slice.bind(rawFiltered);
+                    rawFiltered.slice = function() { return origSlice(); };
                     if (typeof renderRaw === 'function') renderRaw();
+                    rawFiltered.slice = origSlice;
                     const pager = document.getElementById('rawPager');
                     if (pager) pager.style.display = 'none';
                 }
 
-                // 차트 너비 A4에 맞게 고정 (오른쪽 잘림 방지)
+                // 추이 그래프 canvas만 타겟 (기지국 테이블 등 다른 요소 영향 없게)
                 const style = document.createElement('style');
-                style.textContent = `
-                    canvas { max-width: 100% !important; box-sizing: border-box; }
-                    [id="trendContent"] > div { max-width: 100% !important; overflow: hidden !important; }
-                `;
+                style.textContent = '#trendContent canvas { max-width: 100% !important; } #trendContent > div { overflow: hidden !important; }';
                 document.head.appendChild(style);
 
                 const TAB_NAMES = {
