@@ -9,3 +9,6 @@ venv/
 *.egg-info/
 dist/
 build/
+test/output/
+data/knox_device_id.txt
+data/knox_chatroom_id.txt
