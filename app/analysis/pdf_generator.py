@@ -154,8 +154,19 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     }
                 });
 
-                const tabBar = document.querySelector('.tab-bar');
-                if (tabBar) tabBar.style.display = 'none';
+                // 원본 데이터 테이블 TAC(HEX) 컬럼 제거 (index 6)
+                // rawHead: Call(0),Date(1),Time(2),Feature(3),PLMN(4),ACT(5),TAC(HEX)(6),...
+                (function() {
+                    const rawHead = document.getElementById('rawHead');
+                    const rawBody = document.getElementById('rawBody');
+                    if (!rawHead || !rawBody) return;
+                    const hRow = rawHead.querySelector('tr');
+                    if (hRow) { const ths = hRow.querySelectorAll('th'); if (ths[6]) ths[6].remove(); }
+                    rawBody.querySelectorAll('tr').forEach(row => {
+                        const tds = row.querySelectorAll('td');
+                        if (tds[6]) tds[6].remove();
+                    });
+                })();
             }""")
 
             # 차트 + 원본 데이터 렌더링 완료 대기
