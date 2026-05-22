@@ -25,11 +25,22 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
 
     try:
         async with async_playwright() as p:
-            # Edge가 이미 설치되어 있으면 Edge 사용, 없으면 Chromium 사용
-            try:
-                browser = await p.chromium.launch(channel="msedge")
-            except Exception:
-                browser = await p.chromium.launch()
+            # 브라우저 실행: Edge → Chromium → Linux headless_shell 순서로 시도
+            browser = None
+            for launch_kwargs in [
+                {"channel": "msedge"},
+                {},
+                {"executable_path": "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell"},
+            ]:
+                try:
+                    browser = await p.chromium.launch(**launch_kwargs)
+                    break
+                except Exception:
+                    continue
+            if browser is None:
+                logger.error("[PDF] 사용 가능한 브라우저 없음")
+                return False
+
             page = await browser.new_page()
             await page.goto(f"file:///{html_path.replace(os.sep, '/')}", wait_until="networkidle", timeout=30000)
             await page.pdf(path=pdf_path, format="A4", print_background=True)
