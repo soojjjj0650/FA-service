@@ -10,6 +10,8 @@ FA Chatbot Service - FastAPI 메인 애플리케이션
   WS   /ws/chat                   → SN 조회 (WebSocket, 실시간 진행 상태)
   GET  /api/status                → 브라우저 풀 상태 확인
   POST /api/session/reset         → 세션 수동 초기화
+  POST /message                   → Knox Messenger 수신 (공식 스펙 URL)
+  POST /api/knox/webhook          → Knox Messenger 수신 (구 URL, /message 로 포워딩)
   POST /webhook                   → 챗봇 Builder Adaptive Card 제출 수신 (SN 조회)
   POST /api/test-result           → Mock 결과 카드 즉시 반환 (챗봇 카드 형식 테스트용)
   GET  /api/jobs                  → 현재 활성 Job 목록 (디버그용)
@@ -845,89 +847,64 @@ async def knox_status():
 
 
 # ─── Knox Messenger 수신 웹훅 ─────────────────────────────────────────────────
-@app.post("/api/knox/webhook")
-async def knox_webhook(request: Request):
-    """
-    Knox Messenger 수신 웹훅.
+# Knox 메시지 수신 스펙:
+# POST /message
+# {
+#   "sender":       "7549538049580",   ← Knox 사용자 번호
+#   "setTime":      "14239489989",     ← 전송 시각 (epoch ms)
+#   "chatType":     "SINGLE",          ← SINGLE / GROUP
+#   "chatroomId":   "239482039408",
+#   "msgId":        12343234,
+#   "msgType":      "TEXT",            ← TEXT / MEDIA / ADAPTIVE_CARD
+#   "chatMsg":      "R3CUFHDJF",       ← 메시지 본문 (ADAPTIVE_CARD면 JSON 문자열)
+#   "senderKnoxId": "aabbc"            ← Knox ID (응답 수신자 식별용)
+# }
 
-    Knox 서버가 사용자 메시지를 이 엔드포인트로 전달합니다.
-    메시지에서 SN을 추출하여 FA 분석 파이프라인을 실행하고,
-    완료 후 Knox Messenger로 PDF를 전송합니다.
-
-    Knox 서버 출발지 IP (방화벽 허용 필요):
-      스테이지: 112.106.197.161, 112.106.197.162
-      운  영:  182.195.35.15, 182.195.35.16
-    """
-    raw_body = await request.body()
-    raw_text = raw_body.decode("utf-8", errors="replace")
-
-    logger.info(
-        f"[Knox Webhook] 수신 | content-type={request.headers.get('content-type','-')} "
-        f"| body={raw_text[:500]}"
-    )
-
-    # ── JSON 파싱 ─────────────────────────────────────────────────────────────
+async def _knox_handle_message(data: dict) -> JSONResponse:
+    """Knox 수신 메시지 공통 처리 로직."""
     import json as _json
-    data: dict = {}
-    try:
-        data = _json.loads(raw_text) if raw_text else {}
-        if not isinstance(data, dict):
-            data = {}
-    except Exception:
-        pass
 
-    if not data:
-        logger.warning(f"[Knox Webhook] 파싱 실패 - raw={raw_text[:200]}")
-        return JSONResponse(status_code=200, content={"status": "ignored"})
-
-    # ── 메시지 내용 추출 ──────────────────────────────────────────────────────
-    # Knox Messenger 페이로드 예시:
-    # {"sendUserId": "user01", "chatroomId": "room123", "message": "R3CUFHDJF", "messageType": "text"}
-    message_text = (
-        data.get("message")
-        or data.get("content")
-        or data.get("text")
-        or data.get("body")
-        or data.get("data", {}).get("message")
-        or ""
-    ).strip()
-
-    sender_id = (
-        data.get("sendUserId")
-        or data.get("userId")
-        or data.get("senderId")
-        or data.get("sender")
-        or data.get("data", {}).get("sendUserId")
-        or ""
-    ).strip()
-
-    chatroom_id = (
-        data.get("chatroomId")
-        or data.get("chatroom_id")
-        or data.get("roomId")
-        or data.get("data", {}).get("chatroomId")
-        or ""
-    ).strip()
-
-    message_type = (data.get("messageType") or data.get("type") or "text").lower()
+    msg_type     = (data.get("msgType") or "").upper()       # TEXT / MEDIA / ADAPTIVE_CARD
+    chat_msg     = (data.get("chatMsg") or "").strip()
+    sender       = (data.get("sender") or "").strip()
+    chatroom_id  = (data.get("chatroomId") or "").strip()
+    sender_knox  = (data.get("senderKnoxId") or "").strip()
 
     logger.info(
-        f"[Knox Webhook] 파싱 완료 | sender={sender_id} | "
-        f"chatroom={chatroom_id} | type={message_type} | message={message_text[:100]}"
+        f"[Knox] 수신 | msgType={msg_type} | sender={sender} | "
+        f"knoxId={sender_knox} | chatroom={chatroom_id} | msg={chat_msg[:120]}"
     )
 
-    # 텍스트 메시지만 처리 (파일/이미지 등은 무시)
-    if message_type not in ("text", ""):
-        return JSONResponse(status_code=200, content={"status": "ignored", "reason": "non-text message"})
+    # ADAPTIVE_CARD: chatMsg가 JSON 문자열 → 안에서 SN 추출
+    if msg_type == "ADAPTIVE_CARD":
+        try:
+            card_data = _json.loads(chat_msg)
+            # Action.Submit 데이터에서 SN 필드 탐색
+            sn_from_card = (
+                card_data.get("sn") or card_data.get("SN")
+                or card_data.get("serialNumber") or card_data.get("serial_number")
+                or ""
+            ).strip().upper()
+            if sn_from_card:
+                chat_msg = sn_from_card
+            else:
+                logger.warning(f"[Knox] ADAPTIVE_CARD에서 SN 필드 없음: {chat_msg[:200]}")
+                return JSONResponse(status_code=200, content={"status": "ignored", "reason": "no SN in card"})
+        except Exception:
+            logger.warning(f"[Knox] ADAPTIVE_CARD JSON 파싱 실패: {chat_msg[:200]}")
+            return JSONResponse(status_code=200, content={"status": "ignored", "reason": "card parse error"})
 
-    if not message_text:
+    # TEXT 이외 타입(MEDIA 등)은 무시
+    elif msg_type not in ("TEXT", ""):
+        return JSONResponse(status_code=200, content={"status": "ignored", "reason": f"unsupported msgType={msg_type}"})
+
+    if not chat_msg:
         return JSONResponse(status_code=200, content={"status": "ignored", "reason": "empty message"})
 
     # ── SN 추출 ───────────────────────────────────────────────────────────────
-    sn_raw = message_text.strip().upper()
-    # SN 형식 검증 (영문+숫자+하이픈, 5~20자)
+    sn_raw = chat_msg.strip().upper()
     if not re.match(r'^[A-Z0-9\-]{5,20}$', sn_raw):
-        logger.warning(f"[Knox Webhook] SN 형식 불일치: '{sn_raw}' - 무시")
+        logger.warning(f"[Knox] SN 형식 불일치: '{sn_raw}'")
         return JSONResponse(status_code=200, content={"status": "ignored", "reason": "not a valid SN"})
 
     # ── Job 등록 및 파이프라인 실행 ───────────────────────────────────────────
@@ -936,16 +913,63 @@ async def knox_webhook(request: Request):
         "job_id":      job_id,
         "sn":          sn_raw,
         "status":      "pending",
-        "userId":      sender_id,
+        "userId":      sender_knox or sender,
         "chatRoomId":  chatroom_id,
         "created_at":  time.time(),
-        "source":      "knox",          # 수신 채널 구분
+        "source":      "knox",
     }
 
-    logger.info(f"[Knox Webhook] FA 분석 시작 | SN={sn_raw} | job_id={job_id} | sender={sender_id}")
+    logger.info(f"[Knox] FA 분석 시작 | SN={sn_raw} | job_id={job_id}")
     asyncio.create_task(_run_knox_pipeline(job_id, sn_raw))
-
     return JSONResponse(status_code=200, content={"status": "accepted", "job_id": job_id, "sn": sn_raw})
+
+
+@app.post("/message")
+async def knox_message_receive(request: Request):
+    """
+    Knox Messenger 공식 수신 엔드포인트 (스펙 URL: /message).
+
+    Knox 서버 출발지 IP (방화벽 허용 필요):
+      스테이지: 112.106.197.161, 112.106.197.162
+      운  영:   182.195.35.15,  182.195.35.16
+    """
+    raw_body = await request.body()
+    raw_text = raw_body.decode("utf-8", errors="replace")
+    logger.info(f"[Knox /message] body={raw_text[:500]}")
+
+    import json as _json
+    try:
+        data = _json.loads(raw_text) if raw_text else {}
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        data = {}
+
+    if not data:
+        return JSONResponse(status_code=200, content={"status": "ignored"})
+
+    return await _knox_handle_message(data)
+
+
+@app.post("/api/knox/webhook")
+async def knox_webhook(request: Request):
+    """Knox 수신 웹훅 (구 URL — /message 로 포워딩)."""
+    raw_body = await request.body()
+    raw_text = raw_body.decode("utf-8", errors="replace")
+    logger.info(f"[Knox /api/knox/webhook] body={raw_text[:500]}")
+
+    import json as _json
+    try:
+        data = _json.loads(raw_text) if raw_text else {}
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        data = {}
+
+    if not data:
+        return JSONResponse(status_code=200, content={"status": "ignored"})
+
+    return await _knox_handle_message(data)
 
 
 async def _run_knox_pipeline(job_id: str, sn: str) -> None:
