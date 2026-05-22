@@ -589,15 +589,74 @@ class KnoxMessengerClient:
         message_text: str = "",
     ) -> bool:
         """
-        채팅방에 파일 다운로드 링크를 텍스트 메시지로 전송합니다.
-        download_url과 안내 문구를 합쳐 send_message()로 전달합니다.
-        """
-        if message_text:
-            full_message = f"{message_text}\n\n파일 다운로드: {download_url}"
-        else:
-            full_message = f"[FA 분석 결과] {filename}\n파일 다운로드: {download_url}"
+        채팅방에 파일을 msgType:1 (Media)로 전송합니다.
+        chatMsg = download_url (Knox 파일서버 경로)
+        Knox Messenger가 파일 첨부 UI로 렌더링합니다.
 
-        return await self.send_message(chatroom_id, full_message)
+        POST /messenger/message/api/v2.0/message/chatRequest
+        """
+        url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
+
+        request_id = int(time.time() * 1000)
+        plain_payload = {
+            "requestId": request_id,
+            "chatroomId": int(chatroom_id),
+            "chatMessageParams": [
+                {
+                    "msgId": request_id,
+                    "msgType": 1,           # Media type
+                    "chatMsg": download_url, # Knox 파일서버 download_url
+                    "msgTtl": 7200,
+                }
+            ],
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "System-ID": self.system_id,
+            "x-device-id": self.device_id,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            msg_key = await self.get_message_key()
+            if msg_key:
+                iv = msg_key[:16]
+                body = _encrypt_payload(plain_payload, msg_key, iv)
+                headers["Content-Type"] = "text/plain"
+                async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
+                    resp = await client.post(url, content=body, headers=headers)
+            else:
+                logger.warning("[Knox] 메시지 키 없음 - 평문 전송 (테스트용)")
+                async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
+                    resp = await client.post(url, json=plain_payload, headers=headers)
+
+            logger.info(f"[Knox] 파일 메시지 전송 | status={resp.status_code} | body={resp.text[:300]}")
+
+            if resp.status_code >= 400:
+                logger.error(f"[Knox] 파일 메시지 전송 실패: {resp.status_code} {resp.text[:200]}")
+                return False
+
+            if msg_key:
+                iv = msg_key[:16]
+                data = _decrypt_payload(resp.text.strip(), msg_key, iv)
+            else:
+                data = resp.json()
+
+            result_code = data.get("result", {}).get("code")
+            if result_code == 1000:
+                logger.info(f"[Knox] 파일 메시지 전송 완료 | chatroomId={chatroom_id} | file={filename}")
+                return True
+
+            # msgType:1 실패 시 텍스트(msgType:0)로 fallback
+            logger.warning(f"[Knox] Media 전송 실패(code={result_code}) - 텍스트 메시지로 재시도")
+            fallback = f"[FA 분석] {filename}\n다운로드: {download_url}"
+            return await self.send_message(chatroom_id, fallback)
+
+        except Exception as e:
+            logger.error(f"[Knox] 파일 메시지 전송 예외: {type(e).__name__}: {e}", exc_info=True)
+            return False
 
 
 # ─── 메인 전송 함수 ───────────────────────────────────────────────────────────
