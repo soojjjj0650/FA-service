@@ -107,31 +107,31 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     '#tab-raw .tw { overflow-x:visible !important; overflow:visible !important; }',
                     '#tab-raw table { font-size:9px !important; table-layout:fixed; width:100%; }',
                     '#tab-raw th, #tab-raw td { white-space:normal !important; word-break:break-all; padding:2px 3px !important; }',
-                    // 상단 고정 탭 네비게이션 바: PDF에서 모든 페이지에 반복 출력
-                    '#pdf-nav { position:fixed; top:0; left:0; right:0; height:22px; background:#1e3a5f; display:flex; align-items:center; padding:0 8px; gap:2px; z-index:9999; box-sizing:border-box; }',
-                    '#pdf-nav a { color:#cbd5e1; text-decoration:none; font-size:9px; font-weight:600; padding:2px 7px; border-radius:3px; white-space:nowrap; font-family:inherit; }',
-                    '#pdf-nav a:hover { background:rgba(255,255,255,0.15); color:#fff; }',
-                    '#pdf-nav .sep { color:#475569; font-size:9px; }',
-                    'body { padding-top: 26px !important; }',
+                    // 상단 고정 탭 네비게이션 바
+                    '#pdf-nav { position:fixed; top:0; left:0; right:0; height:26px; background:linear-gradient(135deg,#1e3a5f 0%,#2d5a9e 100%); display:flex; align-items:center; padding:0 12px; gap:1px; z-index:9999; box-sizing:border-box; box-shadow:0 2px 6px rgba(0,0,0,0.3); }',
+                    '#pdf-nav .nav-logo { color:#93c5fd; font-size:9px; font-weight:800; letter-spacing:1px; margin-right:10px; padding-right:10px; border-right:1px solid rgba(255,255,255,0.2); white-space:nowrap; }',
+                    '#pdf-nav a { color:rgba(255,255,255,0.7); text-decoration:none; font-size:8.5px; font-weight:600; padding:3px 9px; border-radius:12px; white-space:nowrap; font-family:inherit; transition:all 0.15s; letter-spacing:0.3px; }',
+                    '#pdf-nav a:hover { background:rgba(255,255,255,0.18); color:#fff; }',
+                    'body { padding-top: 30px !important; }',
                 ].join(' ');
                 document.head.appendChild(style);
 
                 // 상단 고정 탭 네비게이션 바 생성
                 const NAV_TABS = [
-                    ['overview', '전체요약'],
-                    ['station',  '문제기지국'],
-                    ['mute',     'MUTE'],
-                    ['drop',     'DROP'],
-                    ['daily',    '일별상세'],
-                    ['trend',    '추이그래프'],
-                    ['raw',      '원본데이터'],
+                    ['overview', '전체 요약'],
+                    ['station',  '문제 기지국'],
+                    ['mute',     'MUTE 분석'],
+                    ['drop',     'DROP 분석'],
+                    ['daily',    '일별 상세'],
+                    ['trend',    '추이 그래프'],
+                    ['raw',      '원본 데이터'],
                 ];
                 const nav = document.createElement('div');
                 nav.id = 'pdf-nav';
-                nav.innerHTML = NAV_TABS.map(([id, label], i) =>
-                    (i > 0 ? '<span class="sep">|</span>' : '') +
-                    '<a href="#tab-' + id + '">' + label + '</a>'
-                ).join('');
+                nav.innerHTML = '<span class="nav-logo">FA Report</span>'
+                    + NAV_TABS.map(([id, label]) =>
+                        '<a href="#tab-' + id + '">' + label + '</a>'
+                    ).join('');
                 document.body.insertBefore(nav, document.body.firstChild);
 
                 // 기지국 테이블 TAC(HEX) 컬럼 제거
@@ -169,21 +169,6 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     trend:    '추이 그래프',
                     raw:      '원본 데이터',
                 };
-
-                // 목차 페이지 생성
-                const toc = document.createElement('div');
-                toc.style.cssText = 'page-break-after:always;padding:40px 32px;font-family:inherit';
-                toc.innerHTML = '<div style="font-size:22px;font-weight:700;color:#1e3a5f;border-bottom:3px solid #1e3a5f;padding-bottom:12px;margin-bottom:28px">목차</div>'
-                    + Object.entries(TAB_NAMES).map(([id, label], i) =>
-                        '<a href="#tab-' + id + '" style="display:flex;align-items:center;text-decoration:none;color:#1e293b;padding:10px 0;border-bottom:1px solid #e2e8f0">'
-                        + '<span style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;background:#1e3a5f;color:#fff;border-radius:50%;font-size:12px;font-weight:700;margin-right:14px;flex-shrink:0">' + (i+1) + '</span>'
-                        + '<span style="font-size:15px;font-weight:600">' + label + '</span>'
-                        + '<span style="flex:1;border-bottom:1px dotted #94a3b8;margin:0 12px"></span>'
-                        + '<span style="font-size:12px;color:#64748b">▶</span>'
-                        + '</a>'
-                    ).join('');
-                const dashboard = document.getElementById('dashboard');
-                if (dashboard) dashboard.insertBefore(toc, dashboard.firstChild);
 
                 Object.entries(TAB_NAMES).forEach(([id, label], i) => {
                     const el = document.getElementById('tab-' + id);
