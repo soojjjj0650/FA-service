@@ -104,7 +104,8 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                 style.textContent = [
                     '#trendContent canvas { max-width:100% !important; }',
                     '#trendContent > div { overflow:hidden !important; }',
-                    // 원본 데이터 테이블: 폰트 축소 + 텍스트 줄바꿈 허용 → 가로 맞춤
+                    // 원본 데이터: overflow hidden 해제 + 폰트 축소
+                    '#tab-raw .tw { overflow-x:visible !important; overflow:visible !important; }',
                     '#tab-raw table { font-size:9px !important; table-layout:fixed; width:100%; }',
                     '#tab-raw th, #tab-raw td { white-space:normal !important; word-break:break-all; padding:2px 3px !important; }',
                 ].join(' ');
