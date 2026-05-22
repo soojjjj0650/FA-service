@@ -867,68 +867,99 @@ async def knox_status():
 #   "senderKnoxId": "aabbc"            ← Knox ID (응답 수신자 식별용)
 # }
 
+async def _knox_reply(chatroom_id: str, text: str, with_card: bool = True) -> None:
+    """Knox 채팅방에 텍스트 + (선택) SN 입력 카드를 전송합니다."""
+    if not settings.KNOX_MESSENGER_BASE_URL or not settings.KNOX_ACCESS_TOKEN:
+        return
+    from app.messenger.knox_messenger import KnoxMessengerClient, _load_cached_device_id, build_sn_input_card
+    client = KnoxMessengerClient(
+        base_url=settings.KNOX_MESSENGER_BASE_URL,
+        access_token=settings.KNOX_ACCESS_TOKEN,
+        system_id=settings.KNOX_SYSTEM_ID,
+        device_id=settings.KNOX_DEVICE_ID or _load_cached_device_id(),
+        receiver_user_id=settings.KNOX_RECEIVER_USER_ID,
+    )
+    if text:
+        await client.send_message(chatroom_id, text)
+    if with_card:
+        receive_url = f"http://{settings.HOST}:{settings.PORT}/message"
+        await client.send_adaptive_card(chatroom_id, build_sn_input_card(receive_url))
+
+
 async def _knox_handle_message(data: dict) -> JSONResponse:
     """Knox 수신 메시지 공통 처리 로직."""
     import json as _json
 
-    msg_type     = (data.get("msgType") or "").upper()       # TEXT / MEDIA / ADAPTIVE_CARD
-    chat_msg     = (data.get("chatMsg") or "").strip()
-    sender       = (data.get("sender") or "").strip()
-    chatroom_id  = (data.get("chatroomId") or "").strip()
-    sender_knox  = (data.get("senderKnoxId") or "").strip()
+    msg_type    = (data.get("msgType") or "").upper()
+    chat_msg    = (data.get("chatMsg") or "").strip()
+    sender      = (data.get("sender") or "").strip()
+    chatroom_id = (data.get("chatroomId") or "").strip()
+    sender_knox = (data.get("senderKnoxId") or "").strip()
 
     logger.info(
         f"[Knox] 수신 | msgType={msg_type} | sender={sender} | "
         f"knoxId={sender_knox} | chatroom={chatroom_id} | msg={chat_msg[:120]}"
     )
 
-    # ADAPTIVE_CARD: chatMsg가 JSON 문자열 → 안에서 SN 추출
+    # ADAPTIVE_CARD: chatMsg JSON에서 sn 필드 추출
     if msg_type == "ADAPTIVE_CARD":
         try:
             card_data = _json.loads(chat_msg)
-            # Action.Submit 데이터에서 SN 필드 탐색
-            sn_from_card = (
+            chat_msg = (
                 card_data.get("sn") or card_data.get("SN")
-                or card_data.get("serialNumber") or card_data.get("serial_number")
-                or ""
+                or card_data.get("serialNumber") or ""
             ).strip().upper()
-            if sn_from_card:
-                chat_msg = sn_from_card
-            else:
-                logger.warning(f"[Knox] ADAPTIVE_CARD에서 SN 필드 없음: {chat_msg[:200]}")
-                return JSONResponse(status_code=200, content={"status": "ignored", "reason": "no SN in card"})
         except Exception:
-            logger.warning(f"[Knox] ADAPTIVE_CARD JSON 파싱 실패: {chat_msg[:200]}")
-            return JSONResponse(status_code=200, content={"status": "ignored", "reason": "card parse error"})
+            chat_msg = ""
 
-    # TEXT 이외 타입(MEDIA 등)은 무시
     elif msg_type not in ("TEXT", ""):
-        return JSONResponse(status_code=200, content={"status": "ignored", "reason": f"unsupported msgType={msg_type}"})
+        return JSONResponse(status_code=200, content={"status": "ignored"})
 
     if not chat_msg:
-        return JSONResponse(status_code=200, content={"status": "ignored", "reason": "empty message"})
+        asyncio.create_task(_knox_reply(chatroom_id, "SN을 입력해주세요."))
+        return JSONResponse(status_code=200, content={"status": "ignored", "reason": "empty"})
 
-    # ── SN 추출 ───────────────────────────────────────────────────────────────
-    sn_raw = chat_msg.strip().upper()
-    if not re.match(r'^[A-Z0-9\-]{5,20}$', sn_raw):
-        logger.warning(f"[Knox] SN 형식 불일치: '{sn_raw}'")
-        return JSONResponse(status_code=200, content={"status": "ignored", "reason": "not a valid SN"})
+    # ── 여러 SN 지원: 쉼표/공백/줄바꿈으로 구분 ─────────────────────────────
+    import re as _re
+    sn_list = [s.strip().upper() for s in _re.split(r'[,\s]+', chat_msg) if s.strip()]
+    valid_sns   = [s for s in sn_list if re.match(r'^[A-Z0-9\-]{5,20}$', s)]
+    invalid_sns = [s for s in sn_list if not re.match(r'^[A-Z0-9\-]{5,20}$', s)]
 
-    # ── Job 등록 및 파이프라인 실행 ───────────────────────────────────────────
-    job_id = str(uuid.uuid4())
-    _chatbot_jobs[job_id] = {
-        "job_id":      job_id,
-        "sn":          sn_raw,
-        "status":      "pending",
-        "userId":      sender_knox or sender,
-        "chatRoomId":  chatroom_id,
-        "created_at":  time.time(),
-        "source":      "knox",
-    }
+    if invalid_sns:
+        asyncio.create_task(_knox_reply(
+            chatroom_id,
+            f"SN 형식 오류: {', '.join(invalid_sns)}\n영문+숫자+하이픈 5~20자로 입력해주세요.",
+            with_card=not valid_sns,  # 유효한 SN이 없을 때만 카드 재전송
+        ))
 
-    logger.info(f"[Knox] FA 분석 시작 | SN={sn_raw} | job_id={job_id}")
-    asyncio.create_task(_run_knox_pipeline(job_id, sn_raw))
-    return JSONResponse(status_code=200, content={"status": "accepted", "job_id": job_id, "sn": sn_raw})
+    if not valid_sns:
+        return JSONResponse(status_code=200, content={"status": "ignored", "reason": "no valid SN"})
+
+    # ── 각 SN별 Job 등록 및 파이프라인 실행 ──────────────────────────────────
+    job_ids = []
+    for sn_raw in valid_sns:
+        job_id = str(uuid.uuid4())
+        _chatbot_jobs[job_id] = {
+            "job_id":     job_id,
+            "sn":         sn_raw,
+            "status":     "pending",
+            "userId":     sender_knox or sender,
+            "chatRoomId": chatroom_id,
+            "created_at": time.time(),
+            "source":     "knox",
+        }
+        logger.info(f"[Knox] FA 분석 시작 | SN={sn_raw} | job_id={job_id}")
+        asyncio.create_task(_run_knox_pipeline(job_id, sn_raw))
+        job_ids.append(job_id)
+
+    if len(valid_sns) > 1:
+        asyncio.create_task(_knox_reply(
+            chatroom_id,
+            f"{len(valid_sns)}개 SN 분석을 시작합니다: {', '.join(valid_sns)}",
+            with_card=False,
+        ))
+
+    return JSONResponse(status_code=200, content={"status": "accepted", "job_ids": job_ids, "sns": valid_sns})
 
 
 @app.post("/message")
@@ -983,19 +1014,36 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     """
     Knox Messenger 전용 파이프라인:
     FA 분석 실행 → PDF 생성 → Knox Messenger로 전송
+    성공/실패 모두 SN 입력 카드를 재전송합니다.
     """
     job = _chatbot_jobs[job_id]
+    chatroom_id = job.get("chatRoomId", "")
 
-    # 기존 챗봇 파이프라인 재사용 (분석 + HTML 생성)
-    await _run_chatbot_full_pipeline(job_id, sn)
+    PIPELINE_TIMEOUT = 900  # 15분
 
-    # PDF 생성 및 Knox 전송
+    async def _fail(reason: str) -> None:
+        logger.error(f"[Knox Pipeline] 실패 | SN={sn} | reason={reason}")
+        await _knox_reply(chatroom_id, f"[FA 분석 실패] SN: {sn}\n{reason}", with_card=True)
+
+    try:
+        # 타임아웃 적용하여 분석 실행
+        await asyncio.wait_for(
+            _run_chatbot_full_pipeline(job_id, sn),
+            timeout=PIPELINE_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        await _fail(f"분석 시간 초과 ({PIPELINE_TIMEOUT//60}분). 잠시 후 다시 시도해주세요.")
+        return
+    except Exception as e:
+        await _fail(f"분석 중 오류 발생: {type(e).__name__}")
+        return
+
     if job.get("status") != "done":
-        logger.warning(f"[Knox Pipeline] 분석 실패 - PDF 전송 스킵 (SN: {sn})")
+        await _fail("데이터 조회에 실패했습니다. SN을 확인해주세요.")
         return
 
     if not settings.KNOX_MESSENGER_BASE_URL or not settings.KNOX_ACCESS_TOKEN:
-        logger.warning(f"[Knox Pipeline] Knox 설정 미완료 - PDF 전송 스킵 (SN: {sn})")
+        logger.warning(f"[Knox Pipeline] Knox 설정 미완료 (SN: {sn})")
         return
 
     import os as _os
@@ -1006,57 +1054,59 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     pdf_path  = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
 
     if not _os.path.exists(html_path):
-        logger.error(f"[Knox Pipeline] 분석 HTML 없음: {html_path}")
+        await _fail("분석 HTML 파일을 찾을 수 없습니다.")
         return
 
     # HTML → PDF 변환
-    pdf_ok = await html_to_pdf(html_path, pdf_path)
+    try:
+        pdf_ok = await asyncio.wait_for(html_to_pdf(html_path, pdf_path), timeout=120)
+    except asyncio.TimeoutError:
+        await _fail("PDF 변환 시간 초과.")
+        return
+
     if not pdf_ok:
-        logger.error(f"[Knox Pipeline] PDF 변환 실패 (SN: {sn})")
+        await _fail("PDF 변환에 실패했습니다.")
         return
 
     # Knox Messenger 전송
     device_id = settings.KNOX_DEVICE_ID or _load_cached_device_id()
-    receiver  = job.get("userId") or settings.KNOX_RECEIVER_USER_ID
-
     client = KnoxMessengerClient(
         base_url=settings.KNOX_MESSENGER_BASE_URL,
         access_token=settings.KNOX_ACCESS_TOKEN,
         system_id=settings.KNOX_SYSTEM_ID,
         device_id=device_id,
-        receiver_user_id=receiver,
+        receiver_user_id=job.get("userId") or settings.KNOX_RECEIVER_USER_ID,
     )
 
     if not await client.ensure_device_id():
-        logger.error(f"[Knox Pipeline] Device ID 확보 실패 (SN: {sn})")
+        await _fail("Knox Device ID 확보에 실패했습니다.")
         return
 
-    # 대화방 확보 (캐시 → 없으면 신규 생성)
-    chatroom_id = await client.ensure_chatroom()
+    chatroom_id = chatroom_id or await client.ensure_chatroom()
     if not chatroom_id:
-        logger.error(f"[Knox Pipeline] 대화방 확보 실패 (SN: {sn})")
+        await _fail("Knox 대화방 확보에 실패했습니다.")
         return
 
     download_url = await client.upload_file(pdf_path)
     if not download_url:
-        logger.error(f"[Knox Pipeline] 파일 업로드 실패 (SN: {sn})")
+        await _fail("Knox 파일 업로드에 실패했습니다.")
         return
 
-    feature_summary = job.get("feature_summary", "")
-    message = f"[FA 분석 완료] SN: {sn}\n{feature_summary}\n상세 분석 결과 PDF를 확인하세요."
     import time as _t
-    pdf_filename = f"r{_t.strftime('%Y%m%d%H%M%S')}.pdf"
+    feature_summary = job.get("feature_summary", "")
     success = await client.send_file_message(
         chatroom_id=chatroom_id,
         download_url=download_url,
-        filename=pdf_filename,
-        message_text=message,
+        filename=f"r{_t.strftime('%Y%m%d%H%M%S')}.pdf",
+        message_text=f"[FA 분석 완료] SN: {sn}\n{feature_summary}",
     )
 
     if success:
-        logger.info(f"[Knox Pipeline] PDF 전송 완료 | SN={sn} | receiver={receiver}")
+        logger.info(f"[Knox Pipeline] PDF 전송 완료 | SN={sn}")
+        # 완료 후 SN 입력 카드 재전송
+        await _knox_reply(chatroom_id, "", with_card=True)
     else:
-        logger.error(f"[Knox Pipeline] PDF 전송 실패 | SN={sn}")
+        await _fail("Knox PDF 전송에 실패했습니다.")
 
 
 # ─── 대시보드 엔드포인트 ──────────────────────────────────────────────────────
