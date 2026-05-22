@@ -1951,21 +1951,28 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
                 settings.TEAMS_CHANNEL_ID,
             )
 
-        # 2-4. Knox Messenger PDF 전송 (설정된 경우)
+        # 2-4. Knox Messenger 전송 (HTML zip 우선, 실패 시 PDF)
         if settings.KNOX_MESSENGER_ENABLED and settings.KNOX_MESSENGER_BASE_URL:
-            from app.analysis.pdf_generator import html_to_pdf
+            from app.analysis.pdf_generator import html_to_zip, html_to_pdf
             from app.messenger.knox_messenger import send_pdf_via_knox
-            _pdf_path = None
+            import os as _os2
+            _send_path = None
             if _analysis_html_path:
-                import os as _os2
-                _pdf_path = _os2.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
-                _pdf_ok = await html_to_pdf(_analysis_html_path, _pdf_path)
-                if not _pdf_ok:
-                    _pdf_path = None
-                    logger.warning(f"[Chatbot Job {job_id}] PDF 생성 실패 - Knox 전송 스킵")
-            if _pdf_path:
+                # 우선순위 1: HTML → zip (가볍고 인터랙티브)
+                _zip_path = _os2.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.zip")
+                if html_to_zip(_analysis_html_path, _zip_path, sn):
+                    _send_path = _zip_path
+                    logger.info(f"[Chatbot Job {job_id}] ZIP 생성 완료: {_zip_path}")
+                else:
+                    # 우선순위 2: HTML → PDF
+                    _pdf_path = _os2.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
+                    if await html_to_pdf(_analysis_html_path, _pdf_path):
+                        _send_path = _pdf_path
+                    else:
+                        logger.warning(f"[Chatbot Job {job_id}] ZIP/PDF 생성 모두 실패 - Knox 전송 스킵")
+            if _send_path:
                 await send_pdf_via_knox(
-                    pdf_path=_pdf_path,
+                    pdf_path=_send_path,
                     sn=sn,
                     base_url=settings.KNOX_MESSENGER_BASE_URL,
                     access_token=settings.KNOX_ACCESS_TOKEN,

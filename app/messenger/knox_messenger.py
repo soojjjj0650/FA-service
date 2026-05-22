@@ -647,7 +647,9 @@ async def send_pdf_via_knox(
         return False
 
     filename = os.path.basename(pdf_path)
-    logger.info(f"[Knox] PDF 전송 시작 | SN={sn} | 파일={filename} | device_id={client.device_id}")
+    ext = os.path.splitext(filename)[1].lower()
+    file_type = "ZIP" if ext == ".zip" else "PDF"
+    logger.info(f"[Knox] {file_type} 전송 시작 | SN={sn} | 파일={filename} | device_id={client.device_id}")
 
     # 1. 대화방 확보 (캐시 → 없으면 신규 생성)
     chatroom_id = await client.ensure_chatroom()
@@ -662,7 +664,11 @@ async def send_pdf_via_knox(
         return False
 
     # 3. 파일 메시지 전송
-    message = f"[FA 분석] SN: {sn}\n상세 분석 결과 PDF를 확인하세요."
+    ext = os.path.splitext(pdf_path)[1].lower()
+    if ext == ".zip":
+        message = f"[FA 분석] SN: {sn}\n분석 결과 파일({filename})을 다운로드하여 브라우저로 열어주세요."
+    else:
+        message = f"[FA 분석] SN: {sn}\n상세 분석 결과 파일({filename})을 확인하세요."
     success = await client.send_file_message(
         chatroom_id=chatroom_id,
         download_url=download_url,

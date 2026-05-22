@@ -1,11 +1,41 @@
 """
-HTML → PDF 변환 모듈 (Playwright 사용)
+HTML → PDF 변환 / HTML → ZIP 패키징 모듈 (Playwright 사용)
 """
 import asyncio
 import logging
 import os
+import zipfile
 
 logger = logging.getLogger(__name__)
+
+
+def html_to_zip(html_path: str, zip_path: str, sn: str = "") -> bool:
+    """
+    HTML 파일을 zip으로 압축합니다.
+    반환: 성공 여부
+    """
+    if not os.path.exists(html_path):
+        logger.error(f"[ZIP] HTML 파일 없음: {html_path}")
+        return False
+    try:
+        arcname = f"{sn}_analysis.html" if sn else os.path.basename(html_path)
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+            zf.write(html_path, arcname=arcname)
+        size_kb = os.path.getsize(zip_path) // 1024
+        logger.info(f"[ZIP] 생성 완료: {zip_path} ({size_kb} KB)")
+        return True
+    except Exception as e:
+        logger.error(f"[ZIP] 생성 실패: {e}")
+        return False
+
+
+def generate_analysis_zip(sn: str, html_path: str, save_dir: str) -> str | None:
+    """
+    분석 HTML을 zip으로 압축하여 저장합니다.
+    반환: 생성된 zip 경로, 실패 시 None
+    """
+    zip_path = os.path.join(save_dir, f"{sn}_analysis.zip")
+    return zip_path if html_to_zip(html_path, zip_path, sn) else None
 
 
 async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
