@@ -100,10 +100,26 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     if (pager) pager.style.display = 'none';
                 }
 
-                // 추이 그래프 canvas만 타겟 (기지국 테이블 등 다른 요소 영향 없게)
+                // 추이 그래프 canvas만 타겟
                 const style = document.createElement('style');
                 style.textContent = '#trendContent canvas { max-width: 100% !important; } #trendContent > div { overflow: hidden !important; }';
                 document.head.appendChild(style);
+
+                // 기지국 테이블: TAC(HEX) 컬럼 제거 (불필요 + A4 초과 방지)
+                const stTables = document.querySelectorAll('#tab-station table');
+                stTables.forEach(tbl => {
+                    const rows = tbl.querySelectorAll('tr');
+                    if (!rows.length) return;
+                    // 헤더에서 TAC(HEX) 인덱스 찾기
+                    const ths = rows[0].querySelectorAll('th');
+                    let hexIdx = -1;
+                    ths.forEach((th, i) => { if (th.textContent.trim() === 'TAC(HEX)') hexIdx = i; });
+                    if (hexIdx < 0) return;
+                    rows.forEach(row => {
+                        const cells = row.querySelectorAll('th, td');
+                        if (cells[hexIdx]) cells[hexIdx].remove();
+                    });
+                });
 
                 const TAB_NAMES = {
                     overview: '전체 요약',
