@@ -34,7 +34,7 @@ if sys.platform == "win32":
 
 import httpx
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, UploadFile, File, Form
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -1036,6 +1036,174 @@ async def dashboard_ui():
     if html_file.exists():
         return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>Dashboard</h1><p>frontend/dashboard.html을 확인하세요.</p>")
+
+
+@app.get("/upload", response_class=HTMLResponse)
+async def upload_page():
+    """CSV/Excel 파일 업로드 → 분석 HTML + PDF 생성 페이지"""
+    return HTMLResponse(content="""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>FA 분석 파일 업로드</title>
+<style>
+  body { font-family: sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; background: #f5f5f5; }
+  h1 { color: #1a237e; font-size: 1.4em; }
+  .card { background: #fff; border-radius: 10px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  label { display: block; margin-bottom: 8px; font-weight: bold; color: #333; }
+  input[type=file] { width: 100%; padding: 10px; border: 2px dashed #90caf9; border-radius: 6px; background: #e3f2fd; margin-bottom: 16px; box-sizing: border-box; }
+  input[type=text] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 16px; box-sizing: border-box; font-size: 1em; }
+  button { background: #1a237e; color: #fff; border: none; padding: 12px 30px; border-radius: 6px; font-size: 1em; cursor: pointer; width: 100%; }
+  button:hover { background: #283593; }
+  #status { margin-top: 16px; padding: 12px; border-radius: 6px; display: none; }
+  .info { background: #e3f2fd; color: #0d47a1; }
+  .success { background: #e8f5e9; color: #1b5e20; }
+  .error { background: #ffebee; color: #b71c1c; }
+  .hint { font-size: 0.85em; color: #888; margin-bottom: 20px; }
+</style>
+</head>
+<body>
+<h1>📄 FA 분석 파일 업로드</h1>
+<div class="card">
+  <p class="hint">CSV 또는 Excel 파일을 업로드하면 분석 HTML과 PDF를 생성합니다.</p>
+  <form id="uploadForm">
+    <label>파일 선택 (CSV / Excel)</label>
+    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" required>
+    <label>SN 번호 (파일명에서 자동 추출, 직접 입력 가능)</label>
+    <input type="text" id="snInput" placeholder="예: R3CW804XAD">
+    <button type="submit">업로드 & PDF 생성</button>
+  </form>
+  <div id="status"></div>
+</div>
+<script>
+document.getElementById('fileInput').addEventListener('change', function() {
+  const name = this.files[0]?.name || '';
+  const sn = name.replace(/(_inputdata|_analysis)?(\.csv|\.xlsx|\.xls)$/i, '');
+  if (sn && !document.getElementById('snInput').value) {
+    document.getElementById('snInput').value = sn;
+  }
+});
+
+document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const file = document.getElementById('fileInput').files[0];
+  const sn = document.getElementById('snInput').value.trim();
+  if (!file) return;
+
+  const status = document.getElementById('status');
+  status.className = 'info';
+  status.style.display = 'block';
+  status.textContent = '⏳ 업로드 중... 분석 HTML 생성 후 PDF 변환 중입니다. 잠시 기다려주세요.';
+
+  const form = new FormData();
+  form.append('file', file);
+  if (sn) form.append('sn', sn);
+
+  try {
+    const resp = await fetch('/api/upload-csv', { method: 'POST', body: form });
+    if (resp.ok) {
+      const blob = await resp.blob();
+      const cd = resp.headers.get('Content-Disposition') || '';
+      const fname = cd.match(/filename="?([^"]+)"?/)?.[1] || 'analysis.pdf';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname; a.click();
+      status.className = 'success';
+      status.textContent = '✅ PDF 생성 완료! 다운로드가 시작됩니다.';
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      status.className = 'error';
+      status.textContent = '❌ 오류: ' + (err.detail || resp.statusText);
+    }
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = '❌ 요청 실패: ' + e.message;
+  }
+});
+</script>
+</body>
+</html>""")
+
+
+@app.post("/api/upload-csv")
+async def upload_csv_and_generate_pdf(
+    file: UploadFile = File(...),
+    sn: str = Form(default=""),
+):
+    """
+    CSV 또는 Excel 파일을 업로드받아 분석 HTML → PDF를 생성하고 반환합니다.
+    """
+    import os
+    import tempfile
+    from app.analysis.runner import generate_analysis_html
+    from app.analysis.pdf_generator import html_to_pdf
+
+    filename = file.filename or "upload"
+    ext = os.path.splitext(filename)[1].lower()
+
+    if ext not in (".csv", ".xlsx", ".xls"):
+        raise HTTPException(status_code=400, detail="CSV 또는 Excel 파일만 지원합니다.")
+
+    # SN 결정 (Form 값 → 파일명에서 추출)
+    if not sn:
+        sn = os.path.splitext(filename)[0].replace("_inputdata", "").replace("_analysis", "").upper()
+
+    contents = await file.read()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 업로드 파일 저장
+        raw_path = os.path.join(tmpdir, filename)
+        with open(raw_path, "wb") as f:
+            f.write(contents)
+
+        # Excel이면 CSV로 변환
+        if ext in (".xlsx", ".xls"):
+            try:
+                import openpyxl
+                import csv
+                wb = openpyxl.load_workbook(raw_path, read_only=True, data_only=True)
+                ws = wb.active
+                csv_path = os.path.join(tmpdir, f"{sn}_inputdata.csv")
+                with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+                    writer = csv.writer(f)
+                    for row in ws.iter_rows(values_only=True):
+                        writer.writerow([("" if v is None else str(v)) for v in row])
+                wb.close()
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Excel 변환 실패: {e}")
+        else:
+            csv_path = raw_path
+
+        # HTML 생성
+        html_path = generate_analysis_html(sn, csv_path, tmpdir)
+        if not html_path:
+            raise HTTPException(status_code=500, detail="분석 HTML 생성 실패")
+
+        # PDF 변환
+        pdf_path = os.path.join(tmpdir, f"{sn}_analysis.pdf")
+        ok = await html_to_pdf(html_path, pdf_path)
+        if not ok or not os.path.exists(pdf_path):
+            raise HTTPException(status_code=500, detail="PDF 변환 실패")
+
+        # PDF를 영구 저장 위치에 복사 후 반환
+        import shutil
+        final_pdf = os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
+        final_html = os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.html")
+        try:
+            os.makedirs(settings.CSV_DOWNLOAD_PATH, exist_ok=True)
+            shutil.copy2(pdf_path, final_pdf)
+            shutil.copy2(html_path, final_html)
+        except Exception:
+            pass
+
+        pdf_bytes = open(pdf_path, "rb").read()
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{sn}_analysis.pdf"'},
+    )
 
 
 @app.get("/analysis/{sn}", response_class=HTMLResponse)
