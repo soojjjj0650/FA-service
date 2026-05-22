@@ -62,7 +62,10 @@ def generate_analysis_html(sn: str, csv_path: str, save_dir: str) -> str | None:
             "})();\n"
             "</script>\n"
         )
-        html = html.replace("</body>", inject + "</body>", 1)
+        # rfind으로 마지막 </body> 위치에 삽입 (JS 문자열 내 </body> 오삽입 방지)
+        last_body = html.rfind("</body>")
+        if last_body >= 0:
+            html = html[:last_body] + inject + html[last_body:]
 
         os.makedirs(save_dir, exist_ok=True)
         out_path = os.path.join(save_dir, f"{sn}_analysis.html")
