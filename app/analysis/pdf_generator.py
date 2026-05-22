@@ -104,12 +104,35 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                 style.textContent = [
                     '#trendContent canvas { max-width:100% !important; }',
                     '#trendContent > div { overflow:hidden !important; }',
-                    // 원본 데이터: overflow hidden 해제 + 폰트 축소
                     '#tab-raw .tw { overflow-x:visible !important; overflow:visible !important; }',
                     '#tab-raw table { font-size:9px !important; table-layout:fixed; width:100%; }',
                     '#tab-raw th, #tab-raw td { white-space:normal !important; word-break:break-all; padding:2px 3px !important; }',
+                    // 상단 고정 탭 네비게이션 바: PDF에서 모든 페이지에 반복 출력
+                    '#pdf-nav { position:fixed; top:0; left:0; right:0; height:22px; background:#1e3a5f; display:flex; align-items:center; padding:0 8px; gap:2px; z-index:9999; box-sizing:border-box; }',
+                    '#pdf-nav a { color:#cbd5e1; text-decoration:none; font-size:9px; font-weight:600; padding:2px 7px; border-radius:3px; white-space:nowrap; font-family:inherit; }',
+                    '#pdf-nav a:hover { background:rgba(255,255,255,0.15); color:#fff; }',
+                    '#pdf-nav .sep { color:#475569; font-size:9px; }',
+                    'body { padding-top: 26px !important; }',
                 ].join(' ');
                 document.head.appendChild(style);
+
+                // 상단 고정 탭 네비게이션 바 생성
+                const NAV_TABS = [
+                    ['overview', '전체요약'],
+                    ['station',  '문제기지국'],
+                    ['mute',     'MUTE'],
+                    ['drop',     'DROP'],
+                    ['daily',    '일별상세'],
+                    ['trend',    '추이그래프'],
+                    ['raw',      '원본데이터'],
+                ];
+                const nav = document.createElement('div');
+                nav.id = 'pdf-nav';
+                nav.innerHTML = NAV_TABS.map(([id, label], i) =>
+                    (i > 0 ? '<span class="sep">|</span>' : '') +
+                    '<a href="#tab-' + id + '">' + label + '</a>'
+                ).join('');
+                document.body.insertBefore(nav, document.body.firstChild);
 
                 // 기지국 테이블 TAC(HEX) 컬럼 제거
                 // 헤더 1행: '기지국 정보' colspan 6→5
@@ -192,7 +215,7 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
             await page.wait_for_timeout(3000)
             await page.pdf(
                 path=pdf_path, format="A4", print_background=True, scale=0.75,
-                margin={"top": "8mm", "bottom": "8mm", "left": "0mm", "right": "0mm"},
+                margin={"top": "12mm", "bottom": "8mm", "left": "0mm", "right": "0mm"},
             )
             await browser.close()
         logger.info(f"[PDF] 변환 완료: {pdf_path}")
