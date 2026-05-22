@@ -6,7 +6,7 @@ set "OUTDIR=%~dp0test\output"
 
 echo.
 echo ============================
-echo  FA Analysis - PDF Generator
+echo  FA Analysis - Report Generator
 echo ============================
 echo.
 
@@ -25,16 +25,29 @@ if not exist "%CSV%" (
 )
 
 echo.
-echo Processing: %CSV%
+echo 1. PDF
+echo 2. ZIP (HTML)
 echo.
+set /p MODE=Select (1/2):
+if "%MODE%"=="2" goto make_zip
 
+:make_pdf
+echo.
+echo Generating PDF...
 "%PYTHON%" test\test_excel_to_pdf.py "%CSV%" "%SN%"
+set "OUT=%OUTDIR%\%SN%_analysis.pdf"
+goto open_file
 
-set "PDF=%OUTDIR%\%SN%_analysis.pdf"
-if exist "%PDF%" (
+:make_zip
+echo.
+echo Generating ZIP...
+"%PYTHON%" test\test_excel_to_pdf.py "%CSV%" "%SN%" --zip
+set "OUT=%OUTDIR%\%SN%_analysis.zip"
+
+:open_file
+if exist "%OUT%" (
     echo.
-    echo Opening PDF...
-    start "" "%PDF%"
+    start "" "%OUT%"
 )
 
 echo.
