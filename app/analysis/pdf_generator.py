@@ -105,21 +105,31 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                 style.textContent = '#trendContent canvas { max-width: 100% !important; } #trendContent > div { overflow: hidden !important; }';
                 document.head.appendChild(style);
 
-                // 기지국 테이블: TAC(HEX) 컬럼 제거 (불필요 + A4 초과 방지)
-                const stTables = document.querySelectorAll('#tab-station table');
-                stTables.forEach(tbl => {
-                    const rows = tbl.querySelectorAll('tr');
-                    if (!rows.length) return;
-                    // 헤더에서 TAC(HEX) 인덱스 찾기
-                    const ths = rows[0].querySelectorAll('th');
-                    let hexIdx = -1;
-                    ths.forEach((th, i) => { if (th.textContent.trim() === 'TAC(HEX)') hexIdx = i; });
-                    if (hexIdx < 0) return;
-                    rows.forEach(row => {
-                        const cells = row.querySelectorAll('th, td');
-                        if (cells[hexIdx]) cells[hexIdx].remove();
+                // 기지국 테이블 TAC(HEX) 컬럼 제거
+                // 헤더 1행: '기지국 정보' colspan 6→5
+                // 헤더 2행: PLMN(0),ACT(1),TAC(HEX)(2) → index 2 제거
+                // 데이터행: #(0),상태(1),PLMN(2),ACT(3),TAC(HEX)(4) → index 4 제거
+                (function() {
+                    const stHead = document.getElementById('stHead');
+                    const stBody = document.getElementById('stBody');
+                    if (!stHead || !stBody) return;
+                    const hRows = stHead.querySelectorAll('tr');
+                    if (hRows[0]) {
+                        hRows[0].querySelectorAll('th').forEach(th => {
+                            if (th.colSpan > 1 && th.textContent.includes('기지국')) {
+                                th.colSpan = Math.max(1, th.colSpan - 1);
+                            }
+                        });
+                    }
+                    if (hRows[1]) {
+                        const ths = hRows[1].querySelectorAll('th');
+                        if (ths[2]) ths[2].remove();
+                    }
+                    stBody.querySelectorAll('tr').forEach(row => {
+                        const tds = row.querySelectorAll('td');
+                        if (tds[4]) tds[4].remove();
                     });
-                });
+                })();
 
                 const TAB_NAMES = {
                     overview: '전체 요약',
