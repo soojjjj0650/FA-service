@@ -147,17 +147,30 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     raw:      '원본 데이터',
                 };
 
+                // 목차 페이지 생성
+                const toc = document.createElement('div');
+                toc.style.cssText = 'page-break-after:always;padding:40px 32px;font-family:inherit';
+                toc.innerHTML = '<div style="font-size:22px;font-weight:700;color:#1e3a5f;border-bottom:3px solid #1e3a5f;padding-bottom:12px;margin-bottom:28px">목차</div>'
+                    + Object.entries(TAB_NAMES).map(([id, label], i) =>
+                        '<a href="#tab-' + id + '" style="display:flex;align-items:center;text-decoration:none;color:#1e293b;padding:10px 0;border-bottom:1px solid #e2e8f0">'
+                        + '<span style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;background:#1e3a5f;color:#fff;border-radius:50%;font-size:12px;font-weight:700;margin-right:14px;flex-shrink:0">' + (i+1) + '</span>'
+                        + '<span style="font-size:15px;font-weight:600">' + label + '</span>'
+                        + '<span style="flex:1;border-bottom:1px dotted #94a3b8;margin:0 12px"></span>'
+                        + '<span style="font-size:12px;color:#64748b">▶</span>'
+                        + '</a>'
+                    ).join('');
+                const dashboard = document.getElementById('dashboard');
+                if (dashboard) dashboard.insertBefore(toc, dashboard.firstChild);
+
                 Object.entries(TAB_NAMES).forEach(([id, label], i) => {
                     const el = document.getElementById('tab-' + id);
                     if (!el) return;
                     el.style.display = 'block';
-                    if (i > 0) {
-                        el.style.pageBreakBefore = 'always';
-                        const h = document.createElement('h2');
-                        h.textContent = label;
-                        h.style.cssText = 'font-size:15px;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin:0 0 14px';
-                        el.insertBefore(h, el.firstChild);
-                    }
+                    el.style.pageBreakBefore = 'always';
+                    const h = document.createElement('h2');
+                    h.textContent = label;
+                    h.style.cssText = 'font-size:15px;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin:0 0 14px';
+                    el.insertBefore(h, el.firstChild);
                 });
 
                 // 원본 데이터 테이블 TAC(HEX) 컬럼 제거 (index 6)
