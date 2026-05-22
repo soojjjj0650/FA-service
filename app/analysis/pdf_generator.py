@@ -110,7 +110,7 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     // 상단 고정 탭 네비게이션 바
                     '#pdf-nav { position:fixed; top:0; left:0; right:0; height:26px; background:linear-gradient(135deg,#1e3a5f 0%,#2d5a9e 100%); display:flex; align-items:center; padding:0 12px; gap:1px; z-index:9999; box-sizing:border-box; box-shadow:0 2px 6px rgba(0,0,0,0.3); }',
                     '#pdf-nav .nav-logo { color:#93c5fd; font-size:9px; font-weight:800; letter-spacing:1px; margin-right:10px; padding-right:10px; border-right:1px solid rgba(255,255,255,0.2); white-space:nowrap; }',
-                    '#pdf-nav a { color:rgba(255,255,255,0.7); text-decoration:none; font-size:8.5px; font-weight:600; padding:3px 9px; border-radius:12px; white-space:nowrap; font-family:inherit; transition:all 0.15s; letter-spacing:0.3px; }',
+                    '#pdf-nav a { color:#fff; text-decoration:none; font-size:8.5px; font-weight:700; padding:3px 9px; border-radius:12px; white-space:nowrap; font-family:inherit; transition:all 0.15s; letter-spacing:0.3px; }',
                     '#pdf-nav a:hover { background:rgba(255,255,255,0.18); color:#fff; }',
                     'body { padding-top: 30px !important; }',
                 ].join(' ');
@@ -174,7 +174,7 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     const el = document.getElementById('tab-' + id);
                     if (!el) return;
                     el.style.display = 'block';
-                    el.style.pageBreakBefore = 'always';
+                    if (i > 0) el.style.pageBreakBefore = 'always';
                     const h = document.createElement('h2');
                     h.textContent = label;
                     h.style.cssText = 'font-size:15px;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin:0 0 14px';
