@@ -43,6 +43,51 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
 
             page = await browser.new_page()
             await page.goto(f"file:///{html_path.replace(os.sep, '/')}", wait_until="networkidle", timeout=30000)
+
+            # 모든 탭 펼치기: lazy render 강제 실행 + 전체 표시
+            await page.evaluate("""() => {
+                // lazy render 강제 실행 (탭 클릭 시에만 그려지는 것들)
+                if (typeof renderTrend === 'function')        renderTrend();
+                if (typeof renderStationTable === 'function') renderStationTable();
+                if (typeof renderDropTab === 'function')      renderDropTab();
+                if (typeof renderRaw === 'function')          renderRaw();
+
+                const TAB_NAMES = {
+                    overview: '전체 요약',
+                    station:  '문제 기지국',
+                    mute:     'MUTE 분석',
+                    drop:     'DROP 분석',
+                    daily:    '일별 상세',
+                    trend:    '추이 그래프',
+                    raw:      '원본 데이터',
+                };
+
+                Object.entries(TAB_NAMES).forEach(([id, label], i) => {
+                    const el = document.getElementById('tab-' + id);
+                    if (!el) return;
+                    el.style.display = 'block';
+                    // 두 번째 탭부터 페이지 구분
+                    if (i > 0) {
+                        el.style.pageBreakBefore = 'always';
+                        // 탭 구분 제목 추가
+                        const h = document.createElement('h2');
+                        h.textContent = label;
+                        h.style.cssText = 'font-size:15px;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin:0 0 14px';
+                        el.insertBefore(h, el.firstChild);
+                    }
+                });
+
+                // 탭 바 숨기기 (PDF에서 불필요)
+                const tabBar = document.querySelector('.tab-bar');
+                if (tabBar) tabBar.style.display = 'none';
+
+                // tab-content 테두리 전체 적용
+                const tabContent = document.querySelector('.tab-content');
+                if (tabContent) tabContent.style.borderRadius = '8px';
+            }""")
+
+            # 렌더링 완료 대기
+            await page.wait_for_timeout(1500)
             await page.pdf(path=pdf_path, format="A4", print_background=True)
             await browser.close()
         logger.info(f"[PDF] 변환 완료: {pdf_path}")
