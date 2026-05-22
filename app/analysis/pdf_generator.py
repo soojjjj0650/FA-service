@@ -134,7 +134,7 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
 
             # 차트 + 원본 데이터 렌더링 완료 대기
             await page.wait_for_timeout(3000)
-            await page.pdf(path=pdf_path, format="A4", print_background=True)
+            await page.pdf(path=pdf_path, format="A4", print_background=True, scale=0.75)
             await browser.close()
         logger.info(f"[PDF] 변환 완료: {pdf_path}")
         return True
