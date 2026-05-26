@@ -836,6 +836,24 @@ async def knox_register_device():
     }
 
 
+@app.post("/api/knox/test-message")
+async def knox_test_message():
+    """캐시된 대화방에 텍스트 메시지를 전송해 연결을 확인합니다."""
+    from app.messenger.knox_messenger import KnoxMessengerClient, _load_cached_device_id, _load_cached_chatroom_id
+    chatroom_id = _load_cached_chatroom_id()
+    if not chatroom_id:
+        raise HTTPException(status_code=400, detail="대화방 없음. /api/knox/register 먼저 호출하세요.")
+    client = KnoxMessengerClient(
+        base_url=settings.KNOX_MESSENGER_BASE_URL,
+        access_token=settings.KNOX_ACCESS_TOKEN,
+        system_id=settings.KNOX_SYSTEM_ID,
+        device_id=settings.KNOX_DEVICE_ID or _load_cached_device_id(),
+        receiver_user_id=settings.KNOX_RECEIVER_USER_ID,
+    )
+    ok = await client.send_message(chatroom_id, "FA 서비스 연결 테스트 메시지입니다.")
+    return {"chatroom_id": chatroom_id, "sent": ok}
+
+
 @app.get("/api/knox/status")
 async def knox_status():
     """Knox Messenger 설정 상태를 확인합니다."""
