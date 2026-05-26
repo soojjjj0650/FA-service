@@ -888,15 +888,17 @@ async def knox_send_file(request: Request):
     if not await client.ensure_device_id():
         raise HTTPException(status_code=502, detail="Knox Device ID 확보 실패.")
 
-    file_url = await client.upload_file(file_path)
-    if not file_url:
+    upload_result = await client.upload_file(file_path)
+    if not upload_result:
         raise HTTPException(status_code=502, detail="Knox 파일 업로드 실패.")
+    file_url, file_size = upload_result
 
     filename = _os.path.basename(file_path)
     ok = await client.send_file_message(
         chatroom_id=chatroom_id,
         download_url=file_url,
         filename=filename,
+        file_size=file_size,
         message_text=message,
     )
     return {"sent": ok, "file": filename, "chatroom_id": chatroom_id}
@@ -1255,15 +1257,17 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     feature_summary = job.get("feature_summary", "")
 
     # ── 1. PDF 업로드 & 전송 ──────────────────────────────────────────────────
-    pdf_url = await client.upload_file(pdf_path)
-    if not pdf_url:
+    pdf_upload = await client.upload_file(pdf_path)
+    if not pdf_upload:
         await _fail("Knox 파일 업로드에 실패했습니다.")
         return
+    pdf_url, pdf_size = pdf_upload
 
     pdf_ok = await client.send_file_message(
         chatroom_id=chatroom_id,
         download_url=pdf_url,
         filename=f"{sn}_FA분석.pdf",
+        file_size=pdf_size,
         message_text=f"[FA 분석 완료] SN: {sn}\n{feature_summary}",
     )
     if not pdf_ok:
@@ -1278,12 +1282,14 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     try:
         with _zf.ZipFile(zip_path, "w", _zf.ZIP_DEFLATED) as zf:
             zf.write(html_path, f"{sn}_analysis.html")
-        zip_url = await client.upload_file(zip_path)
-        if zip_url:
+        zip_upload = await client.upload_file(zip_path)
+        if zip_upload:
+            zip_url, zip_size = zip_upload
             await client.send_file_message(
                 chatroom_id=chatroom_id,
                 download_url=zip_url,
                 filename=f"{sn}_FA분석.zip",
+                file_size=zip_size,
                 message_text=f"[FA 분석 HTML] SN: {sn}\n브라우저로 열어보세요.",
             )
             logger.info(f"[Knox Pipeline] ZIP 전송 완료 | SN={sn}")

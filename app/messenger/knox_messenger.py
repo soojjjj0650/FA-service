@@ -447,10 +447,11 @@ class KnoxMessengerClient:
                 return None
 
             data = resp.json()
+            logger.info(f"[Knox] 파일 업로드 응답 전체: {data}")
             download_url = data.get("download_url") or data.get("downloadUrl")
             if download_url:
                 logger.info(f"[Knox] 파일 업로드 완료: {download_url}")
-                return download_url
+                return download_url, len(file_bytes)
 
             logger.warning(f"[Knox] download_url 파싱 실패: {resp.text[:200]}")
             return None
@@ -673,6 +674,7 @@ class KnoxMessengerClient:
         chatroom_id: str,
         download_url: str,
         filename: str,
+        file_size: int = 0,
         message_text: str = "",
     ) -> bool:
         """
@@ -688,6 +690,7 @@ class KnoxMessengerClient:
         chat_msg_obj = {
             "fileUrl": download_url,
             "fileName": filename,
+            "fileSize": file_size,
         }
         chat_msg_json = json.dumps(chat_msg_obj, ensure_ascii=False)
 
@@ -954,10 +957,11 @@ async def send_pdf_via_knox(
         return False
 
     # 2. 파일 업로드
-    download_url = await client.upload_file(pdf_path)
-    if not download_url:
+    upload_result = await client.upload_file(pdf_path)
+    if not upload_result:
         logger.error(f"[Knox] 파일 업로드 실패 - 전송 중단 (SN: {sn})")
         return False
+    download_url, file_size = upload_result
 
     # 3. 파일 메시지 전송
     ext = os.path.splitext(pdf_path)[1].lower()
@@ -969,6 +973,7 @@ async def send_pdf_via_knox(
         chatroom_id=chatroom_id,
         download_url=download_url,
         filename=filename,
+        file_size=file_size,
         message_text=message,
     )
 
