@@ -432,11 +432,12 @@ class KnoxMessengerClient:
                 "System-ID": self.system_id,
                 "Content-Type": "binary/octet-stream",
                 "Content-Length": str(len(file_bytes)),
+                "filename":       upload_filename,   # 스펙: Mandatory Y, 평문
                 "x-device-id":    enc_device_id,
                 "x-device-type":  enc_device_type,
                 "x-request-time": enc_server_time,
             }
-            logger.info(f"[Knox] 업로드 요청 | url={url} | x-request-time={enc_server_time}")
+            logger.info(f"[Knox] 업로드 요청 | url={url} | filename={upload_filename}")
 
             resp = await self._areq("PUT", url, data=file_bytes, headers=headers)
 
@@ -686,14 +687,10 @@ class KnoxMessengerClient:
         """
         url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
 
-        # download_url에서 파일 서버 경로 추출 (예: /file/v1s/file/XXXX)
-        from urllib.parse import urlparse
-        parsed = urlparse(download_url)
-        file_server_path = parsed.path  # /file/v1s/file/YWHoF4bS00Rq-b6KH3sKwQ
-
-        # msgType=5 (FILE) 로 전송, chatMsg = JSON 형식
+        # msgType=5 (FILE), chatMsg = JSON
+        # download_url 키는 업로드 응답 필드명과 동일하게 맞춤
         chat_msg_obj = {
-            "fileServerPath": file_server_path,
+            "download_url": download_url,
             "fileName": filename,
             "fileSize": file_size,
         }
