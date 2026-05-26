@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-title FA Service - Playwright 브라우저 설치
+title FA Service - Playwright Install
 
 echo ============================================================
 echo   Playwright Chromium 브라우저 설치

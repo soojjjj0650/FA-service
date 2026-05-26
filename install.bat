@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-title FA Service - 초기 설치
+title FA Service - Initial Install
 
 echo ============================================================
 echo   FA Service - 초기 설치 (최초 1회만 실행)
@@ -9,7 +9,7 @@ echo.
 
 cd /d "%~dp0"
 
-:: Python 명령어 결정 (py 런처 우선, 없으면 python)
+:: Python command: try py launcher first, else python
 echo [0/3] Python 확인 중...
 set PYTHON_CMD=
 py --version >nul 2>&1

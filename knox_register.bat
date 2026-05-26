@@ -21,7 +21,7 @@ echo.
 echo.
 
 echo [3] Send Analysis (SN 직접 입력해서 분석 + PDF 전송)
-set /p INPUT_SN="SN 입력: "
+set /p INPUT_SN=Enter SN:
 curl -s -w "\nHTTP %%{http_code}" ^
   -X POST "http://10.246.9.74:80/api/knox/send-analysis" ^
   -H "Content-Type: application/json" ^

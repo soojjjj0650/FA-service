@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-title FA Service - PDF 테스트
+title FA Service - PDF Test
 
 echo ============================================================
 echo   FA Service - PDF 생성 테스트

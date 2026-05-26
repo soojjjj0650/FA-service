@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-title Data Processor 테스트
+title Data Processor Test
 
 echo ================================================================
 echo   Data Processor 단독 테스트

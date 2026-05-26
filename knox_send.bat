@@ -6,7 +6,7 @@ echo  Knox FA 분석 요청
 echo ============================
 echo.
 
-set /p INPUT_SN="SN 입력: "
+set /p INPUT_SN=Enter SN:
 
 if "%INPUT_SN%"=="" (
     echo SN을 입력해주세요.
