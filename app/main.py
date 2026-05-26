@@ -822,7 +822,7 @@ async def knox_register_device():
 
     # 3. SN 입력 Adaptive Card 전송 (실패 시 텍스트 fallback)
     from app.messenger.knox_messenger import build_sn_input_card
-    receive_url = f"http://{settings.HOST}:{settings.PORT}/message"
+    receive_url = (settings.KNOX_SERVER_URL or f"{settings.BASE_URL}:{settings.PORT}") + "/message"
     card_sent = await client.send_adaptive_card(chatroom_id, build_sn_input_card(receive_url))
     if not card_sent:
         await client.send_message(chatroom_id, _SN_GUIDE)
@@ -904,7 +904,7 @@ async def _knox_reply(chatroom_id: str, text: str, with_card: bool = True) -> No
         await client.send_message(chatroom_id, text)
     if with_card:
         from app.messenger.knox_messenger import build_sn_input_card
-        receive_url = f"http://{settings.HOST}:{settings.PORT}/message"
+        receive_url = (settings.KNOX_SERVER_URL or f"{settings.BASE_URL}:{settings.PORT}") + "/message"
         card_ok = await client.send_adaptive_card(chatroom_id, build_sn_input_card(receive_url))
         if not card_ok:
             await client.send_message(chatroom_id, _SN_GUIDE)
