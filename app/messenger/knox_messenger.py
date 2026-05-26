@@ -12,9 +12,11 @@ API 흐름:
 """
 
 import base64
+import gzip
 import json
 import logging
 import os
+import struct
 import time
 import asyncio
 from functools import partial
@@ -699,8 +701,8 @@ class KnoxMessengerClient:
             "chatMessageParams": [
                 {
                     "msgId": request_id,
-                    "msgType": 2,
-                    "chatMsg": json.dumps(card, ensure_ascii=False),
+                    "msgType": 19,
+                    "chatMsg": _build_adaptive_card_chatmsg(card),
                     "msgTtl": 7200,
                 }
             ],
@@ -749,12 +751,34 @@ class KnoxMessengerClient:
             return False
 
 
+_COMPRESS_TAG = '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLDT","TYPE":"COMPRESS"}}-->'
+
+
+def _build_adaptive_card_chatmsg(card: dict) -> str:
+    """
+    Knox Messenger Adaptive Card chatMsg 인코딩.
+    1. card → JSON 문자열
+    2. {"adaptiveCards": "<card_json>"} → JSON 문자열 (원문)
+    3. gzip 압축 → 4바이트(원문 bit 길이) + 압축 bytes → base64
+    4. COMPRESS 태그 + base64 값 반환
+    """
+    card_str = json.dumps(card, ensure_ascii=False)
+    wrapper_str = json.dumps({"adaptiveCards": card_str}, ensure_ascii=False)
+
+    raw_bytes = wrapper_str.encode("utf-8")
+    bit_length = len(raw_bytes) * 8
+    compressed = gzip.compress(raw_bytes)
+    combined = struct.pack(">I", bit_length) + compressed
+    encoded = base64.b64encode(combined).decode("ascii")
+    return _COMPRESS_TAG + encoded
+
+
 def build_sn_input_card(receive_url: str) -> dict:
-    """SN 입력 Adaptive Card 생성."""
+    """SN 입력 Adaptive Card 생성 (Knox Messenger v1.3 형식)."""
     return {
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "type": "AdaptiveCard",
-        "version": "1.0",
+        "version": "1.3",
         "body": [
             {
                 "type": "TextBlock",
