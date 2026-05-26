@@ -286,14 +286,17 @@ class KnoxMessengerClient:
         try:
             resp = await self._areq("GET", url, params={"word": word}, headers=headers)
 
-            logger.info(f"[Knox] 파일서버 Time 조회 | status={resp.status_code} | body={resp.text[:200]}")
+            logger.info(f"[Knox] 파일서버 Time 조회 | status={resp.status_code} | body={resp.text}")
 
             if resp.status_code >= 400:
                 logger.error(f"[Knox] 파일서버 Time 조회 실패: {resp.status_code}")
                 return None
 
-            data = resp.json()
-            logger.info(f"[Knox] 파일서버 Time 전체 응답: {data}")
+            # parse_float=str prevents floating-point precision loss on serverTime
+            import json as _json
+            data = _json.loads(resp.text, parse_float=str)
+            logger.info(f"[Knox] 파일서버 Time 파싱: serverTime={data.get('serverTime')!r} | word={data.get('word')!r}")
+
             server_time = str(data.get("serverTime") or data.get("server_time") or data.get("currentTime") or "")
             word_key    = str(data.get("word") or data.get("wordKey") or data.get("key") or "")
 
@@ -341,18 +344,25 @@ class KnoxMessengerClient:
             logger.error("[Knox] 파일서버 Time 조회 실패 - 업로드 중단")
             return None
 
-        server_time, _ = time_result
-        logger.info(f"[Knox] 파일서버 serverTime={server_time!r}")
+        server_time, word_key = time_result
+        logger.info(f"[Knox] 파일서버 serverTime={server_time!r} | word={word_key!r}")
 
-        # 3. AES256으로 헤더값 암호화
+        # 3. AES256-CBC로 헤더값 암호화
         try:
+            logger.info(
+                f"[Knox] 암호화 입력 | device_id={self.device_id!r} | "
+                f"server_time={server_time!r} | key_len={len(aes_key)} | iv_len={len(aes_iv)} | "
+                f"key_hex={aes_key.hex()} | iv_hex={aes_iv.hex()}"
+            )
             enc_device_id   = _aes256_encrypt(self.device_id, aes_key, aes_iv)
             enc_device_type = _aes256_encrypt("relation",     aes_key, aes_iv)
             enc_server_time = _aes256_encrypt(server_time,    aes_key, aes_iv)
-            logger.info(f"[Knox] 헤더 암호화 완료 | enc_time={enc_server_time[:16]}...")
-        except Exception as e:
-            logger.error(f"[Knox] 헤더 암호화 실패: {e}")
-            return None
+            logger.info(
+                f"[Knox] 헤더 암호화 완료 | "
+                f"x-device-id={enc_device_id} | "
+                f"x-device-type={enc_device_type} | "
+                f"x-request-time={enc_server_time}"
+            )
         except Exception as e:
             logger.error(f"[Knox] 헤더 암호화 실패: {e}")
             return None
@@ -366,12 +376,11 @@ class KnoxMessengerClient:
                 "System-ID": self.system_id,
                 "Content-Type": "binary/octet-stream",
                 "Content-Length": str(len(file_bytes)),
-                "filename": upload_filename,
                 "x-device-id":    enc_device_id,
                 "x-device-type":  enc_device_type,
                 "x-request-time": enc_server_time,
             }
-            logger.info(f"[Knox] 업로드 헤더 | x-request-time(enc)={enc_server_time[:16]}... | url={url}")
+            logger.info(f"[Knox] 업로드 요청 | url={url} | x-request-time={enc_server_time}")
 
             resp = await self._areq("PUT", url, data=file_bytes, headers=headers)
 
