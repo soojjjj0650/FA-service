@@ -707,7 +707,7 @@ class KnoxMessengerClient:
             "chatMessageParams": [
                 {
                     "msgId": request_id,
-                    "msgType": 8,
+                    "msgType": 1,
                     "chatMsg": chat_msg_json,
                     "msgTtl": 7200,
                 }
