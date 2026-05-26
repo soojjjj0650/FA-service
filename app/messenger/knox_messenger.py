@@ -332,15 +332,20 @@ class KnoxMessengerClient:
             return None
 
         server_time, word_key = time_result
+        logger.info(f"[Knox] 파일서버 word_key={word_key[:8]}... serverTime={server_time}")
 
-        # 2. word_key로 헤더값 AES256 암호화
+        # 2. word_key로 헤더값 AES256 암호화 (메시지 키와 동일: hex decode → key[:32] / iv=key[32:48])
         try:
-            key_bytes = word_key.encode("utf-8")
-            key_bytes = key_bytes[:32].ljust(32, b"\0")  # 32바이트 맞춤
-            iv_bytes  = key_bytes[:16]
+            try:
+                word_bytes = bytes.fromhex(word_key)
+            except ValueError:
+                word_bytes = word_key.encode("utf-8")
+            key_bytes = (word_bytes[:32]).ljust(32, b"\0")
+            iv_bytes  = word_bytes[32:48] if len(word_bytes) >= 48 else key_bytes[:16]
             enc_device_id   = _aes256_encrypt(self.device_id, key_bytes, iv_bytes)
             enc_device_type = _aes256_encrypt("relation", key_bytes, iv_bytes)
             enc_server_time = _aes256_encrypt(server_time, key_bytes, iv_bytes)
+            logger.info(f"[Knox] 헤더 암호화 완료 | enc_time={enc_server_time[:16]}...")
         except Exception as e:
             logger.error(f"[Knox] 헤더 암호화 실패: {e}")
             return None
