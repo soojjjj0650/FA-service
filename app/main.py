@@ -820,16 +820,20 @@ async def knox_register_device():
     if not chatroom_id:
         raise HTTPException(status_code=502, detail="대화방 생성 실패. 서버 로그를 확인하세요.")
 
-    # 3. SN 입력 안내 메시지 전송
-    msg_sent = await client.send_message(chatroom_id, _SN_GUIDE)
+    # 3. SN 입력 Adaptive Card 전송 (실패 시 텍스트 fallback)
+    from app.messenger.knox_messenger import build_sn_input_card
+    receive_url = f"http://{settings.HOST}:{settings.PORT}/message"
+    card_sent = await client.send_adaptive_card(chatroom_id, build_sn_input_card(receive_url))
+    if not card_sent:
+        await client.send_message(chatroom_id, _SN_GUIDE)
 
-    logger.info(f"[Knox] 초기 설정 완료 | device_id={client.device_id} | chatroom_id={chatroom_id} | msg_sent={msg_sent}")
+    logger.info(f"[Knox] 초기 설정 완료 | device_id={client.device_id} | chatroom_id={chatroom_id} | card_sent={card_sent}")
     return {
         "status": "ok",
         "device_id": client.device_id,
         "chatroom_id": chatroom_id,
-        "msg_sent": msg_sent,
-        "message": "Device ID 및 대화방 생성 완료. SN 입력 안내를 전송했습니다.",
+        "card_sent": card_sent,
+        "message": "Device ID 및 대화방 생성 완료. SN 입력 카드를 전송했습니다.",
     }
 
 
@@ -899,7 +903,11 @@ async def _knox_reply(chatroom_id: str, text: str, with_card: bool = True) -> No
     if text:
         await client.send_message(chatroom_id, text)
     if with_card:
-        await client.send_message(chatroom_id, _SN_GUIDE)
+        from app.messenger.knox_messenger import build_sn_input_card
+        receive_url = f"http://{settings.HOST}:{settings.PORT}/message"
+        card_ok = await client.send_adaptive_card(chatroom_id, build_sn_input_card(receive_url))
+        if not card_ok:
+            await client.send_message(chatroom_id, _SN_GUIDE)
 
 
 async def _knox_handle_message(data: dict) -> JSONResponse:
