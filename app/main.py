@@ -870,7 +870,20 @@ async def knox_send_analysis(request: Request):
 
     chatroom_id = _load_cached_chatroom_id()
     if not chatroom_id:
-        raise HTTPException(status_code=400, detail="대화방 없음. /api/knox/register 먼저 호출하세요.")
+        logger.info("[Knox] chatroom 캐시 없음 → 자동 register 시도")
+        from app.messenger.knox_messenger import KnoxMessengerClient
+        _client = KnoxMessengerClient(
+            base_url=settings.KNOX_MESSENGER_BASE_URL,
+            access_token=settings.KNOX_ACCESS_TOKEN,
+            system_id=settings.KNOX_SYSTEM_ID,
+            device_id=settings.KNOX_DEVICE_ID,
+            receiver_user_id=settings.KNOX_RECEIVER_USER_ID,
+        )
+        if not await _client.ensure_device_id():
+            raise HTTPException(status_code=502, detail="Knox Device 등록 실패. 서버 로그를 확인하세요.")
+        chatroom_id = await _client.ensure_chatroom()
+        if not chatroom_id:
+            raise HTTPException(status_code=502, detail="Knox 대화방 생성 실패. 서버 로그를 확인하세요.")
 
     job_id = str(uuid.uuid4())
     _chatbot_jobs[job_id] = {
