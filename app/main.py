@@ -822,7 +822,7 @@ async def knox_register_device():
 
     # 3. SN 입력 Adaptive Card 전송 (실패 시 텍스트 fallback)
     from app.messenger.knox_messenger import build_sn_input_card
-    receive_url = (settings.KNOX_SERVER_URL or f"{settings.BASE_URL}:{settings.PORT}") + "/message"
+    receive_url = settings.KNOX_RECEIVE_URL or (settings.KNOX_SERVER_URL + "/message" if settings.KNOX_SERVER_URL else f"{settings.BASE_URL}:{settings.PORT}/message")
     card_sent = await client.send_adaptive_card(chatroom_id, build_sn_input_card(receive_url))
     if not card_sent:
         await client.send_message(chatroom_id, _SN_GUIDE)
@@ -904,7 +904,7 @@ async def _knox_reply(chatroom_id: str, text: str, with_card: bool = True) -> No
         await client.send_message(chatroom_id, text)
     if with_card:
         from app.messenger.knox_messenger import build_sn_input_card
-        receive_url = (settings.KNOX_SERVER_URL or f"{settings.BASE_URL}:{settings.PORT}") + "/message"
+        receive_url = settings.KNOX_RECEIVE_URL or (settings.KNOX_SERVER_URL + "/message" if settings.KNOX_SERVER_URL else f"{settings.BASE_URL}:{settings.PORT}/message")
         card_ok = await client.send_adaptive_card(chatroom_id, build_sn_input_card(receive_url))
         if not card_ok:
             await client.send_message(chatroom_id, _SN_GUIDE)
@@ -1045,6 +1045,24 @@ async def knox_webhook(request: Request):
     if not data:
         return JSONResponse(status_code=200, content={"status": "ignored"})
 
+    return await _knox_handle_message(data)
+
+
+@app.post("/messsage")
+async def knox_message_typo(request: Request):
+    """Knox 수신 URL 오타 대응 (/messsage → /message)."""
+    raw_body = await request.body()
+    raw_text = raw_body.decode("utf-8", errors="replace")
+    logger.info(f"[Knox /messsage] body={raw_text[:500]}")
+    import json as _json
+    try:
+        data = _json.loads(raw_text) if raw_text else {}
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        data = {}
+    if not data:
+        return JSONResponse(status_code=200, content={"status": "ignored"})
     return await _knox_handle_message(data)
 
 
