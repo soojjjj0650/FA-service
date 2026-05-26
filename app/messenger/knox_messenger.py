@@ -425,8 +425,8 @@ class KnoxMessengerClient:
             # 메시지 키로 payload 암호화
             msg_key = await self.get_message_key()
             if msg_key:
-                iv = msg_key[:16]
-                body = _encrypt_payload(plain_payload, msg_key, iv)
+                iv = msg_key[32:48]
+                body = _encrypt_payload(plain_payload, msg_key[:32], iv)
                 headers["Content-Type"] = "text/plain"
                 resp = await self._areq("POST", url, data=body, headers=headers)
             else:
@@ -441,8 +441,8 @@ class KnoxMessengerClient:
 
             # 응답 복호화
             if msg_key:
-                iv = msg_key[:16]
-                data = _decrypt_payload(resp.text.strip(), msg_key, iv)
+                iv = msg_key[32:48]
+                data = _decrypt_payload(resp.text.strip(), msg_key[:32], iv)
             else:
                 data = resp.json()
 
@@ -550,8 +550,8 @@ class KnoxMessengerClient:
         try:
             msg_key = await self.get_message_key()
             if msg_key:
-                iv = msg_key[:16]
-                body = _encrypt_payload(plain_payload, msg_key, iv)
+                iv = msg_key[32:48]
+                body = _encrypt_payload(plain_payload, msg_key[:32], iv)
                 headers["Content-Type"] = "text/plain"
                 resp = await self._areq("POST", url, data=body, headers=headers)
             else:
@@ -569,8 +569,8 @@ class KnoxMessengerClient:
 
             # 응답 복호화 및 결과 확인
             if msg_key:
-                iv = msg_key[:16]
-                data = _decrypt_payload(resp.text.strip(), msg_key, iv)
+                iv = msg_key[32:48]
+                data = _decrypt_payload(resp.text.strip(), msg_key[:32], iv)
             else:
                 data = resp.json()
 
@@ -629,8 +629,8 @@ class KnoxMessengerClient:
         try:
             msg_key = await self.get_message_key()
             if msg_key:
-                iv = msg_key[:16]
-                body = _encrypt_payload(plain_payload, msg_key, iv)
+                iv = msg_key[32:48]
+                body = _encrypt_payload(plain_payload, msg_key[:32], iv)
                 headers["Content-Type"] = "text/plain"
                 resp = await self._areq("POST", url, data=body, headers=headers)
             else:
@@ -644,8 +644,8 @@ class KnoxMessengerClient:
                 return False
 
             if msg_key:
-                iv = msg_key[:16]
-                data = _decrypt_payload(resp.text.strip(), msg_key, iv)
+                iv = msg_key[32:48]
+                data = _decrypt_payload(resp.text.strip(), msg_key[:32], iv)
             else:
                 data = resp.json()
 
@@ -717,8 +717,8 @@ class KnoxMessengerClient:
         try:
             msg_key = await self.get_message_key()
             if msg_key:
-                iv = msg_key[:16]
-                body = _encrypt_payload(plain_payload, msg_key, iv)
+                iv = msg_key[32:48]
+                body = _encrypt_payload(plain_payload, msg_key[:32], iv)
                 headers["Content-Type"] = "text/plain"
                 resp = await self._areq("POST", url, data=body, headers=headers)
             else:
@@ -731,7 +731,8 @@ class KnoxMessengerClient:
                 return False
 
             if msg_key:
-                data = _decrypt_payload(resp.text.strip(), msg_key, msg_key[:16])
+                iv = msg_key[32:48]
+                data = _decrypt_payload(resp.text.strip(), msg_key[:32], iv)
             else:
                 data = resp.json()
 
