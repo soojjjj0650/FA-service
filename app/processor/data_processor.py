@@ -1193,8 +1193,19 @@ class DataProcessor:
 
     @staticmethod
     def _read_csv(csv_path: str) -> list[dict]:
-        """CSV 파일을 읽어 dict 리스트로 반환합니다."""
+        """CSV 또는 xlsx/xls 파일을 읽어 dict 리스트로 반환합니다."""
+        ext = str(csv_path).lower().rsplit(".", 1)[-1]
         try:
+            if ext in ("xlsx", "xls"):
+                import openpyxl
+                wb = openpyxl.load_workbook(csv_path, read_only=True, data_only=True)
+                ws = wb.active
+                rows_iter = iter(ws.values)
+                headers = [str(h) if h is not None else "" for h in next(rows_iter)]
+                rows = [dict(zip(headers, [str(v) if v is not None else "" for v in row])) for row in rows_iter]
+                wb.close()
+                logger.info(f"xlsx 읽기 완료: {csv_path} ({len(rows)}행)")
+                return rows
             rows = []
             with open(csv_path, encoding="utf-8-sig", newline="") as f:
                 for row in csv.DictReader(f):
@@ -1202,7 +1213,7 @@ class DataProcessor:
             logger.info(f"CSV 읽기 완료: {csv_path} ({len(rows)}행)")
             return rows
         except Exception as e:
-            logger.error(f"CSV 읽기 실패 [{csv_path}]: {e}")
+            logger.error(f"파일 읽기 실패 [{csv_path}]: {e}")
             return []
 
     @staticmethod
