@@ -705,7 +705,7 @@ class KnoxMessengerClient:
             "text": "",
             "url": download_url,
         }
-        chat_msg_json = "media:" + json.dumps(media_obj, ensure_ascii=False)
+        chat_msg_json = "media|:" + json.dumps(media_obj, ensure_ascii=False)
         logger.info(f"[Knox] 파일 메시지 chatMsg(전송): {chat_msg_json}")
 
         request_id = int(time.time() * 1000)
