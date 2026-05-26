@@ -684,6 +684,13 @@ class KnoxMessengerClient:
         """
         url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
 
+        # msgType=1(MEDIA)일 때 chatMsg는 JSON 형식 필수
+        chat_msg_obj = {
+            "fileUrl": download_url,
+            "fileName": filename,
+        }
+        chat_msg_json = json.dumps(chat_msg_obj, ensure_ascii=False)
+
         request_id = int(time.time() * 1000)
         plain_payload = {
             "requestId": request_id,
@@ -691,8 +698,8 @@ class KnoxMessengerClient:
             "chatMessageParams": [
                 {
                     "msgId": request_id,
-                    "msgType": 1,           # Media type
-                    "chatMsg": download_url, # Knox 파일서버 download_url
+                    "msgType": 1,
+                    "chatMsg": chat_msg_json,
                     "msgTtl": 7200,
                 }
             ],
