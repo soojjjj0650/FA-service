@@ -692,17 +692,18 @@ class KnoxMessengerClient:
         parsed = urlparse(download_url)
         file_server_path = parsed.path  # /file/v1s/file/XXXX
 
-        # chatMsg = "media|:{...}" 형식 (Knox MEDIA 전용 포맷)
+        # chatMsg = "media|:{...}<!--SNDCL-->" 형식
+        # SNDCL 태그는 JSON 밖에 붙임 (Adaptive Card compress 방식과 동일)
         ext = os.path.splitext(filename)[1].lstrip(".").lower()  # "pdf"
         media_obj = {
             "extention": ext,
             "type": ext.upper(),
             "filename": filename,
             "size": file_size,
-            "text": '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLDT"}} -->',
             "url": download_url,
         }
-        chat_msg_json = "media|:" + json.dumps(media_obj, ensure_ascii=False)
+        _MEDIA_TAG = '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLDT"}} -->'
+        chat_msg_json = "media|:" + json.dumps(media_obj, ensure_ascii=False) + _MEDIA_TAG
         logger.info(f"[Knox] 파일 메시지 chatMsg(전송): {chat_msg_json}")
 
         request_id = int(time.time() * 1000)
