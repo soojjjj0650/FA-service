@@ -478,9 +478,11 @@ class KnoxMessengerClient:
                 return None
 
             data = resp.json()
-            key_b64 = data.get("key")
-            if key_b64:
-                return base64.b64decode(key_b64)
+            key_hex = data.get("key")
+            if key_hex:
+                key_bytes = bytes.fromhex(key_hex)
+                logger.info(f"[Knox] 메시지 키 길이: {len(key_bytes)} bytes")
+                return key_bytes
 
             logger.warning(f"[Knox] key 필드 없음: {data}")
             return None
