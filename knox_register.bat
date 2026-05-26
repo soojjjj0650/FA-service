@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 > nul
 cd /d "%~dp0"
 echo.
 echo ============================
@@ -20,7 +21,7 @@ curl -s -w "\nHTTP %%{http_code}" ^
 echo.
 echo.
 
-echo [3] Send Analysis (SN 직접 입력해서 분석 + PDF 전송)
+echo [3] Send Analysis (SN input - analysis + PDF send)
 set /p INPUT_SN=Enter SN:
 curl -s -w "\nHTTP %%{http_code}" ^
   -X POST "http://10.246.9.74:80/api/knox/send-analysis" ^
