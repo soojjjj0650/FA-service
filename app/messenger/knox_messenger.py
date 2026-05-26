@@ -360,20 +360,32 @@ class KnoxMessengerClient:
         server_time, word_key = time_result
         logger.info(f"[Knox] 파일서버 serverTime={server_time!r} | word={word_key!r}")
 
-        # Unix ms → YYYYMMDDHHmmss 변환 (예: 1779784440310 → '20260526173400')
-        server_time_fmt = _format_server_time(server_time)
-        logger.info(f"[Knox] serverTime 변환: {server_time!r} → {server_time_fmt!r}")
+        # getCurrentTime word = 파일 서버 AES 암호화 키 (File server Time(key) API 스펙)
+        # word 길이가 가변이므로 SHA256으로 정확히 32바이트 키 유도
+        import hashlib
+        word_bytes = word_key.encode("utf-8")
+        if len(word_bytes) >= 32:
+            file_aes_key = word_bytes[:32]
+            file_aes_iv  = word_bytes[:16]
+        else:
+            # SHA256으로 32바이트 키 유도 (21자 등 짧은 경우)
+            file_aes_key = hashlib.sha256(word_bytes).digest()          # 32 bytes
+            file_aes_iv  = hashlib.sha256(word_bytes).digest()[:16]     # 16 bytes
 
-        # 3. AES256-CBC로 헤더값 암호화
+        logger.info(
+            f"[Knox] 파일 암호화 키 | word_len={len(word_bytes)} "
+            f"| key_hex={file_aes_key.hex()} | iv_hex={file_aes_iv.hex()}"
+        )
+
+        # 3. AES256-CBC로 헤더값 암호화 (serverTime은 API 반환 문자열 그대로 사용)
         try:
             logger.info(
                 f"[Knox] 암호화 입력 | device_id={self.device_id!r} | "
-                f"server_time_fmt={server_time_fmt!r} | key_len={len(aes_key)} | iv_len={len(aes_iv)} | "
-                f"key_hex={aes_key.hex()} | iv_hex={aes_iv.hex()}"
+                f"server_time={server_time!r} | key_len={len(file_aes_key)} | iv_len={len(file_aes_iv)}"
             )
-            enc_device_id   = _aes256_encrypt(self.device_id,   aes_key, aes_iv)
-            enc_device_type = _aes256_encrypt("relation",        aes_key, aes_iv)
-            enc_server_time = _aes256_encrypt(server_time_fmt,   aes_key, aes_iv)
+            enc_device_id   = _aes256_encrypt(self.device_id,  file_aes_key, file_aes_iv)
+            enc_device_type = _aes256_encrypt("relation",       file_aes_key, file_aes_iv)
+            enc_server_time = _aes256_encrypt(server_time,      file_aes_key, file_aes_iv)
             logger.info(
                 f"[Knox] 헤더 암호화 완료 | "
                 f"x-device-id={enc_device_id} | "
