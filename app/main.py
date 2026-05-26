@@ -957,6 +957,12 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
         asyncio.create_task(_knox_reply(chatroom_id, "SN을 입력해주세요."))
         return JSONResponse(status_code=200, content={"status": "ignored", "reason": "empty"})
 
+    # 키워드 처리: 카드 재전송
+    _CARD_KEYWORDS = {"시작", "start", "도움말", "help", "카드", "card", "ㅎ", "hi", "안녕"}
+    if chat_msg.strip().lower() in _CARD_KEYWORDS:
+        asyncio.create_task(_knox_reply(chatroom_id, "FA 분석 카드를 전송합니다.", with_card=True))
+        return JSONResponse(status_code=200, content={"status": "ignored", "reason": "empty"})
+
     # ── 여러 SN 지원: 쉼표/공백/줄바꿈으로 구분 ─────────────────────────────
     import re as _re
     sn_list = [s.strip().upper() for s in _re.split(r'[,\s]+', chat_msg) if s.strip()]
