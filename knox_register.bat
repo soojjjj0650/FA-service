@@ -7,7 +7,7 @@ echo ============================
 echo.
 
 curl -s -w "\nHTTP %%{http_code}" ^
-  -X POST "http://10.246.9.74:8000/api/knox/register" ^
+  -X POST "http://10.246.9.74:80/api/knox/register" ^
   -H "Content-Type: application/json"
 echo.
 echo.
