@@ -408,7 +408,7 @@ class KnoxMessengerClient:
 
         request_id = int(time.time() * 1000)
         plain_payload = {
-            "chatType": 2,
+            "chatType": 1,
             "requestId": request_id,
             "receivers": [int(self.receiver_user_id)],
         }
