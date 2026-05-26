@@ -692,22 +692,41 @@ class KnoxMessengerClient:
         parsed = urlparse(download_url)
         file_server_path = parsed.path  # /file/v1s/file/XXXX
 
-        # chatMsg = JSON-encoded string of download_url ("https://...")
-        chat_msg_json = json.dumps(download_url)
+        # chatMsg = "media|:{...}" 형식 (Knox MEDIA 전용 포맷)
+        ext = os.path.splitext(filename)[1].lstrip(".").lower()  # "pdf"
+        media_obj = {
+            "extention": ext,                # Knox 오타 그대로 (extention)
+            "type": ext.upper(),             # "PDF"
+            "filename": filename,
+            "sender": self.device_id,
+            "size": file_size,
+            "text": '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLDT"}} -->',
+            "url": download_url,
+        }
+        chat_msg_json = "media|:" + json.dumps(media_obj, ensure_ascii=False)
         logger.info(f"[Knox] 파일 메시지 chatMsg: {chat_msg_json}")
 
         request_id = int(time.time() * 1000)
+        chat_params = [
+            {
+                "msgId": request_id,
+                "msgType": 1,
+                "chatMsg": chat_msg_json,
+                "msgTtl": 7200,
+            }
+        ]
+        if message_text:
+            chat_params.append({
+                "msgId": request_id + 1,
+                "msgType": 0,
+                "chatMsg": message_text,
+                "msgTtl": 7200,
+            })
+
         plain_payload = {
             "requestId": request_id,
             "chatroomId": int(chatroom_id),
-            "chatMessageParams": [
-                {
-                    "msgId": request_id,
-                    "msgType": 1,
-                    "chatMsg": chat_msg_json,
-                    "msgTtl": 7200,
-                }
-            ],
+            "chatMessageParams": chat_params,
         }
 
         headers = {
