@@ -293,8 +293,9 @@ class KnoxMessengerClient:
                 return None
 
             data = resp.json()
-            server_time = str(data.get("serverTime", ""))
-            word_key    = str(data.get("word", ""))
+            logger.info(f"[Knox] 파일서버 Time 전체 응답: {data}")
+            server_time = str(data.get("serverTime") or data.get("server_time") or data.get("currentTime") or "")
+            word_key    = str(data.get("word") or data.get("wordKey") or data.get("key") or "")
 
             if server_time and word_key:
                 return server_time, word_key
@@ -363,6 +364,7 @@ class KnoxMessengerClient:
                 "x-device-type":  enc_device_type,
                 "x-request-time": server_time,
             }
+            logger.info(f"[Knox] 업로드 헤더 | x-request-time={server_time!r} | url={url}")
 
             resp = await self._areq("PUT", url, data=file_bytes, headers=headers)
 
