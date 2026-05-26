@@ -754,16 +754,18 @@ class KnoxMessengerClient:
 _COMPRESS_TAG = '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLDT","TYPE":"COMPRESS"}}-->'
 
 
-def _build_adaptive_card_chatmsg(card: dict) -> str:
+def _build_adaptive_card_chatmsg(card: dict, compress: bool = False) -> str:
     """
     Knox Messenger Adaptive Card chatMsg 인코딩.
     1. card → JSON 문자열
     2. {"adaptiveCards": "<card_json>"} → JSON 문자열 (원문)
-    3. gzip 압축 → 4바이트(원문 bit 길이) + 압축 bytes → base64
-    4. COMPRESS 태그 + base64 값 반환
+    3. (선택) gzip 압축 → 4바이트(원문 bit 길이) + 압축 bytes → base64 → COMPRESS 태그 추가
     """
     card_str = json.dumps(card, ensure_ascii=False)
     wrapper_str = json.dumps({"adaptiveCards": card_str}, ensure_ascii=False)
+
+    if not compress:
+        return wrapper_str
 
     raw_bytes = wrapper_str.encode("utf-8")
     bit_length = len(raw_bytes) * 8
