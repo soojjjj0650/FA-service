@@ -855,6 +855,38 @@ async def knox_test_message():
     return {"chatroom_id": chatroom_id, "sent": ok}
 
 
+@app.post("/api/knox/send-analysis")
+async def knox_send_analysis(request: Request):
+    """
+    SN을 입력받아 FA 분석 → PDF 생성 → Knox Messenger 전송을 수동으로 실행합니다.
+    Knox 웹훅 없이도 테스트 가능.
+    body: {"sn": "R3CUFHDJF"}
+    """
+    from app.messenger.knox_messenger import _load_cached_chatroom_id
+    body = await request.json()
+    sn = (body.get("sn") or "").strip().upper()
+    if not sn:
+        raise HTTPException(status_code=400, detail="sn 필드가 필요합니다.")
+
+    chatroom_id = _load_cached_chatroom_id()
+    if not chatroom_id:
+        raise HTTPException(status_code=400, detail="대화방 없음. /api/knox/register 먼저 호출하세요.")
+
+    job_id = str(uuid.uuid4())
+    _chatbot_jobs[job_id] = {
+        "job_id":     job_id,
+        "sn":         sn,
+        "status":     "pending",
+        "userId":     settings.KNOX_RECEIVER_USER_ID,
+        "chatRoomId": chatroom_id,
+        "created_at": time.time(),
+        "source":     "knox",
+    }
+    asyncio.create_task(_knox_reply(chatroom_id, f"[FA 분석 시작] SN: {sn}\n잠시 후 결과를 전송합니다.", with_card=False))
+    asyncio.create_task(_run_knox_pipeline(job_id, sn))
+    return {"status": "accepted", "job_id": job_id, "sn": sn, "chatroom_id": chatroom_id}
+
+
 @app.get("/api/knox/status")
 async def knox_status():
     """Knox Messenger 설정 상태를 확인합니다."""
