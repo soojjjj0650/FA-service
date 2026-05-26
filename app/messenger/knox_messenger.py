@@ -378,17 +378,15 @@ class KnoxMessengerClient:
         )
 
         # 3. AES256-CBC로 헤더값 암호화
-        # x-request-time: 파일명에서 YYYYMMDDHHmmss 타임스탬프 추출
-        # (r20260526173400.pdf → '20260526173400') Knox가 날짜 형식을 기대함
-        server_time_fmt = upload_filename[1:15]
+        # x-request-time: getCurrentTime이 반환한 serverTime 문자열 그대로 암호화
         try:
             logger.info(
                 f"[Knox] 암호화 입력 | device_id={self.device_id!r} | "
-                f"server_time_fmt={server_time_fmt!r} | key_len={len(file_aes_key)} | iv_len={len(file_aes_iv)}"
+                f"server_time={server_time!r} | key_len={len(file_aes_key)} | iv_len={len(file_aes_iv)}"
             )
             enc_device_id   = _aes256_encrypt(self.device_id,   file_aes_key, file_aes_iv)
             enc_device_type = _aes256_encrypt("relation",        file_aes_key, file_aes_iv)
-            enc_server_time = _aes256_encrypt(server_time_fmt,   file_aes_key, file_aes_iv)
+            enc_server_time = _aes256_encrypt(server_time,       file_aes_key, file_aes_iv)
             logger.info(
                 f"[Knox] 헤더 암호화 완료 | "
                 f"x-device-id={enc_device_id} | "
