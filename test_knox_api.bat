@@ -7,8 +7,8 @@ echo ============================
 echo.
 
 set STAGE_URL=https://openapi.stage.samsung.net
-set STAGE_TOKEN=570623bc-a497-30f4-8de8-a80e199a6337
-set SYSTEM_ID=KCC10BOT01508
+set STAGE_TOKEN=c5e2b6bd-6f1f-3a35-b5a9-a88e2f0222de
+set SYSTEM_ID=KCC10REST04505
 
 echo [1] Public IP
 curl -s http://checkip.amazonaws.com
