@@ -35,4 +35,14 @@ curl -s -w "\nHTTP %%{http_code}" ^
 echo.
 echo.
 
+echo [4] User Lookup - sujin06.bae
+curl -s -w "\nHTTP %%{http_code}" ^
+  -X GET "%STAGE_URL%/messenger/contact/api/v2.0/user/search?knoxId=sujin06.bae" ^
+  -H "Authorization: Bearer %STAGE_TOKEN%" ^
+  -H "System-Id: %SYSTEM_ID%" ^
+  -H "x-device-id: %DEVICE_ID%" ^
+  -H "x-device-type: relation"
+echo.
+echo.
+
 pause
