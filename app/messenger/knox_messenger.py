@@ -153,6 +153,8 @@ class KnoxMessengerClient:
         return {
             "Authorization": f"Bearer {self.access_token}",
             "System-ID": self.system_id,
+            "User-Agent": "curl/7.81.0",
+            "Accept": "*/*",
         }
 
     def _headers(self) -> dict:
@@ -461,12 +463,8 @@ class KnoxMessengerClient:
         반환: key bytes (Base64 디코딩), None (실패)
         """
         url = f"{self.base_url}/messenger/msgctx/api/v2.0/key/getkeys"
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "System-ID": self.system_id,
-            "x-device-id": self.device_id,
-            "x-device-type": "relation",
-        }
+        headers = self._headers()
+        headers["x-device-type"] = "relation"
         try:
             async with httpx.AsyncClient(timeout=30, verify=False, http1=True, http2=False) as client:
                 resp = await client.get(url, headers=headers)
