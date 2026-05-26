@@ -707,26 +707,17 @@ class KnoxMessengerClient:
         logger.info(f"[Knox] 파일 메시지 chatMsg: {chat_msg_json}")
 
         request_id = int(time.time() * 1000)
-        chat_params = [
-            {
-                "msgId": request_id,
-                "msgType": 1,
-                "chatMsg": chat_msg_json,
-                "msgTtl": 7200,
-            }
-        ]
-        if message_text:
-            chat_params.append({
-                "msgId": request_id + 1,
-                "msgType": 0,
-                "chatMsg": message_text,
-                "msgTtl": 7200,
-            })
-
         plain_payload = {
             "requestId": request_id,
             "chatroomId": int(chatroom_id),
-            "chatMessageParams": chat_params,
+            "chatMessageParams": [
+                {
+                    "msgId": request_id,
+                    "msgType": 1,
+                    "chatMsg": chat_msg_json,
+                    "msgTtl": 7200,
+                }
+            ],
         }
 
         headers = {
