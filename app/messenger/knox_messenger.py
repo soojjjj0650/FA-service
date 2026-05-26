@@ -732,8 +732,9 @@ class KnoxMessengerClient:
             logger.info(f"[Knox] 파일 메시지 전송 | status={resp.status_code} | body={resp.text[:300]}")
 
             if resp.status_code >= 400:
-                logger.error(f"[Knox] 파일 메시지 전송 실패: {resp.status_code} {resp.text[:200]}")
-                return False
+                logger.warning(f"[Knox] MEDIA 전송 실패({resp.status_code}) - 텍스트로 fallback")
+                fallback = f"[FA 분석] {filename}\n다운로드: {download_url}"
+                return await self.send_message(chatroom_id, fallback)
 
             if msg_key:
                 iv = msg_key[32:48]
@@ -746,8 +747,7 @@ class KnoxMessengerClient:
                 logger.info(f"[Knox] 파일 메시지 전송 완료 | chatroomId={chatroom_id} | file={filename}")
                 return True
 
-            # msgType:1 실패 시 텍스트(msgType:0)로 fallback
-            logger.warning(f"[Knox] Media 전송 실패(code={result_code}) - 텍스트 메시지로 재시도")
+            logger.warning(f"[Knox] Media 전송 실패(code={result_code}) - 텍스트로 fallback")
             fallback = f"[FA 분석] {filename}\n다운로드: {download_url}"
             return await self.send_message(chatroom_id, fallback)
 
