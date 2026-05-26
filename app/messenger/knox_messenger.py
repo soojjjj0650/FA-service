@@ -16,9 +16,13 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
+import asyncio
+from functools import partial
 
-import httpx
+import requests
+import urllib3
+from pathlib import Path
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +152,17 @@ class KnoxMessengerClient:
         self.receiver_user_id = receiver_user_id
         self.timeout = timeout
 
+    def _req(self, method: str, url: str, **kwargs) -> requests.Response:
+        """동기 requests 호출 (SSL 검증 비활성화, 타임아웃 적용)."""
+        kwargs.setdefault("timeout", self.timeout)
+        kwargs["verify"] = False
+        return requests.request(method, url, **kwargs)
+
+    async def _areq(self, method: str, url: str, **kwargs) -> requests.Response:
+        """비동기 컨텍스트에서 requests 호출 (thread pool 사용)."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, partial(self._req, method, url, **kwargs))
+
     def _base_headers(self) -> dict:
         """Device ID 없이 기본 헤더만 반환 (등록 API 호출용)."""
         return {
@@ -186,8 +201,7 @@ class KnoxMessengerClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30, verify=False, http1=True, http2=False) as client:
-                resp = await client.get(url, headers=headers)
+            resp = await self._areq("GET", url, headers=headers)
 
             logger.info(
                 f"[Knox] Device 등록 응답 | status={resp.status_code} "
@@ -222,7 +236,7 @@ class KnoxMessengerClient:
             logger.warning(f"[Knox] deviceServerID 없음 - 응답: {data}")
             return None
 
-        except httpx.ConnectError as e:
+        except requests.exceptions.ConnectionError as e:
             logger.error(f"[Knox] 서버 연결 실패 ({self.base_url}): {e}")
             return None
         except Exception as e:
@@ -268,8 +282,7 @@ class KnoxMessengerClient:
             "x-device-type": "relation",
         }
         try:
-            async with httpx.AsyncClient(timeout=30, verify=False, http1=True, http2=False) as client:
-                resp = await client.get(url, params={"word": word}, headers=headers)
+            resp = await self._areq("GET", url, params={"word": word}, headers=headers)
 
             logger.info(f"[Knox] 파일서버 Time 조회 | status={resp.status_code} | body={resp.text[:200]}")
 
@@ -345,8 +358,7 @@ class KnoxMessengerClient:
                 "x-request-time": enc_server_time,
             }
 
-            async with httpx.AsyncClient(timeout=self.timeout, verify=False, http1=True, http2=False) as client:
-                resp = await client.put(url, content=file_bytes, headers=headers)
+            resp = await self._areq("PUT", url, data=file_bytes, headers=headers)
 
             logger.info(f"[Knox] 파일 업로드 | status={resp.status_code} | body={resp.text[:300]}")
 
@@ -416,12 +428,10 @@ class KnoxMessengerClient:
                 iv = msg_key[:16]
                 body = _encrypt_payload(plain_payload, msg_key, iv)
                 headers["Content-Type"] = "text/plain"
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, http1=True, http2=False) as client:
-                    resp = await client.post(url, content=body, headers=headers)
+                resp = await self._areq("POST", url, data=body, headers=headers)
             else:
                 logger.warning("[Knox] 메시지 키 없음 - 평문 전송 (테스트용)")
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, http1=True, http2=False) as client:
-                    resp = await client.post(url, json=plain_payload, headers=headers)
+                resp = await self._areq("POST", url, json=plain_payload, headers=headers)
 
             logger.info(f"[Knox] 대화방 생성 | status={resp.status_code} | body={resp.text[:300]}")
 
@@ -466,8 +476,7 @@ class KnoxMessengerClient:
         headers = self._headers()
         headers["x-device-type"] = "relation"
         try:
-            async with httpx.AsyncClient(timeout=30, verify=False, http1=True, http2=False) as client:
-                resp = await client.get(url, headers=headers)
+            resp = await self._areq("GET", url, headers=headers)
 
             logger.info(f"[Knox] 메시지 키 조회 | status={resp.status_code} | body={resp.text[:200]}")
 
@@ -544,12 +553,10 @@ class KnoxMessengerClient:
                 iv = msg_key[:16]
                 body = _encrypt_payload(plain_payload, msg_key, iv)
                 headers["Content-Type"] = "text/plain"
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, http1=True, http2=False) as client:
-                    resp = await client.post(url, content=body, headers=headers)
+                resp = await self._areq("POST", url, data=body, headers=headers)
             else:
                 logger.warning("[Knox] 메시지 키 없음 - 평문 전송 (테스트용)")
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, http1=True, http2=False) as client:
-                    resp = await client.post(url, json=plain_payload, headers=headers)
+                resp = await self._areq("POST", url, json=plain_payload, headers=headers)
 
             logger.info(
                 f"[Knox] 메시지 전송 | status={resp.status_code} "
@@ -625,12 +632,10 @@ class KnoxMessengerClient:
                 iv = msg_key[:16]
                 body = _encrypt_payload(plain_payload, msg_key, iv)
                 headers["Content-Type"] = "text/plain"
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, http1=True, http2=False) as client:
-                    resp = await client.post(url, content=body, headers=headers)
+                resp = await self._areq("POST", url, data=body, headers=headers)
             else:
                 logger.warning("[Knox] 메시지 키 없음 - 평문 전송 (테스트용)")
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, http1=True, http2=False) as client:
-                    resp = await client.post(url, json=plain_payload, headers=headers)
+                resp = await self._areq("POST", url, json=plain_payload, headers=headers)
 
             logger.info(f"[Knox] 파일 메시지 전송 | status={resp.status_code} | body={resp.text[:300]}")
 
@@ -715,11 +720,9 @@ class KnoxMessengerClient:
                 iv = msg_key[:16]
                 body = _encrypt_payload(plain_payload, msg_key, iv)
                 headers["Content-Type"] = "text/plain"
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, http1=True, http2=False) as client:
-                    resp = await client.post(url, content=body, headers=headers)
+                resp = await self._areq("POST", url, data=body, headers=headers)
             else:
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, http1=True, http2=False) as client:
-                    resp = await client.post(url, json=plain_payload, headers=headers)
+                resp = await self._areq("POST", url, json=plain_payload, headers=headers)
 
             logger.info(f"[Knox] Adaptive Card 전송 | status={resp.status_code} | body={resp.text[:300]}")
 
