@@ -820,19 +820,16 @@ async def knox_register_device():
     if not chatroom_id:
         raise HTTPException(status_code=502, detail="대화방 생성 실패. 서버 로그를 확인하세요.")
 
-    # 3. SN 입력 Adaptive Card 전송
-    from app.messenger.knox_messenger import build_sn_input_card
-    receive_url = f"http://{settings.HOST}:{settings.PORT}/message"
-    card = build_sn_input_card(receive_url)
-    card_sent = await client.send_adaptive_card(chatroom_id, card)
+    # 3. SN 입력 안내 메시지 전송
+    msg_sent = await client.send_message(chatroom_id, _SN_GUIDE)
 
-    logger.info(f"[Knox] 초기 설정 완료 | device_id={client.device_id} | chatroom_id={chatroom_id} | card_sent={card_sent}")
+    logger.info(f"[Knox] 초기 설정 완료 | device_id={client.device_id} | chatroom_id={chatroom_id} | msg_sent={msg_sent}")
     return {
         "status": "ok",
         "device_id": client.device_id,
         "chatroom_id": chatroom_id,
-        "card_sent": card_sent,
-        "message": "Device ID 및 대화방 생성 완료. SN 입력 카드를 전송했습니다.",
+        "msg_sent": msg_sent,
+        "message": "Device ID 및 대화방 생성 완료. SN 입력 안내를 전송했습니다.",
     }
 
 
@@ -885,11 +882,13 @@ async def knox_status():
 #   "senderKnoxId": "aabbc"            ← Knox ID (응답 수신자 식별용)
 # }
 
+_SN_GUIDE = "분석할 단말기 SN을 입력해주세요.\n예) R3CUFHDJF\n여러 개는 쉼표로 구분: R3CUFHDJF, R3CUFHDJA"
+
 async def _knox_reply(chatroom_id: str, text: str, with_card: bool = True) -> None:
-    """Knox 채팅방에 텍스트 + (선택) SN 입력 카드를 전송합니다."""
+    """Knox 채팅방에 텍스트 메시지를 전송합니다."""
     if not settings.KNOX_MESSENGER_BASE_URL or not settings.KNOX_ACCESS_TOKEN:
         return
-    from app.messenger.knox_messenger import KnoxMessengerClient, _load_cached_device_id, build_sn_input_card
+    from app.messenger.knox_messenger import KnoxMessengerClient, _load_cached_device_id
     client = KnoxMessengerClient(
         base_url=settings.KNOX_MESSENGER_BASE_URL,
         access_token=settings.KNOX_ACCESS_TOKEN,
@@ -900,8 +899,7 @@ async def _knox_reply(chatroom_id: str, text: str, with_card: bool = True) -> No
     if text:
         await client.send_message(chatroom_id, text)
     if with_card:
-        receive_url = f"http://{settings.HOST}:{settings.PORT}/message"
-        await client.send_adaptive_card(chatroom_id, build_sn_input_card(receive_url))
+        await client.send_message(chatroom_id, _SN_GUIDE)
 
 
 async def _knox_handle_message(data: dict) -> JSONResponse:
