@@ -882,8 +882,11 @@ async def knox_send_analysis(request: Request):
         "created_at": time.time(),
         "source":     "knox",
     }
-    asyncio.create_task(_knox_reply(chatroom_id, f"[FA 분석 시작] SN: {sn}\n잠시 후 결과를 전송합니다.", with_card=False))
-    asyncio.create_task(_run_knox_pipeline(job_id, sn))
+    async def _send_and_run():
+        await _knox_reply(chatroom_id, f"[{sn}] 조회중입니다. 잠시 후 결과를 전송합니다.", with_card=False)
+        await asyncio.sleep(2)
+        await _run_knox_pipeline(job_id, sn)
+    asyncio.create_task(_send_and_run())
     return {"status": "accepted", "job_id": job_id, "sn": sn, "chatroom_id": chatroom_id}
 
 
@@ -1013,6 +1016,12 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
 
     # ── 각 SN별 Job 등록 및 파이프라인 실행 ──────────────────────────────────
     job_ids = []
+    sns_str = ", ".join(valid_sns)
+    asyncio.create_task(_knox_reply(
+        chatroom_id,
+        f"[{sns_str}] 조회중입니다. 잠시 후 결과를 전송합니다.",
+        with_card=False,
+    ))
     for sn_raw in valid_sns:
         job_id = str(uuid.uuid4())
         _chatbot_jobs[job_id] = {
@@ -1181,26 +1190,49 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         await _fail("Knox 대화방 확보에 실패했습니다.")
         return
 
-    download_url = await client.upload_file(pdf_path)
-    if not download_url:
+    import time as _t
+    import zipfile as _zf
+    feature_summary = job.get("feature_summary", "")
+
+    # ── 1. PDF 업로드 & 전송 ──────────────────────────────────────────────────
+    pdf_url = await client.upload_file(pdf_path)
+    if not pdf_url:
         await _fail("Knox 파일 업로드에 실패했습니다.")
         return
 
-    import time as _t
-    feature_summary = job.get("feature_summary", "")
-    success = await client.send_file_message(
+    pdf_ok = await client.send_file_message(
         chatroom_id=chatroom_id,
-        download_url=download_url,
-        filename=f"r{_t.strftime('%Y%m%d%H%M%S')}.pdf",
+        download_url=pdf_url,
+        filename=f"{sn}_FA분석.pdf",
         message_text=f"[FA 분석 완료] SN: {sn}\n{feature_summary}",
     )
-
-    if success:
-        logger.info(f"[Knox Pipeline] PDF 전송 완료 | SN={sn}")
-        # 완료 후 SN 입력 카드 재전송
-        await _knox_reply(chatroom_id, "", with_card=True)
-    else:
+    if not pdf_ok:
         await _fail("Knox PDF 전송에 실패했습니다.")
+        return
+
+    logger.info(f"[Knox Pipeline] PDF 전송 완료 | SN={sn}")
+    await asyncio.sleep(2)
+
+    # ── 2. HTML ZIP 생성 & 전송 ───────────────────────────────────────────────
+    zip_path = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.zip")
+    try:
+        with _zf.ZipFile(zip_path, "w", _zf.ZIP_DEFLATED) as zf:
+            zf.write(html_path, f"{sn}_analysis.html")
+        zip_url = await client.upload_file(zip_path)
+        if zip_url:
+            await client.send_file_message(
+                chatroom_id=chatroom_id,
+                download_url=zip_url,
+                filename=f"{sn}_FA분석.zip",
+                message_text=f"[FA 분석 HTML] SN: {sn}\n브라우저로 열어보세요.",
+            )
+            logger.info(f"[Knox Pipeline] ZIP 전송 완료 | SN={sn}")
+        await asyncio.sleep(2)
+    except Exception as e:
+        logger.warning(f"[Knox Pipeline] ZIP 전송 실패 (무시): {e}")
+
+    # ── 3. SN 입력 카드 재전송 ────────────────────────────────────────────────
+    await _knox_reply(chatroom_id, "", with_card=True)
 
 
 # ─── 대시보드 엔드포인트 ──────────────────────────────────────────────────────
