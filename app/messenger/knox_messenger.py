@@ -72,6 +72,19 @@ def _aes256_decrypt(ciphertext_b64: str, key: bytes, iv: bytes) -> dict:
         return {}
 
 
+def _format_server_time(server_time: str) -> str:
+    """
+    getCurrentTime이 반환하는 serverTime을 AES 암호화 입력 포맷으로 변환.
+    Unix ms (예: '1779784440310') → 'YYYYMMDDHHmmss' (예: '20260526173400')
+    이미 날짜 포맷이면 그대로 반환.
+    """
+    s = server_time.strip()
+    if s.isdigit() and len(s) >= 13:
+        from datetime import datetime
+        return datetime.utcfromtimestamp(int(s) / 1000).strftime('%Y%m%d%H%M%S')
+    return s
+
+
 def _encrypt_payload(payload: dict, key: bytes, iv: bytes) -> str:
     """dict → JSON 직렬화 → AES256 → Base64 (메시지 API 공통)."""
     return _aes256_encrypt(json.dumps(payload, ensure_ascii=False), key, iv)
@@ -347,16 +360,20 @@ class KnoxMessengerClient:
         server_time, word_key = time_result
         logger.info(f"[Knox] 파일서버 serverTime={server_time!r} | word={word_key!r}")
 
+        # Unix ms → YYYYMMDDHHmmss 변환 (예: 1779784440310 → '20260526173400')
+        server_time_fmt = _format_server_time(server_time)
+        logger.info(f"[Knox] serverTime 변환: {server_time!r} → {server_time_fmt!r}")
+
         # 3. AES256-CBC로 헤더값 암호화
         try:
             logger.info(
                 f"[Knox] 암호화 입력 | device_id={self.device_id!r} | "
-                f"server_time={server_time!r} | key_len={len(aes_key)} | iv_len={len(aes_iv)} | "
+                f"server_time_fmt={server_time_fmt!r} | key_len={len(aes_key)} | iv_len={len(aes_iv)} | "
                 f"key_hex={aes_key.hex()} | iv_hex={aes_iv.hex()}"
             )
-            enc_device_id   = _aes256_encrypt(self.device_id, aes_key, aes_iv)
-            enc_device_type = _aes256_encrypt("relation",     aes_key, aes_iv)
-            enc_server_time = _aes256_encrypt(server_time,    aes_key, aes_iv)
+            enc_device_id   = _aes256_encrypt(self.device_id,   aes_key, aes_iv)
+            enc_device_type = _aes256_encrypt("relation",        aes_key, aes_iv)
+            enc_server_time = _aes256_encrypt(server_time_fmt,   aes_key, aes_iv)
             logger.info(
                 f"[Knox] 헤더 암호화 완료 | "
                 f"x-device-id={enc_device_id} | "
