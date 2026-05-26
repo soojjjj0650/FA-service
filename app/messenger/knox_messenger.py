@@ -53,6 +53,20 @@ def _aes256_encrypt(plaintext: str, key: bytes, iv: bytes) -> str:
         return base64.b64encode(plaintext.encode("utf-8")).decode("ascii")
 
 
+def _aes256_ecb_encrypt(plaintext: str, key: bytes) -> str:
+    """평문 문자열 → AES256-ECB → Base64 인코딩 (IV 없음)."""
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.primitives import padding as sym_padding
+
+    padder = sym_padding.PKCS7(128).padder()
+    padded = padder.update(plaintext.encode("utf-8")) + padder.finalize()
+
+    cipher = Cipher(algorithms.AES(key), modes.ECB())
+    encryptor = cipher.encryptor()
+    ciphertext = encryptor.update(padded) + encryptor.finalize()
+    return base64.b64encode(ciphertext).decode("ascii")
+
+
 def _aes256_decrypt(ciphertext_b64: str, key: bytes, iv: bytes) -> dict:
     """Base64 → AES256-CBC 복호화 → dict 반환."""
     try:
@@ -360,33 +374,45 @@ class KnoxMessengerClient:
         server_time, word_key = time_result
         logger.info(f"[Knox] 파일서버 serverTime={server_time!r} | word={word_key!r}")
 
-        # getCurrentTime word = 파일 서버 AES 암호화 키 (File server Time(key) API 스펙)
-        # word 길이가 가변이므로 SHA256으로 정확히 32바이트 키 유도
+        # getCurrentTime word = 파일 서버 AES 암호화 키
         import hashlib
         word_bytes = word_key.encode("utf-8")
         if len(word_bytes) >= 32:
             file_aes_key = word_bytes[:32]
-            file_aes_iv  = word_bytes[:16]
         else:
-            # SHA256으로 32바이트 키 유도 (21자 등 짧은 경우)
-            file_aes_key = hashlib.sha256(word_bytes).digest()          # 32 bytes
-            file_aes_iv  = hashlib.sha256(word_bytes).digest()[:16]     # 16 bytes
+            file_aes_key = hashlib.sha256(word_bytes).digest()
+
+        # IV = 0 (all zeros) 시도 — CBC IV 불확실하므로 기본값 사용
+        file_aes_iv_zero = b'\x00' * 16
 
         logger.info(
             f"[Knox] 파일 암호화 키 | word_len={len(word_bytes)} "
-            f"| key_hex={file_aes_key.hex()} | iv_hex={file_aes_iv.hex()}"
+            f"| key_hex={file_aes_key.hex()}"
         )
 
-        # 3. AES256-CBC로 헤더값 암호화
-        # x-request-time: getCurrentTime이 반환한 serverTime 문자열 그대로 암호화
+        # 3. AES256으로 헤더값 암호화
+        # CBC(IV=zeros) 와 ECB 모두 로그 출력해 비교
         try:
+            enc_device_id_cbc   = _aes256_encrypt(self.device_id, file_aes_key, file_aes_iv_zero)
+            enc_device_type_cbc = _aes256_encrypt("relation",     file_aes_key, file_aes_iv_zero)
+            enc_server_time_cbc = _aes256_encrypt(server_time,    file_aes_key, file_aes_iv_zero)
+
+            enc_device_id_ecb   = _aes256_ecb_encrypt(self.device_id, file_aes_key)
+            enc_device_type_ecb = _aes256_ecb_encrypt("relation",     file_aes_key)
+            enc_server_time_ecb = _aes256_ecb_encrypt(server_time,    file_aes_key)
+
+            logger.info(f"[Knox] CBC(IV=0) | x-device-id={enc_device_id_cbc} | x-device-type={enc_device_type_cbc} | x-request-time={enc_server_time_cbc}")
+            logger.info(f"[Knox] ECB      | x-device-id={enc_device_id_ecb} | x-device-type={enc_device_type_ecb} | x-request-time={enc_server_time_ecb}")
+
+            # CBC(IV=zeros)로 실제 전송
+            enc_device_id   = enc_device_id_cbc
+            enc_device_type = enc_device_type_cbc
+            enc_server_time = enc_server_time_cbc
+
             logger.info(
-                f"[Knox] 암호화 입력 | device_id={self.device_id!r} | "
-                f"server_time={server_time!r} | key_len={len(file_aes_key)} | iv_len={len(file_aes_iv)}"
+                f"[Knox] 암호화 완료 | device_id={self.device_id!r} | "
+                f"server_time={server_time!r} | mode=CBC(IV=zeros)"
             )
-            enc_device_id   = _aes256_encrypt(self.device_id,   file_aes_key, file_aes_iv)
-            enc_device_type = _aes256_encrypt("relation",        file_aes_key, file_aes_iv)
-            enc_server_time = _aes256_encrypt(server_time,       file_aes_key, file_aes_iv)
             logger.info(
                 f"[Knox] 헤더 암호화 완료 | "
                 f"x-device-id={enc_device_id} | "
