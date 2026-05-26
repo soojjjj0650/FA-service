@@ -901,6 +901,20 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
         f"knoxId={sender_knox} | chatroom={chatroom_id} | msg={chat_msg[:120]}"
     )
 
+    # 첫 수신 시 chatroomId와 sender userID를 캐시에 저장
+    if chatroom_id:
+        from app.messenger.knox_messenger import _load_cached_chatroom_id, _save_chatroom_id
+        if not _load_cached_chatroom_id():
+            _save_chatroom_id(chatroom_id)
+            logger.info(f"[Knox] 첫 메시지 수신 → chatroomId 자동 저장: {chatroom_id}")
+    if sender:
+        from pathlib import Path
+        _sender_cache = Path(__file__).parent.parent / "data" / "knox_sender_user_id.txt"
+        if not _sender_cache.exists():
+            _sender_cache.parent.mkdir(parents=True, exist_ok=True)
+            _sender_cache.write_text(sender, encoding="utf-8")
+            logger.info(f"[Knox] sender userID 자동 저장: {sender} (senderKnoxId={sender_knox})")
+
     # ADAPTIVE_CARD: chatMsg JSON에서 sn 필드 추출
     if msg_type == "ADAPTIVE_CARD":
         try:
