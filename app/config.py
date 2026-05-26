@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     QINGS_SYMPTOM_COLUMN: str = "증상명"        # (미사용 — 날짜 필터로 대체)
     QINGS_SYMPTOM_KEYWORDS: list[str] = ["통화", "수화", "송화", "데이터 접속"]
     PREFETCH_ENABLED: bool = True         # 평일 9시 자동 사전 쿼리 활성화
-    CACHE_MAX_AGE_HOURS: int = 72        # 캐시 유효 시간 (시간)
+    CACHE_MAX_AGE_HOURS: int = 720       # 캐시 유효 시간 (시간) — 기본 30일
 
     # ─── 메일 다운로더 (FA 미결건 엑셀 자동 수집) ───────────────────────────────
     MAIL_ENABLED: bool = False              # True 시 매일 17시 자동 실행
