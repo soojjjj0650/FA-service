@@ -695,16 +695,15 @@ class KnoxMessengerClient:
         # chatMsg = "media|:{...}" 형식 (Knox MEDIA 전용 포맷)
         ext = os.path.splitext(filename)[1].lstrip(".").lower()  # "pdf"
         media_obj = {
-            "extention": ext,                # Knox 오타 그대로 (extention)
-            "type": ext.upper(),             # "PDF"
+            "extention": ext,
+            "type": ext.upper(),
             "filename": filename,
-            "sender": self.device_id,
             "size": file_size,
             "text": '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLDT"}} -->',
             "url": download_url,
         }
         chat_msg_json = "media|:" + json.dumps(media_obj, ensure_ascii=False)
-        logger.info(f"[Knox] 파일 메시지 chatMsg: {chat_msg_json}")
+        logger.info(f"[Knox] 파일 메시지 chatMsg(전송): {chat_msg_json}")
 
         request_id = int(time.time() * 1000)
         plain_payload = {
@@ -742,7 +741,7 @@ class KnoxMessengerClient:
             logger.info(f"[Knox] 파일 메시지 전송 | status={resp.status_code} | body={resp.text[:300]}")
 
             if resp.status_code >= 400:
-                logger.warning(f"[Knox] MEDIA 전송 실패({resp.status_code}) - 텍스트로 fallback")
+                logger.warning(f"[Knox] MEDIA 전송 실패({resp.status_code}) body={resp.text[:300]} - 텍스트로 fallback")
                 fallback = f"[FA 분석] {filename}\n다운로드: {download_url}"
                 return await self.send_message(chatroom_id, fallback)
 
