@@ -7,11 +7,12 @@ echo  Knox PDF Send Test
 echo ============================
 echo.
 
-set PDF_PATH=%~dp0test\R3CW804XAD_analysis.pdf
+set SERVER=http://10.246.9.74:80
+set PDF_FILE=%~dp0test\R3CW804XAD_analysis.pdf
 
 echo [1] Register - chatroom + adaptive card
 curl -s -w "\nHTTP %%{http_code}" ^
-  -X POST "http://10.246.9.74:80/api/knox/register" ^
+  -X POST "%SERVER%/api/knox/register" ^
   -H "Content-Type: application/json"
 echo.
 echo.
@@ -19,10 +20,9 @@ echo.
 timeout /t 2 /nobreak > nul
 
 echo [2] Send PDF file
-curl -s -w "\nHTTP %%{http_code}" ^
-  -X POST "http://10.246.9.74:80/api/knox/send-file" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"file_path\":\"%PDF_PATH:\=\\%\",\"message\":\"FA 분석 결과 PDF 테스트\"}"
+powershell -NoProfile -Command ^
+  "$body = @{ file_path = '%PDF_FILE%'; message = 'FA test PDF' } | ConvertTo-Json;" ^
+  "try { $r = Invoke-WebRequest -Uri '%SERVER%/api/knox/send-file' -Method POST -ContentType 'application/json' -Body $body -UseBasicParsing; Write-Host $r.Content } catch { Write-Host 'Error:' $_.Exception.Message }"
 echo.
 echo.
 
