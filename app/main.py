@@ -855,6 +855,53 @@ async def knox_test_message():
     return {"chatroom_id": chatroom_id, "sent": ok}
 
 
+@app.post("/api/knox/send-file")
+async def knox_send_file(request: Request):
+    """
+    지정한 파일(PDF 등)을 Knox Messenger로 전송합니다.
+    body: {"file_path": "C:\\...\\R3CW804XAD_analysis.pdf", "message": "선택 메시지"}
+    """
+    from app.messenger.knox_messenger import KnoxMessengerClient, _load_cached_device_id, _load_cached_chatroom_id
+    import os as _os
+
+    body = await request.json()
+    file_path = (body.get("file_path") or "").strip()
+    message   = body.get("message") or "FA 분석 결과 파일입니다."
+
+    if not file_path:
+        raise HTTPException(status_code=400, detail="file_path 필드가 필요합니다.")
+    if not _os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"파일을 찾을 수 없습니다: {file_path}")
+
+    chatroom_id = _load_cached_chatroom_id()
+    if not chatroom_id:
+        raise HTTPException(status_code=400, detail="대화방 없음. /api/knox/register 먼저 호출하세요.")
+
+    client = KnoxMessengerClient(
+        base_url=settings.KNOX_MESSENGER_BASE_URL,
+        access_token=settings.KNOX_ACCESS_TOKEN,
+        system_id=settings.KNOX_SYSTEM_ID,
+        device_id=settings.KNOX_DEVICE_ID or _load_cached_device_id(),
+        receiver_user_id=settings.KNOX_RECEIVER_USER_ID,
+    )
+
+    if not await client.ensure_device_id():
+        raise HTTPException(status_code=502, detail="Knox Device ID 확보 실패.")
+
+    file_url = await client.upload_file(file_path)
+    if not file_url:
+        raise HTTPException(status_code=502, detail="Knox 파일 업로드 실패.")
+
+    filename = _os.path.basename(file_path)
+    ok = await client.send_file_message(
+        chatroom_id=chatroom_id,
+        download_url=file_url,
+        filename=filename,
+        message_text=message,
+    )
+    return {"sent": ok, "file": filename, "chatroom_id": chatroom_id}
+
+
 @app.post("/api/knox/send-analysis")
 async def knox_send_analysis(request: Request):
     """
