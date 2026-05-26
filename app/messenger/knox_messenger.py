@@ -293,8 +293,8 @@ class KnoxMessengerClient:
                 return None
 
             data = resp.json()
-            server_time = data.get("serverTime", "")
-            word_key    = data.get("word", "")
+            server_time = str(data.get("serverTime", ""))
+            word_key    = str(data.get("word", ""))
 
             if server_time and word_key:
                 return server_time, word_key
