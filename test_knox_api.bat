@@ -35,9 +35,39 @@ curl -s -w "\nHTTP %%{http_code}" ^
 echo.
 echo.
 
-echo [4] User Lookup - sujin06.bae
+echo [4-A] User Lookup by knoxId (search)
 curl -s -w "\nHTTP %%{http_code}" ^
   -X GET "%STAGE_URL%/messenger/contact/api/v2.0/user/search?knoxId=sujin06.bae" ^
+  -H "Authorization: Bearer %STAGE_TOKEN%" ^
+  -H "System-Id: %SYSTEM_ID%" ^
+  -H "x-device-id: %DEVICE_ID%" ^
+  -H "x-device-type: relation"
+echo.
+echo.
+
+echo [4-B] User Lookup by userId param
+curl -s -w "\nHTTP %%{http_code}" ^
+  -X GET "%STAGE_URL%/messenger/contact/api/v2.0/user/search?userId=sujin06.bae" ^
+  -H "Authorization: Bearer %STAGE_TOKEN%" ^
+  -H "System-Id: %SYSTEM_ID%" ^
+  -H "x-device-id: %DEVICE_ID%" ^
+  -H "x-device-type: relation"
+echo.
+echo.
+
+echo [4-C] User Info direct path
+curl -s -w "\nHTTP %%{http_code}" ^
+  -X GET "%STAGE_URL%/messenger/contact/api/v2.0/user/sujin06.bae" ^
+  -H "Authorization: Bearer %STAGE_TOKEN%" ^
+  -H "System-Id: %SYSTEM_ID%" ^
+  -H "x-device-id: %DEVICE_ID%" ^
+  -H "x-device-type: relation"
+echo.
+echo.
+
+echo [4-D] Contacts search
+curl -s -w "\nHTTP %%{http_code}" ^
+  -X GET "%STAGE_URL%/messenger/contact/api/v2.0/contacts?knoxId=sujin06.bae" ^
   -H "Authorization: Bearer %STAGE_TOKEN%" ^
   -H "System-Id: %SYSTEM_ID%" ^
   -H "x-device-id: %DEVICE_ID%" ^
