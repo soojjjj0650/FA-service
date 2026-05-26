@@ -692,7 +692,8 @@ class KnoxMessengerClient:
         parsed = urlparse(download_url)
         file_server_path = parsed.path  # /file/v1s/file/XXXX
 
-        chat_msg_json = json.dumps({"download_url": download_url})
+        # chatMsg = JSON-encoded string of download_url ("https://...")
+        chat_msg_json = json.dumps(download_url)
         logger.info(f"[Knox] 파일 메시지 chatMsg: {chat_msg_json}")
 
         request_id = int(time.time() * 1000)
