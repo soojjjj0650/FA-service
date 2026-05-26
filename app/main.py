@@ -1135,7 +1135,7 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     job = _chatbot_jobs[job_id]
     chatroom_id = job.get("chatRoomId", "")
 
-    PIPELINE_TIMEOUT = 900  # 15분
+    PIPELINE_TIMEOUT = settings.QUERY_TIMEOUT_SECONDS + 300  # 쿼리 타임아웃 + 5분 여유
 
     async def _fail(reason: str) -> None:
         logger.error(f"[Knox Pipeline] 실패 | SN={sn} | reason={reason}")
