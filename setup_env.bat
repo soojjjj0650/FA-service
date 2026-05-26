@@ -8,7 +8,7 @@ echo KNOX_DEVICE_ID=21005797091>> .env
 echo KNOX_RECEIVER_USER_ID=921475588965797889>> .env
 echo KNOX_MESSENGER_ENABLED=true>> .env
 echo HOST=0.0.0.0>> .env
-echo PORT=80>> .env
+echo PORT=8000>> .env
 echo LOG_LEVEL=INFO>> .env
 
 echo .env created!
