@@ -344,8 +344,7 @@ class KnoxMessengerClient:
             iv_bytes  = word_bytes[32:48] if len(word_bytes) >= 48 else key_bytes[:16]
             enc_device_id   = _aes256_encrypt(self.device_id, key_bytes, iv_bytes)
             enc_device_type = _aes256_encrypt("relation", key_bytes, iv_bytes)
-            enc_server_time = _aes256_encrypt(server_time, key_bytes, iv_bytes)
-            logger.info(f"[Knox] 헤더 암호화 완료 | enc_time={enc_server_time[:16]}...")
+            logger.info(f"[Knox] 헤더 암호화 완료 | enc_device_id={enc_device_id[:16]}...")
         except Exception as e:
             logger.error(f"[Knox] 헤더 암호화 실패: {e}")
             return None
@@ -362,7 +361,7 @@ class KnoxMessengerClient:
                 "filename": upload_filename,
                 "x-device-id":    enc_device_id,
                 "x-device-type":  enc_device_type,
-                "x-request-time": enc_server_time,
+                "x-request-time": server_time,
             }
 
             resp = await self._areq("PUT", url, data=file_bytes, headers=headers)
