@@ -688,17 +688,17 @@ class KnoxMessengerClient:
         url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
 
         # msgType=1 (MEDIA), chatMsg = JSON
-        # fileServerPath: download_url에서 경로 부분만 추출 (/file/v1s/file/XXXX)
         from urllib.parse import urlparse
-        file_server_path = urlparse(download_url).path
+        parsed = urlparse(download_url)
+        file_server_path = parsed.path  # /file/v1s/file/XXXX
 
         chat_msg_obj = {
-            "fileServerPath": file_server_path,
+            "url": download_url,
             "fileName": filename,
             "fileSize": file_size,
         }
         chat_msg_json = json.dumps(chat_msg_obj, ensure_ascii=False)
-        logger.info(f"[Knox] 파일 메시지 chatMsg: {chat_msg_json} | path={file_server_path}")
+        logger.info(f"[Knox] 파일 메시지 chatMsg: {chat_msg_json}")
 
         request_id = int(time.time() * 1000)
         plain_payload = {
