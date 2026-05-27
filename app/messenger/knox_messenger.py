@@ -701,23 +701,22 @@ class KnoxMessengerClient:
         """
         url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
 
-        # chatMsg = {"media":{...}} JSON 형식
+        # chatMsg: SNDCL 프리픽스 + {"media":{...}} JSON
+        # Knox Messenger가 chatMsg 앞의 <!--{CLD}--> 를 보고 파일 다운로드 UI를 렌더링
         ext = os.path.splitext(filename)[1].lstrip(".").lower()  # "pdf"
         _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
         file_type = "image" if ext in _IMG_EXTS else ext.upper()
-        media_obj = {
-            "media": {
-                "extension": ext,
-                "type": file_type,
-                "filename": filename,
-                "sender": self.user_id or self.device_id,
-                "size": file_size,
-                "text": '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLD"}} -->',
-                "url": download_url,
-            }
+        media_inner = {
+            "extension": ext,
+            "type": file_type,
+            "filename": filename,
+            "sender": self.user_id or self.device_id,
+            "size": file_size,
+            "url": download_url,
         }
-        chat_msg_json = json.dumps(media_obj, ensure_ascii=False)
-        logger.info(f"[Knox] 파일 메시지 chatMsg(전송): {chat_msg_json}")
+        sndcl_prefix = '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLD"}} -->'
+        chat_msg_json = sndcl_prefix + json.dumps({"media": media_inner}, ensure_ascii=False)
+        logger.info(f"[Knox] 파일 메시지 chatMsg(전송): {chat_msg_json[:200]}")
 
         request_id = int(time.time() * 1000)
         plain_payload = {
