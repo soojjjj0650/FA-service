@@ -698,7 +698,6 @@ class KnoxMessengerClient:
                 "filename": filename,
                 "sender": self.device_id,
                 "size": file_size,
-                "text": '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLDT"}}-->',
                 "url": download_url,
             }
         }
