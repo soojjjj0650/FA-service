@@ -464,12 +464,47 @@ class KnoxMessengerClient:
             data = resp.json()
             logger.info(f"[Knox] 파일 업로드 응답 전체: {data}")
             download_url = data.get("download_url") or data.get("downloadUrl")
-            if download_url:
-                logger.info(f"[Knox] 파일 업로드 완료: {download_url}")
-                return download_url, len(file_bytes)
+            if not download_url:
+                logger.warning(f"[Knox] download_url 파싱 실패: {resp.text[:200]}")
+                return None
 
-            logger.warning(f"[Knox] download_url 파싱 실패: {resp.text[:200]}")
-            return None
+            logger.info(f"[Knox] 파일 업로드 완료: {download_url}")
+
+            # 다운로드 URL에 인증 쿼리 파라미터 추가 (x-time is mandatory)
+            # download URL의 파일명으로 getCurrentTime을 다시 호출해 fresh serverTime 획득
+            try:
+                from urllib.parse import urlparse, urlencode
+                dl_filename = urlparse(download_url).path.split("/")[-1] or upload_filename
+                dl_time_result = await self.get_file_server_time(dl_filename)
+                if dl_time_result:
+                    dl_server_time, dl_word_key = dl_time_result
+                    dl_word_bytes = dl_word_key.encode("utf-8")
+                    if len(dl_word_bytes) >= 32:
+                        dl_aes_key = dl_word_bytes[:32]
+                    else:
+                        import hashlib as _hl
+                        dl_aes_key = _hl.sha256(dl_word_bytes).digest()
+                    dl_iv = b'\x00' * 16
+                    enc_dl_id   = _aes256_encrypt(self.device_id, dl_aes_key, dl_iv)
+                    enc_dl_type = _aes256_encrypt("relation",     dl_aes_key, dl_iv)
+                    enc_dl_time = _aes256_encrypt(dl_server_time, dl_aes_key, dl_iv)
+                    sep = "&" if "?" in download_url else "?"
+                    signed_url = (
+                        download_url + sep
+                        + urlencode({
+                            "x-device-id":    enc_dl_id,
+                            "x-device-type":  enc_dl_type,
+                            "x-request-time": enc_dl_time,
+                        })
+                    )
+                    logger.info(f"[Knox] 서명된 다운로드 URL 생성 (x-time 포함) | dl_filename={dl_filename}")
+                    return signed_url, len(file_bytes)
+                else:
+                    logger.warning("[Knox] 다운로드 URL 서명 실패 (getCurrentTime 재호출) - 원본 URL 사용")
+            except Exception as _se:
+                logger.warning(f"[Knox] 다운로드 URL 서명 예외: {_se} - 원본 URL 사용")
+
+            return download_url, len(file_bytes)
 
         except Exception as e:
             logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)

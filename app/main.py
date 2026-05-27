@@ -1288,7 +1288,7 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     pdf_ok = await client.send_file_message(
         chatroom_id=chatroom_id,
         download_url=pdf_url,
-        filename=f"{sn}_FA분석.pdf",
+        filename=f"{sn}_analysis.pdf",
         file_size=pdf_size,
         message_text=f"[FA 분석 완료] SN: {sn}\n{feature_summary}",
     )
