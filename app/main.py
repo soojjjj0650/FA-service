@@ -1048,11 +1048,11 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
     """Knox 수신 메시지 공통 처리 로직."""
     import json as _json
 
-    msg_type    = (data.get("msgType") or "").upper()
-    chat_msg    = (data.get("chatMsg") or "").strip()
-    sender      = (data.get("sender") or "").strip()
-    chatroom_id = (data.get("chatroomId") or "").strip()
-    sender_knox = (data.get("senderKnoxId") or "").strip()
+    msg_type    = str(data.get("msgType") or "").upper()
+    chat_msg    = str(data.get("chatMsg") or "").strip()
+    sender      = str(data.get("sender") or "").strip()
+    chatroom_id = str(data.get("chatroomId") or "").strip()
+    sender_knox = str(data.get("senderKnoxId") or "").strip()
 
     logger.info(
         f"[Knox] 수신 | msgType={msg_type} | sender={sender} | "
