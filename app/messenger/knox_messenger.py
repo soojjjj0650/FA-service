@@ -379,6 +379,7 @@ class KnoxMessengerClient:
             return None
 
         server_time, word_key = time_result
+        formatted_time = _format_server_time(server_time)
         import hashlib
         word_bytes = word_key.encode("utf-8")
         file_aes_key = word_bytes[:32] if len(word_bytes) >= 32 else hashlib.sha256(word_bytes).digest()
@@ -387,7 +388,8 @@ class KnoxMessengerClient:
         try:
             enc_device_id   = _aes256_encrypt(self.device_id, file_aes_key, file_aes_iv)
             enc_device_type = _aes256_encrypt("relation",     file_aes_key, file_aes_iv)
-            enc_server_time = _aes256_encrypt(server_time,    file_aes_key, file_aes_iv)
+            enc_server_time = _aes256_encrypt(formatted_time, file_aes_key, file_aes_iv)
+            logger.info(f"[Knox] server_time: {server_time!r} → formatted: {formatted_time!r}")
         except Exception as e:
             logger.error(f"[Knox] 헤더 암호화 실패: {e}")
             return None
@@ -423,10 +425,6 @@ class KnoxMessengerClient:
 
             logger.info(f"[Knox] 파일 업로드 완료(v1s): {download_url}")
             return download_url, len(file_bytes)
-
-        except Exception as e:
-            logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
-            return None
 
         except Exception as e:
             logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
