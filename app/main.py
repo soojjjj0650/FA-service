@@ -2229,7 +2229,8 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             )
 
         # 2-4. Knox Messenger 전송 (HTML zip 우선, 실패 시 PDF)
-        if settings.KNOX_MESSENGER_ENABLED and settings.KNOX_MESSENGER_BASE_URL:
+        # Knox 파이프라인(source=knox)은 _run_knox_pipeline이 직접 전송하므로 여기서 스킵
+        if settings.KNOX_MESSENGER_ENABLED and settings.KNOX_MESSENGER_BASE_URL and job.get("source") != "knox":
             from app.analysis.pdf_generator import html_to_pdf
             from app.messenger.knox_messenger import send_pdf_via_knox
             import os as _os2
