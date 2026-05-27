@@ -708,18 +708,21 @@ class KnoxMessengerClient:
         logger.info(f"[Knox] 파일 메시지 chatMsg(전송): {chat_msg_json[:200]}")
 
         request_id = int(time.time() * 1000)
+        # msgType 2 = 일반 파일(PDF 등), msgType 1 = 이미지/영상
+        msg_type_val = 1 if ext in {"png", "jpg", "jpeg", "gif", "bmp", "webp", "mp4", "mov"} else 2
         plain_payload = {
             "requestId": request_id,
             "chatroomId": int(chatroom_id),
             "chatMessageParams": [
                 {
                     "msgId": request_id,
-                    "msgType": 1,
+                    "msgType": msg_type_val,
                     "chatMsg": chat_msg_json,
                     "msgTtl": 7200,
                 }
             ],
         }
+        logger.info(f"[Knox] 파일 msgType={msg_type_val} | ext={ext}")
 
         headers = {
             "Authorization": f"Bearer {self.access_token}",

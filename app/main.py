@@ -1054,6 +1054,9 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
     chatroom_id = str(data.get("chatroomId") or "").strip()
     sender_knox = str(data.get("senderKnoxId") or "").strip()
 
+    # raw chatMsg 전체 로그 (파일 수신 포맷 분석용)
+    logger.info(f"[Knox] raw chatMsg(msgType={msg_type}): {chat_msg[:300]}")
+
     # Knox가 chatMsg 앞에 <!--{...} --> prefix를 붙이는 경우 → --> 이후 내용만 사용
     if '-->' in chat_msg:
         chat_msg = chat_msg.split('-->')[-1].strip()
