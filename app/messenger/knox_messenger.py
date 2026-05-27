@@ -687,25 +687,22 @@ class KnoxMessengerClient:
         """
         url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
 
-        # msgType=1 (MEDIA), chatMsg = JSON
-        from urllib.parse import urlparse
-        parsed = urlparse(download_url)
-        file_server_path = parsed.path  # /file/v1s/file/XXXX
-
-        # chatMsg = "media:{...}" 형식 (파이프 없음)
+        # chatMsg = {"media":{...}} JSON 형식
         ext = os.path.splitext(filename)[1].lstrip(".").lower()  # "pdf"
         _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
         file_type = "image" if ext in _IMG_EXTS else ext.upper()
         media_obj = {
-            "extention": ext,
-            "type": file_type,
-            "filename": filename,
-            "sender": 0,
-            "size": file_size,
-            "text": "",
-            "url": download_url,
+            "media": {
+                "extention": ext,
+                "type": file_type,
+                "filename": filename,
+                "sender": self.device_id,
+                "size": file_size,
+                "text": '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLDT"}}-->',
+                "url": download_url,
+            }
         }
-        chat_msg_json = "media|:" + json.dumps(media_obj, ensure_ascii=False)
+        chat_msg_json = json.dumps(media_obj, ensure_ascii=False)
         logger.info(f"[Knox] 파일 메시지 chatMsg(전송): {chat_msg_json}")
 
         request_id = int(time.time() * 1000)
