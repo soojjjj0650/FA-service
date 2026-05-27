@@ -59,6 +59,59 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _parse_log_to_rows(log_path: str) -> list[dict]:
+    """LOG 파일(DATE TIME FEATURE\t{JSON} 형식)을 data_processor용 rows로 변환"""
+    import json as _json
+    content = None
+    for enc in ("utf-8-sig", "utf-8", "cp949", "euc-kr", "latin-1"):
+        try:
+            with open(log_path, encoding=enc) as f:
+                content = f.read()
+            break
+        except (UnicodeDecodeError, FileNotFoundError):
+            continue
+    if not content:
+        return []
+    rows = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        tabs = line.split('\t')
+        date = time_ = feature = json_str = ''
+        if len(tabs) >= 3:
+            dt = tabs[0].strip().split()
+            date = dt[0] if dt else ''
+            time_ = dt[1] if len(dt) > 1 else ''
+            feature = tabs[1].strip()
+            json_str = '\t'.join(tabs[2:]).strip()
+        elif len(tabs) == 2:
+            dt = tabs[0].strip().split()
+            date = dt[0] if dt else ''
+            time_ = dt[1] if len(dt) > 1 else ''
+            feature = ' '.join(dt[2:]) if len(dt) > 2 else ''
+            json_str = tabs[1].strip()
+        else:
+            bi = line.find('{')
+            if bi < 0:
+                continue
+            pre = line[:bi].strip().split()
+            date = pre[0] if pre else ''
+            time_ = pre[1] if len(pre) > 1 else ''
+            feature = ' '.join(pre[2:]) if len(pre) > 2 else ''
+            json_str = line[bi:].strip()
+        if not date or not feature or not json_str:
+            continue
+        try:
+            _json.loads(json_str)
+        except Exception:
+            continue
+        rows.append({'Date': date, 'Time': time_, 'feature': feature, 'custom_value': json_str})
+    logger.info(f"[LOG 파서] {log_path} → {len(rows)}행 변환")
+    return rows
+
+
 # ─── FastAPI 앱 ───────────────────────────────────────────────────────────────
 app = FastAPI(
     title="FA Chatbot Service",
@@ -1638,11 +1691,16 @@ async def _handle_query(websocket: WebSocket, sn: str, send_fn=None):
         await progress(f"SN [{sn}] 조회 시작...")
         await progress(f"현재 대기 중인 브라우저 슬롯: {browser_pool.active_count}/{browser_pool.max_size}")
 
-        # 1. 웹 스크래핑 SQL 쿼리 (5~15분 소요) — 기존 CSV 있으면 스킵
+        # 1. 웹 스크래핑 SQL 쿼리 — LOG 파일 > CSV > live 쿼리 순서로 우선 처리
         import os as _os
         from app.scraper.query_runner import QueryResult as _QR
+        _existing_log = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_inputdata.LOG")
         _existing_csv = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_inputdata.csv")
-        if _os.path.exists(_existing_csv) and _os.path.getsize(_existing_csv) > 0:
+        if _os.path.exists(_existing_log):
+            await progress(f"LOG 파일 재사용 (쿼리 생략): {_existing_log}")
+            _log_rows = _parse_log_to_rows(_existing_log)
+            query_result = _QR(sn=sn, success=True, csv_path=_existing_log, rows=_log_rows)
+        elif _os.path.exists(_existing_csv) and _os.path.getsize(_existing_csv) > 0:
             await progress(f"기존 CSV 파일 재사용 (쿼리 생략): {_existing_csv}")
             query_result = _QR(sn=sn, success=True, csv_path=_existing_csv)
         else:
@@ -2184,17 +2242,24 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             await _push_card_to_chatroom(job)
             return
 
-        # 1. SQL 쿼리 실행 (캐시 우선 조회)
-        from app.prefetch.cache_manager import get_cached_csv_path, is_cached
-        cached_path = get_cached_csv_path(sn)
-        if cached_path and is_cached(sn):
-            logger.info(f"[Chatbot Job {job_id}] 캐시 히트 → {cached_path} (쿼리 생략)")
-            from app.scraper.query_runner import QueryResult
-            query_result = QueryResult(sn=sn, success=True, csv_path=cached_path)
+        # 1. SQL 쿼리 실행 — LOG 파일 > 캐시 > live 쿼리 순서로 우선 처리
+        import os as _os
+        from app.scraper.query_runner import QueryResult
+        _log_path = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_inputdata.LOG")
+        if _os.path.exists(_log_path):
+            logger.info(f"[Chatbot Job {job_id}] LOG 파일 존재 → 쿼리 생략: {_log_path}")
+            _log_rows = _parse_log_to_rows(_log_path)
+            query_result = QueryResult(sn=sn, success=True, csv_path=_log_path, rows=_log_rows)
         else:
-            if cached_path:
-                logger.info(f"[Chatbot Job {job_id}] 캐시 만료 → live 쿼리 실행")
-            query_result = await query_runner.run(sn, days=days)
+            from app.prefetch.cache_manager import get_cached_csv_path, is_cached
+            cached_path = get_cached_csv_path(sn)
+            if cached_path and is_cached(sn):
+                logger.info(f"[Chatbot Job {job_id}] 캐시 히트 → {cached_path} (쿼리 생략)")
+                query_result = QueryResult(sn=sn, success=True, csv_path=cached_path)
+            else:
+                if cached_path:
+                    logger.info(f"[Chatbot Job {job_id}] 캐시 만료 → live 쿼리 실행")
+                query_result = await query_runner.run(sn, days=days)
 
         if not query_result.success:
             job["status"] = "error"
