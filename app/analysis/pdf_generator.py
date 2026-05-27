@@ -74,9 +74,16 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
             page = await browser.new_page()
             await page.goto(f"file:///{html_path.replace(os.sep, '/')}", wait_until="domcontentloaded", timeout=30000)
 
-            # NETA 조회 포함 전체 렌더링 완료 대기 (고정 70초)
-            logger.info("[PDF] 렌더링 대기 중 (70초)...")
-            await page.wait_for_timeout(70000)
+            # NETA prefetch 완료까지 대기 (최대 90초, 조기 완료 시 바로 진행)
+            logger.info("[PDF] NETA 데이터 로딩 대기 중...")
+            try:
+                await page.wait_for_function(
+                    "() => window.netaPrefetchComplete === true",
+                    timeout=90000,
+                )
+                logger.info("[PDF] NETA 로딩 완료")
+            except Exception:
+                logger.warning("[PDF] NETA 대기 타임아웃(90s), 렌더링 계속 진행")
 
             # lazy 렌더 강제 실행 + PDF용 전체 탭 표시
             await page.evaluate("""() => {

@@ -1422,7 +1422,10 @@ function getISOWeek(d=new Date()){
   return Math.floor((d-w1Mon)/(7*864e5))+1;
 }
 function prefetchTop3Neta(){
-  getTop3Stations().forEach(s=>{
+  const stations=getTop3Stations();
+  if(!stations.length){window.netaPrefetchComplete=true;return;}
+  let pending=stations.length;
+  stations.forEach(s=>{
     const allR=[...s.drops,...s.cends,...s.mutes,...s.rlfis];
     const plmn=allR.map(r=>(r.PLMN||'').replace(/[^0-9]/g,'')).find(p=>p)||'';
     fetchNetaStation(plmn,s.tac,s.pid,s.band||'',s.dch||'').then(result=>{
@@ -1432,6 +1435,8 @@ function prefetchTop3Neta(){
         if(expRow._ticker)clearInterval(expRow._ticker);
         expRow.innerHTML=`<td colspan="15">${buildNetaPanel(result,plmn,s.tac,s.pid)}</td>`;
       }
+    }).finally(()=>{
+      if(--pending<=0)window.netaPrefetchComplete=true;
     });
   });
 }
