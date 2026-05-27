@@ -74,11 +74,11 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
             page = await browser.new_page()
             await page.goto(f"file:///{html_path.replace(os.sep, '/')}", wait_until="domcontentloaded", timeout=30000)
 
-            # doParse가 완료되어 allRows가 채워질 때까지 대기 (최대 15초)
+            # doParse가 완료되어 allRows가 채워질 때까지 대기 (최대 90초)
             try:
                 await page.wait_for_function(
                     "() => typeof allRows !== 'undefined' && allRows.length > 0",
-                    timeout=15000,
+                    timeout=90000,
                 )
             except Exception:
                 logger.warning("[PDF] allRows 대기 타임아웃 — 그대로 진행")
@@ -207,7 +207,7 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
             }""")
 
             # 차트 + 원본 데이터 렌더링 완료 대기
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(10000)
             await page.pdf(
                 path=pdf_path, format="A4", print_background=True, scale=0.75,
                 margin={"top": "12mm", "bottom": "8mm", "left": "0mm", "right": "0mm"},
