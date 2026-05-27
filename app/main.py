@@ -1275,20 +1275,19 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         return
 
     import time as _t
-    import zipfile as _zf
     feature_summary = job.get("feature_summary", "")
 
-    # ── 1. PDF 업로드 & 전송 ──────────────────────────────────────────────────
-    pdf_upload = await client.upload_file(pdf_path)
-    if not pdf_upload:
-        await _fail("Knox 파일 업로드에 실패했습니다.")
-        return
-    pdf_url, pdf_size = pdf_upload
+    # ── 1. PDF 전송 (우리 서버 직접 서빙 → Knox 파일서버 auth 불필요) ──────────────
+    pdf_filename = f"{sn}_analysis.pdf"
+    pdf_size = _os.path.getsize(pdf_path)
+    port_str = f":{settings.PORT}" if settings.PORT not in (80, 443) else ""
+    pdf_url = f"{settings.BASE_URL}{port_str}/files/{pdf_filename}"
+    logger.info(f"[Knox Pipeline] PDF 직접 서빙 URL: {pdf_url}")
 
     pdf_ok = await client.send_file_message(
         chatroom_id=chatroom_id,
         download_url=pdf_url,
-        filename=f"{sn}_analysis.pdf",
+        filename=pdf_filename,
         file_size=pdf_size,
         message_text=f"[FA 분석 완료] SN: {sn}\n{feature_summary}",
     )
@@ -1301,6 +1300,26 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
 
     # ── 2. SN 입력 카드 재전송 ────────────────────────────────────────────────
     await _knox_reply(chatroom_id, "", with_card=True)
+
+
+# ─── 분석 파일 직접 서빙 ──────────────────────────────────────────────────────
+@app.get("/files/{filename}")
+async def serve_analysis_file(filename: str):
+    """분석 결과 파일(PDF/HTML/ZIP)을 직접 내려줍니다."""
+    import os as _os
+    from fastapi.responses import FileResponse
+    # path traversal 방지
+    safe_name = _os.path.basename(filename)
+    file_path = _os.path.join(settings.CSV_DOWNLOAD_PATH, safe_name)
+    if not _os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    ext = safe_name.rsplit(".", 1)[-1].lower()
+    mime = {
+        "pdf": "application/pdf",
+        "html": "text/html",
+        "zip": "application/zip",
+    }.get(ext, "application/octet-stream")
+    return FileResponse(file_path, media_type=mime, filename=safe_name)
 
 
 # ─── 대시보드 엔드포인트 ──────────────────────────────────────────────────────
