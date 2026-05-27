@@ -897,8 +897,8 @@ def build_sn_input_card(receive_url: str) -> dict:
             {
                 "type": "TextBlock",
                 "text": "FA 분석 서비스",
-                "size": "Large",
-                "weight": "Default",
+                "size": "Medium",
+                "weight": "Bolder",
                 "color": "Accent",
             },
             {
