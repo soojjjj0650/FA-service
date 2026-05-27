@@ -1054,8 +1054,9 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
     chatroom_id = str(data.get("chatroomId") or "").strip()
     sender_knox = str(data.get("senderKnoxId") or "").strip()
 
-    # Knox가 chatMsg 앞에 <!--{"COMMAND":"SNDCL",...} --> prefix를 붙임 → 제거
-    chat_msg = re.sub(r'^<!--\{.*?\}\s*-->\s*', '', chat_msg).strip()
+    # Knox가 chatMsg 앞에 <!--{...} --> prefix를 붙이는 경우 → --> 이후 내용만 사용
+    if '-->' in chat_msg:
+        chat_msg = chat_msg.split('-->')[-1].strip()
 
     logger.info(
         f"[Knox] 수신 | msgType={msg_type} | sender={sender} | "
