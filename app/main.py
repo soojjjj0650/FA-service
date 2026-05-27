@@ -1007,6 +1007,43 @@ async def _knox_reply(chatroom_id: str, text: str, with_card: bool = True) -> No
             await client.send_message(chatroom_id, _SN_GUIDE)
 
 
+async def _knox_parse_body(raw_text: str) -> dict:
+    """Knox 수신 body 파싱 - 평문 JSON 또는 AES 암호화 body 모두 처리."""
+    import json as _json
+
+    # 1. 평문 JSON 시도
+    try:
+        data = _json.loads(raw_text)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    # 2. 암호화 body → getkeys로 복호화 시도
+    if not raw_text.strip():
+        return {}
+    try:
+        from app.messenger.knox_messenger import (
+            KnoxMessengerClient, _load_cached_device_id, _aes256_decrypt
+        )
+        client = KnoxMessengerClient(
+            base_url=settings.KNOX_MESSENGER_BASE_URL,
+            access_token=settings.KNOX_ACCESS_TOKEN,
+            system_id=settings.KNOX_SYSTEM_ID,
+            device_id=settings.KNOX_DEVICE_ID or _load_cached_device_id(),
+        )
+        msg_key = await client.get_message_key()
+        if msg_key and len(msg_key) >= 48:
+            data = _aes256_decrypt(raw_text.strip(), msg_key[:32], msg_key[32:48])
+            if data:
+                logger.info(f"[Knox] body 복호화 성공: {str(data)[:300]}")
+                return data
+    except Exception as e:
+        logger.error(f"[Knox] body 복호화 실패: {e}")
+
+    return {}
+
+
 async def _knox_handle_message(data: dict) -> JSONResponse:
     """Knox 수신 메시지 공통 처리 로직."""
     import json as _json
@@ -1122,14 +1159,7 @@ async def knox_message_receive(request: Request):
     raw_text = raw_body.decode("utf-8", errors="replace")
     logger.info(f"[Knox /message] body={raw_text[:500]}")
 
-    import json as _json
-    try:
-        data = _json.loads(raw_text) if raw_text else {}
-        if not isinstance(data, dict):
-            data = {}
-    except Exception:
-        data = {}
-
+    data = await _knox_parse_body(raw_text)
     if not data:
         return JSONResponse(status_code=200, content={"status": "ignored"})
 
@@ -1143,14 +1173,7 @@ async def knox_webhook(request: Request):
     raw_text = raw_body.decode("utf-8", errors="replace")
     logger.info(f"[Knox /api/knox/webhook] body={raw_text[:500]}")
 
-    import json as _json
-    try:
-        data = _json.loads(raw_text) if raw_text else {}
-        if not isinstance(data, dict):
-            data = {}
-    except Exception:
-        data = {}
-
+    data = await _knox_parse_body(raw_text)
     if not data:
         return JSONResponse(status_code=200, content={"status": "ignored"})
 
@@ -1163,13 +1186,8 @@ async def knox_message_typo(request: Request):
     raw_body = await request.body()
     raw_text = raw_body.decode("utf-8", errors="replace")
     logger.info(f"[Knox /messsage] body={raw_text[:500]}")
-    import json as _json
-    try:
-        data = _json.loads(raw_text) if raw_text else {}
-        if not isinstance(data, dict):
-            data = {}
-    except Exception:
-        data = {}
+
+    data = await _knox_parse_body(raw_text)
     if not data:
         return JSONResponse(status_code=200, content={"status": "ignored"})
     return await _knox_handle_message(data)
