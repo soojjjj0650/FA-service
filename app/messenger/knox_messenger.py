@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 # 캐시 파일 경로
 _DEVICE_ID_CACHE   = Path(__file__).parent.parent.parent / "data" / "knox_device_id.txt"
+_USER_ID_CACHE     = Path(__file__).parent.parent.parent / "data" / "knox_user_id.txt"
 _CHATROOM_ID_CACHE = Path(__file__).parent.parent.parent / "data" / "knox_chatroom_id.txt"
 
 
@@ -131,6 +132,24 @@ def _save_device_id(device_id: str) -> None:
         logger.warning(f"[Knox] Device ID 저장 실패: {e}")
 
 
+def _load_cached_user_id() -> str:
+    try:
+        if _USER_ID_CACHE.exists():
+            return _USER_ID_CACHE.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _save_user_id(user_id: str) -> None:
+    try:
+        _USER_ID_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _USER_ID_CACHE.write_text(user_id, encoding="utf-8")
+        logger.info(f"[Knox] User ID 저장 완료: {_USER_ID_CACHE}")
+    except Exception as e:
+        logger.warning(f"[Knox] User ID 저장 실패: {e}")
+
+
 def _load_cached_chatroom_id() -> str:
     """저장된 대화방 ID를 읽어옵니다."""
     try:
@@ -178,6 +197,7 @@ class KnoxMessengerClient:
         self.access_token = access_token
         self.system_id = system_id
         self.device_id = device_id
+        self.user_id = _load_cached_user_id()
         self.receiver_user_id = receiver_user_id
         self.timeout = timeout
 
@@ -260,6 +280,9 @@ class KnoxMessengerClient:
                 )
                 self.device_id = device_id
                 _save_device_id(device_id)
+                if user_id:
+                    self.user_id = str(user_id)
+                    _save_user_id(self.user_id)
                 return device_id
 
             logger.warning(f"[Knox] deviceServerID 없음 - 응답: {data}")
@@ -696,7 +719,7 @@ class KnoxMessengerClient:
                 "extention": ext,
                 "type": file_type,
                 "filename": filename,
-                "sender": self.device_id,
+                "sender": self.user_id or self.device_id,
                 "size": file_size,
                 "url": download_url,
             }
