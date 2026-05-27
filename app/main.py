@@ -2256,13 +2256,13 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             _send_path = None
             if _analysis_html_path:
                 # 우선순위 1: HTML → zip (가볍고 인터랙티브)
-                _zip_path = _os2.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.zip")
+                _zip_path = _os2.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.zip")
                 if html_to_zip(_analysis_html_path, _zip_path, sn):
                     _send_path = _zip_path
                     logger.info(f"[Chatbot Job {job_id}] ZIP 생성 완료: {_zip_path}")
                 else:
                     # 우선순위 2: HTML → PDF
-                    _pdf_path = _os2.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
+                    _pdf_path = _os2.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
                     if await html_to_pdf(_analysis_html_path, _pdf_path):
                         _send_path = _pdf_path
                     else:
