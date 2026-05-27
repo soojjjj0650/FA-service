@@ -155,9 +155,10 @@ def _make_offline(html: str) -> str:
     return html
 
 
-def generate_analysis_html(sn: str, csv_path: str, save_dir: str) -> str | None:
+def generate_analysis_html(sn: str, csv_path: str, save_dir: str, input_filename: str | None = None) -> str | None:
     """
-    CSV 파일 내용을 log_analyzer.html에 주입하여 자동 로드 HTML을 생성합니다.
+    CSV/LOG 파일 내용을 log_analyzer.html에 주입하여 자동 로드 HTML을 생성합니다.
+    input_filename: doParse에 전달할 파일명 (None이면 {sn}_inputdata.csv)
     반환: 생성된 HTML 파일 경로, 실패 시 None
     """
     if not os.path.exists(_TEMPLATE_PATH):
@@ -186,11 +187,12 @@ def generate_analysis_html(sn: str, csv_path: str, save_dir: str) -> str | None:
 
         # </body> 직전에 CSV 데이터 자동 실행 스크립트 주입
         csv_json = json.dumps(csv_content).replace("</script>", "<\\/script>")
+        inj_filename = input_filename or f"{sn}_inputdata.csv"
         inject = (
             "<script>\n"
             "(function(){\n"
             f"  var _d={csv_json};\n"
-            f"  var _f={json.dumps(sn+'_inputdata.csv')};\n"
+            f"  var _f={json.dumps(inj_filename)};\n"
             "  function _run(){\n"
             "    console.log('[FA] _run called, doParse type:', typeof doParse);\n"
             "    console.log('[FA] csv length:', _d.length);\n"

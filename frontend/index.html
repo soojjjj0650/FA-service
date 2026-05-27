@@ -425,11 +425,11 @@
 </div>
 
 <div id="input-area">
-  <label id="upload-label" title="CSV/Excel 파일 업로드">
+  <label id="upload-label" title="LOG / CSV / Excel 파일 업로드">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
     </svg>
-    <input id="file-input" type="file" accept=".csv,.xlsx,.xls" style="display:none" />
+    <input id="file-input" type="file" accept=".csv,.xlsx,.xls,.log,.txt" style="display:none" />
   </label>
   <div id="file-badge">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -446,7 +446,7 @@
   />
   <button id="send-btn">조회</button>
 </div>
-<div id="hint">쿼리 실행은 5~15분 소요될 수 있습니다 · 최대 5건 동시 조회 가능 · 📎 CSV/Excel 업로드로 PDF 분석 가능</div>
+<div id="hint">쿼리 실행은 5~15분 소요될 수 있습니다 · 최대 5건 동시 조회 가능 · 📎 LOG/CSV/Excel 업로드로 PDF 분석 가능</div>
 
 <script>
   // ── WebSocket 연결 ──────────────────────────────────────────────────────────

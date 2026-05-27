@@ -1414,8 +1414,8 @@ async def upload_csv_and_generate_pdf(
     filename = file.filename or "upload"
     ext = os.path.splitext(filename)[1].lower()
 
-    if ext not in (".csv", ".xlsx", ".xls"):
-        raise HTTPException(status_code=400, detail="CSV 또는 Excel 파일만 지원합니다.")
+    if ext not in (".csv", ".xlsx", ".xls", ".log", ".txt"):
+        raise HTTPException(status_code=400, detail="CSV, Excel, 또는 LOG 파일만 지원합니다.")
 
     # SN 결정 (Form 값 → 파일명에서 추출)
     if not sn:
@@ -1442,13 +1442,15 @@ async def upload_csv_and_generate_pdf(
                     for row in ws.iter_rows(values_only=True):
                         writer.writerow([("" if v is None else str(v)) for v in row])
                 wb.close()
+                input_filename = None  # CSV로 변환했으므로 기본 파일명 사용
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Excel 변환 실패: {e}")
         else:
             csv_path = raw_path
+            input_filename = filename  # .csv / .log / .txt 원본 파일명 유지
 
         # HTML 생성
-        html_path = generate_analysis_html(sn, csv_path, tmpdir)
+        html_path = generate_analysis_html(sn, csv_path, tmpdir, input_filename=input_filename)
         if not html_path:
             raise HTTPException(status_code=500, detail="분석 HTML 생성 실패")
 
