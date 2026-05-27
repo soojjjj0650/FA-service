@@ -158,24 +158,33 @@ def _make_offline(html: str) -> str:
 def generate_analysis_html(sn: str, csv_path: str, save_dir: str, input_filename: str | None = None) -> str | None:
     """
     CSV/LOG 파일 내용을 log_analyzer.html에 주입하여 자동 로드 HTML을 생성합니다.
-    input_filename: doParse에 전달할 파일명 (None이면 {sn}_inputdata.csv)
+    LOG 파일({sn}_inputdata.LOG)이 save_dir에 존재하면 CSV보다 우선 사용합니다.
+    input_filename: doParse에 전달할 파일명 (None이면 자동 결정)
     반환: 생성된 HTML 파일 경로, 실패 시 None
     """
     if not os.path.exists(_TEMPLATE_PATH):
         logger.error(f"log_analyzer.html 템플릿 없음: {_TEMPLATE_PATH}")
         return None
 
-    # CSV 읽기 (인코딩 순차 시도)
+    # LOG 파일 우선, 없으면 CSV 사용
+    log_path = os.path.join(save_dir, f"{sn}_inputdata.LOG")
+    use_log = os.path.exists(log_path)
+    data_path = log_path if use_log else csv_path
+    default_filename = f"{sn}_inputdata.LOG" if use_log else f"{sn}_inputdata.csv"
+    if use_log:
+        logger.info(f"LOG 파일 우선 사용: {log_path}")
+
+    # 파일 읽기 (인코딩 순차 시도)
     csv_content = None
     for enc in ("utf-8-sig", "utf-8", "cp949", "euc-kr", "latin-1"):
         try:
-            with open(csv_path, encoding=enc) as f:
+            with open(data_path, encoding=enc) as f:
                 csv_content = f.read()
             break
         except (UnicodeDecodeError, FileNotFoundError):
             continue
     if csv_content is None:
-        logger.error(f"CSV 읽기 실패: {csv_path}")
+        logger.error(f"파일 읽기 실패: {data_path}")
         return None
 
     try:
@@ -185,9 +194,9 @@ def generate_analysis_html(sn: str, csv_path: str, save_dir: str, input_filename
         # CDN 리소스 인라인화
         html = _make_offline(html)
 
-        # </body> 직전에 CSV 데이터 자동 실행 스크립트 주입
+        # </body> 직전에 데이터 자동 실행 스크립트 주입
         csv_json = json.dumps(csv_content).replace("</script>", "<\\/script>")
-        inj_filename = input_filename or f"{sn}_inputdata.csv"
+        inj_filename = input_filename or default_filename
         inject = (
             "<script>\n"
             "(function(){\n"
