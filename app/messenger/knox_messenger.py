@@ -362,11 +362,7 @@ class KnoxMessengerClient:
 
     async def upload_file(self, file_path: str) -> str | None:
         """
-        파일을 Knox Messenger 파일 서버에 업로드합니다.
-
-        v1(평문 헤더) 먼저 시도 → 실패 시 v1s(암호화 헤더) 폴백.
-        v1 다운로드 URL은 Knox Messenger가 표준 auth로 접근 가능.
-
+        파일을 Knox Messenger 파일 서버(v1s)에 업로드합니다.
         반환: (download_url, file_size) (성공), None (실패)
         """
         if not os.path.exists(file_path):
@@ -375,42 +371,7 @@ class KnoxMessengerClient:
 
         ext = os.path.splitext(file_path)[1]  # .pdf
         upload_filename = f"r{time.strftime('%Y%m%d%H%M%S')}{ext}"
-
-        try:
-            with open(file_path, "rb") as f:
-                file_bytes = f.read()
-        except Exception as e:
-            logger.error(f"[Knox] 파일 읽기 실패: {e}")
-            return None
-
-        # ── v1 시도 (평문 헤더, Knox Messenger 표준 auth로 다운로드 가능) ──────────
-        url_v1 = f"{self.base_url}/messenger/file/api/v2.0/file/v1/file/{upload_filename}"
-        headers_v1 = {
-            "Authorization": f"Bearer {self.access_token}",
-            "System-ID": self.system_id,
-            "x-device-id": self.device_id,
-            "x-device-type": "relation",
-            "Content-Type": "binary/octet-stream",
-            "Content-Length": str(len(file_bytes)),
-            "filename": upload_filename,
-        }
-        try:
-            logger.info(f"[Knox] 업로드 시도(v1) | url={url_v1}")
-            resp = await self._areq("PUT", url_v1, data=file_bytes, headers=headers_v1)
-            logger.info(f"[Knox] 파일 업로드(v1) | status={resp.status_code} | body={resp.text[:200]}")
-            if resp.status_code < 400:
-                data = resp.json()
-                download_url = data.get("download_url") or data.get("downloadUrl")
-                if download_url:
-                    logger.info(f"[Knox] 파일 업로드 완료(v1): {download_url}")
-                    return download_url, len(file_bytes)
-                logger.warning(f"[Knox] v1 download_url 없음: {resp.text[:200]}")
-        except Exception as e:
-            logger.warning(f"[Knox] v1 업로드 예외: {e}")
-
-        # ── v1s 폴백 (암호화 헤더) ────────────────────────────────────────────────
-        logger.info("[Knox] v1 실패 → v1s 폴백 시도")
-        url_v1s = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
+        url = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
 
         time_result = await self.get_file_server_time(upload_filename)
         if not time_result:
@@ -431,32 +392,40 @@ class KnoxMessengerClient:
             logger.error(f"[Knox] 헤더 암호화 실패: {e}")
             return None
 
-        headers_v1s = {
-            "Authorization": f"Bearer {self.access_token}",
-            "System-ID": self.system_id,
-            "Content-Type": "binary/octet-stream",
-            "Content-Length": str(len(file_bytes)),
-            "filename":       upload_filename,
-            "x-device-id":    enc_device_id,
-            "x-device-type":  enc_device_type,
-            "x-request-time": enc_server_time,
-        }
         try:
-            logger.info(f"[Knox] 업로드 시도(v1s) | url={url_v1s}")
-            resp = await self._areq("PUT", url_v1s, data=file_bytes, headers=headers_v1s)
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "System-ID": self.system_id,
+                "Content-Type": "binary/octet-stream",
+                "Content-Length": str(len(file_bytes)),
+                "filename":       upload_filename,
+                "x-device-id":    enc_device_id,
+                "x-device-type":  enc_device_type,
+                "x-request-time": enc_server_time,
+            }
+            logger.info(f"[Knox] 업로드 요청(v1s) | url={url} | filename={upload_filename}")
+
+            resp = await self._areq("PUT", url, data=file_bytes, headers=headers)
             logger.info(f"[Knox] 파일 업로드(v1s) | status={resp.status_code} | body={resp.text[:200]}")
+
             if resp.status_code >= 400:
-                logger.error(f"[Knox] v1s 업로드 실패: {resp.status_code}")
+                logger.error(f"[Knox] 파일 업로드 실패: {resp.status_code} {resp.text[:200]}")
                 return None
+
             data = resp.json()
             download_url = data.get("download_url") or data.get("downloadUrl")
-            if download_url:
-                logger.info(f"[Knox] 파일 업로드 완료(v1s): {download_url}")
-                return download_url, len(file_bytes)
-            logger.warning(f"[Knox] v1s download_url 없음: {resp.text[:200]}")
-            return None
+            if not download_url:
+                logger.warning(f"[Knox] download_url 파싱 실패: {resp.text[:200]}")
+                return None
+
+            logger.info(f"[Knox] 파일 업로드 완료(v1s): {download_url}")
+            return download_url, len(file_bytes)
+
         except Exception as e:
-            logger.error(f"[Knox] v1s 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
+            logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
             return None
 
         except Exception as e:
