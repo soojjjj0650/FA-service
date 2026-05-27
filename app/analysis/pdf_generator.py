@@ -136,32 +136,6 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                     ).join('');
                 document.body.insertBefore(nav, document.body.firstChild);
 
-                // 기지국 테이블 TAC(HEX) 컬럼 제거
-                // 헤더 1행: '기지국 정보' colspan 6→5
-                // 헤더 2행: PLMN(0),ACT(1),TAC(HEX)(2) → index 2 제거
-                // 데이터행: #(0),상태(1),PLMN(2),ACT(3),TAC(HEX)(4) → index 4 제거
-                (function() {
-                    const stHead = document.getElementById('stHead');
-                    const stBody = document.getElementById('stBody');
-                    if (!stHead || !stBody) return;
-                    const hRows = stHead.querySelectorAll('tr');
-                    if (hRows[0]) {
-                        hRows[0].querySelectorAll('th').forEach(th => {
-                            if (th.colSpan > 1 && th.textContent.includes('기지국')) {
-                                th.colSpan = Math.max(1, th.colSpan - 1);
-                            }
-                        });
-                    }
-                    if (hRows[1]) {
-                        const ths = hRows[1].querySelectorAll('th');
-                        if (ths[2]) ths[2].remove();
-                    }
-                    stBody.querySelectorAll('tr').forEach(row => {
-                        const tds = row.querySelectorAll('td');
-                        if (tds[4]) tds[4].remove();
-                    });
-                })();
-
                 const TAB_NAMES = {
                     overview: '전체 요약',
                     station:  '문제 기지국',
