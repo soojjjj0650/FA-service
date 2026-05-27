@@ -364,12 +364,10 @@ class KnoxMessengerClient:
         """
         파일을 Knox Messenger 파일 서버에 업로드합니다.
 
-        1. getCurrentTime?word={파일명} → serverTime, word(암호화 키) 획득
-        2. word로 x-device-id, x-device-type, x-request-time 암호화
-        3. PUT /messenger/file/api/v2.0/file/v1s/file/{파일명}
+        v1(평문 헤더) 먼저 시도 → 실패 시 v1s(암호화 헤더) 폴백.
+        v1 다운로드 URL은 Knox Messenger가 표준 auth로 접근 가능.
 
-        파일명 규칙: "r" + YYYYMMDDHHmmss + 확장자
-        반환: download_url (성공), None (실패)
+        반환: (download_url, file_size) (성공), None (실패)
         """
         if not os.path.exists(file_path):
             logger.error(f"[Knox] 업로드 파일 없음: {file_path}")
@@ -377,99 +375,89 @@ class KnoxMessengerClient:
 
         ext = os.path.splitext(file_path)[1]  # .pdf
         upload_filename = f"r{time.strftime('%Y%m%d%H%M%S')}{ext}"
-        url = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
 
-        # 1. getCurrentTime으로 serverTime + word(암호화 키) 조회
+        try:
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+        except Exception as e:
+            logger.error(f"[Knox] 파일 읽기 실패: {e}")
+            return None
+
+        # ── v1 시도 (평문 헤더, Knox Messenger 표준 auth로 다운로드 가능) ──────────
+        url_v1 = f"{self.base_url}/messenger/file/api/v2.0/file/v1/file/{upload_filename}"
+        headers_v1 = {
+            "Authorization": f"Bearer {self.access_token}",
+            "System-ID": self.system_id,
+            "x-device-id": self.device_id,
+            "x-device-type": "relation",
+            "Content-Type": "binary/octet-stream",
+            "Content-Length": str(len(file_bytes)),
+            "filename": upload_filename,
+        }
+        try:
+            logger.info(f"[Knox] 업로드 시도(v1) | url={url_v1}")
+            resp = await self._areq("PUT", url_v1, data=file_bytes, headers=headers_v1)
+            logger.info(f"[Knox] 파일 업로드(v1) | status={resp.status_code} | body={resp.text[:200]}")
+            if resp.status_code < 400:
+                data = resp.json()
+                download_url = data.get("download_url") or data.get("downloadUrl")
+                if download_url:
+                    logger.info(f"[Knox] 파일 업로드 완료(v1): {download_url}")
+                    return download_url, len(file_bytes)
+                logger.warning(f"[Knox] v1 download_url 없음: {resp.text[:200]}")
+        except Exception as e:
+            logger.warning(f"[Knox] v1 업로드 예외: {e}")
+
+        # ── v1s 폴백 (암호화 헤더) ────────────────────────────────────────────────
+        logger.info("[Knox] v1 실패 → v1s 폴백 시도")
+        url_v1s = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
+
         time_result = await self.get_file_server_time(upload_filename)
         if not time_result:
             logger.error("[Knox] 파일서버 Time 조회 실패 - 업로드 중단")
             return None
 
         server_time, word_key = time_result
-        logger.info(f"[Knox] 파일서버 serverTime={server_time!r} | word={word_key!r}")
-
-        # getCurrentTime word = 파일 서버 AES 암호화 키
         import hashlib
         word_bytes = word_key.encode("utf-8")
-        if len(word_bytes) >= 32:
-            file_aes_key = word_bytes[:32]
-        else:
-            file_aes_key = hashlib.sha256(word_bytes).digest()
+        file_aes_key = word_bytes[:32] if len(word_bytes) >= 32 else hashlib.sha256(word_bytes).digest()
+        file_aes_iv = b'\x00' * 16
 
-        # IV = 0 (all zeros) 시도 — CBC IV 불확실하므로 기본값 사용
-        file_aes_iv_zero = b'\x00' * 16
-
-        logger.info(
-            f"[Knox] 파일 암호화 키 | word_len={len(word_bytes)} "
-            f"| key_hex={file_aes_key.hex()}"
-        )
-
-        # 3. AES256으로 헤더값 암호화
-        # CBC(IV=zeros) 와 ECB 모두 로그 출력해 비교
         try:
-            enc_device_id_cbc   = _aes256_encrypt(self.device_id, file_aes_key, file_aes_iv_zero)
-            enc_device_type_cbc = _aes256_encrypt("relation",     file_aes_key, file_aes_iv_zero)
-            enc_server_time_cbc = _aes256_encrypt(server_time,    file_aes_key, file_aes_iv_zero)
-
-            enc_device_id_ecb   = _aes256_ecb_encrypt(self.device_id, file_aes_key)
-            enc_device_type_ecb = _aes256_ecb_encrypt("relation",     file_aes_key)
-            enc_server_time_ecb = _aes256_ecb_encrypt(server_time,    file_aes_key)
-
-            logger.info(f"[Knox] CBC(IV=0) | x-device-id={enc_device_id_cbc} | x-device-type={enc_device_type_cbc} | x-request-time={enc_server_time_cbc}")
-            logger.info(f"[Knox] ECB      | x-device-id={enc_device_id_ecb} | x-device-type={enc_device_type_ecb} | x-request-time={enc_server_time_ecb}")
-
-            # CBC(IV=zeros)로 실제 전송
-            enc_device_id   = enc_device_id_cbc
-            enc_device_type = enc_device_type_cbc
-            enc_server_time = enc_server_time_cbc
-
-            logger.info(
-                f"[Knox] 암호화 완료 | device_id={self.device_id!r} | "
-                f"server_time={server_time!r} | mode=CBC(IV=zeros)"
-            )
-            logger.info(
-                f"[Knox] 헤더 암호화 완료 | "
-                f"x-device-id={enc_device_id} | "
-                f"x-device-type={enc_device_type} | "
-                f"x-request-time={enc_server_time}"
-            )
+            enc_device_id   = _aes256_encrypt(self.device_id, file_aes_key, file_aes_iv)
+            enc_device_type = _aes256_encrypt("relation",     file_aes_key, file_aes_iv)
+            enc_server_time = _aes256_encrypt(server_time,    file_aes_key, file_aes_iv)
         except Exception as e:
             logger.error(f"[Knox] 헤더 암호화 실패: {e}")
             return None
 
+        headers_v1s = {
+            "Authorization": f"Bearer {self.access_token}",
+            "System-ID": self.system_id,
+            "Content-Type": "binary/octet-stream",
+            "Content-Length": str(len(file_bytes)),
+            "filename":       upload_filename,
+            "x-device-id":    enc_device_id,
+            "x-device-type":  enc_device_type,
+            "x-request-time": enc_server_time,
+        }
         try:
-            with open(file_path, "rb") as f:
-                file_bytes = f.read()
-
-            headers = {
-                "Authorization": f"Bearer {self.access_token}",
-                "System-ID": self.system_id,
-                "Content-Type": "binary/octet-stream",
-                "Content-Length": str(len(file_bytes)),
-                "filename":       upload_filename,   # 스펙: Mandatory Y, 평문
-                "x-device-id":    enc_device_id,
-                "x-device-type":  enc_device_type,
-                "x-request-time": enc_server_time,
-            }
-            logger.info(f"[Knox] 업로드 요청 | url={url} | filename={upload_filename}")
-
-            resp = await self._areq("PUT", url, data=file_bytes, headers=headers)
-
-            logger.info(f"[Knox] 파일 업로드 | status={resp.status_code} | body={resp.text[:300]}")
-
+            logger.info(f"[Knox] 업로드 시도(v1s) | url={url_v1s}")
+            resp = await self._areq("PUT", url_v1s, data=file_bytes, headers=headers_v1s)
+            logger.info(f"[Knox] 파일 업로드(v1s) | status={resp.status_code} | body={resp.text[:200]}")
             if resp.status_code >= 400:
-                logger.error(f"[Knox] 파일 업로드 실패: {resp.status_code} {resp.text[:200]}")
+                logger.error(f"[Knox] v1s 업로드 실패: {resp.status_code}")
                 return None
-
             data = resp.json()
-            logger.info(f"[Knox] 파일 업로드 응답 전체: {data}")
             download_url = data.get("download_url") or data.get("downloadUrl")
-            if not download_url:
-                logger.warning(f"[Knox] download_url 파싱 실패: {resp.text[:200]}")
-                return None
-
-            logger.info(f"[Knox] 파일 업로드 완료: {download_url}")
-            return download_url, len(file_bytes)
+            if download_url:
+                logger.info(f"[Knox] 파일 업로드 완료(v1s): {download_url}")
+                return download_url, len(file_bytes)
+            logger.warning(f"[Knox] v1s download_url 없음: {resp.text[:200]}")
+            return None
+        except Exception as e:
+            logger.error(f"[Knox] v1s 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
+            return None
 
         except Exception as e:
             logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
@@ -701,21 +689,22 @@ class KnoxMessengerClient:
         """
         url = f"{self.base_url}/messenger/message/api/v2.0/message/chatRequest"
 
-        # chatMsg: SNDCL 프리픽스 + {"media":{...}} JSON
-        # Knox Messenger가 chatMsg 앞의 <!--{CLD}--> 를 보고 파일 다운로드 UI를 렌더링
+        # chatMsg = {"media":{...}} JSON 형식
         ext = os.path.splitext(filename)[1].lstrip(".").lower()  # "pdf"
         _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
         file_type = "image" if ext in _IMG_EXTS else ext.upper()
-        media_inner = {
-            "extension": ext,
-            "type": file_type,
-            "filename": filename,
-            "sender": self.user_id or self.device_id,
-            "size": file_size,
-            "url": download_url,
+        media_obj = {
+            "media": {
+                "extension": ext,
+                "type": file_type,
+                "filename": filename,
+                "sender": self.user_id or self.device_id,
+                "size": file_size,
+                "text": '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLD"}} -->',
+                "url": download_url,
+            }
         }
-        sndcl_prefix = '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLD"}} -->'
-        chat_msg_json = sndcl_prefix + json.dumps({"media": media_inner}, ensure_ascii=False)
+        chat_msg_json = json.dumps(media_obj, ensure_ascii=False)
         logger.info(f"[Knox] 파일 메시지 chatMsg(전송): {chat_msg_json[:200]}")
 
         request_id = int(time.time() * 1000)
