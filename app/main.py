@@ -1299,27 +1299,7 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     logger.info(f"[Knox Pipeline] PDF 전송 완료 | SN={sn}")
     await asyncio.sleep(2)
 
-    # ── 2. HTML ZIP 생성 & 전송 ───────────────────────────────────────────────
-    zip_path = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.zip")
-    try:
-        with _zf.ZipFile(zip_path, "w", _zf.ZIP_DEFLATED) as zf:
-            zf.write(html_path, f"{sn}_analysis.html")
-        zip_upload = await client.upload_file(zip_path)
-        if zip_upload:
-            zip_url, zip_size = zip_upload
-            await client.send_file_message(
-                chatroom_id=chatroom_id,
-                download_url=zip_url,
-                filename=f"{sn}_FA분석.zip",
-                file_size=zip_size,
-                message_text=f"[FA 분석 HTML] SN: {sn}\n브라우저로 열어보세요.",
-            )
-            logger.info(f"[Knox Pipeline] ZIP 전송 완료 | SN={sn}")
-        await asyncio.sleep(2)
-    except Exception as e:
-        logger.warning(f"[Knox Pipeline] ZIP 전송 실패 (무시): {e}")
-
-    # ── 3. SN 입력 카드 재전송 ────────────────────────────────────────────────
+    # ── 2. SN 입력 카드 재전송 ────────────────────────────────────────────────
     await _knox_reply(chatroom_id, "", with_card=True)
 
 
@@ -2250,23 +2230,16 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
 
         # 2-4. Knox Messenger 전송 (HTML zip 우선, 실패 시 PDF)
         if settings.KNOX_MESSENGER_ENABLED and settings.KNOX_MESSENGER_BASE_URL:
-            from app.analysis.pdf_generator import html_to_zip, html_to_pdf
+            from app.analysis.pdf_generator import html_to_pdf
             from app.messenger.knox_messenger import send_pdf_via_knox
             import os as _os2
             _send_path = None
             if _analysis_html_path:
-                # 우선순위 1: HTML → zip (가볍고 인터랙티브)
-                _zip_path = _os2.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.zip")
-                if html_to_zip(_analysis_html_path, _zip_path, sn):
-                    _send_path = _zip_path
-                    logger.info(f"[Chatbot Job {job_id}] ZIP 생성 완료: {_zip_path}")
+                _pdf_path = _os2.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
+                if await html_to_pdf(_analysis_html_path, _pdf_path):
+                    _send_path = _pdf_path
                 else:
-                    # 우선순위 2: HTML → PDF
-                    _pdf_path = _os2.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
-                    if await html_to_pdf(_analysis_html_path, _pdf_path):
-                        _send_path = _pdf_path
-                    else:
-                        logger.warning(f"[Chatbot Job {job_id}] ZIP/PDF 생성 모두 실패 - Knox 전송 스킵")
+                    logger.warning(f"[Chatbot Job {job_id}] PDF 생성 실패 - Knox 전송 스킵")
             if _send_path:
                 await send_pdf_via_knox(
                     pdf_path=_send_path,
