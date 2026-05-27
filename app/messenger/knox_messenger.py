@@ -888,7 +888,7 @@ def _build_adaptive_card_chatmsg(card: dict, compress: bool = False) -> str:
 
 
 def build_sn_input_card(receive_url: str) -> dict:
-    """SN 입력 Adaptive Card 생성 (Knox Messenger v1.3 형식)."""
+    """SN 입력 안내 Adaptive Card (텍스트 직접 입력 방식)."""
     return {
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "type": "AdaptiveCard",
@@ -896,29 +896,22 @@ def build_sn_input_card(receive_url: str) -> dict:
         "body": [
             {
                 "type": "TextBlock",
-                "text": "FA 분석 요청",
+                "text": "FA 분석 서비스",
                 "size": "Large",
                 "weight": "Bolder",
                 "color": "Accent",
             },
             {
                 "type": "TextBlock",
-                "text": "분석할 단말기 SN을 입력해주세요.",
+                "text": "분석할 단말기 SN을 채팅창에 직접 입력해주세요.",
                 "wrap": True,
             },
             {
-                "type": "Input.Text",
-                "id": "sn",
-                "placeholder": "SN 입력 (예: R3CUFHDJF)",
-                "maxLength": 20,
+                "type": "TextBlock",
+                "text": "예) R3CUFHDJF",
+                "wrap": True,
+                "isSubtle": True,
             },
-        ],
-        "actions": [
-            {
-                "type": "Action.Submit",
-                "title": "분석 요청",
-                "data": {"requestUrl": receive_url},
-            }
         ],
     }
 
