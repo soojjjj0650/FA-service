@@ -379,16 +379,7 @@ class KnoxMessengerClient:
         upload_filename = f"r{time.strftime('%Y%m%d%H%M%S')}{ext}"
         url = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
 
-        # 1. getkeys로 파일 업로드 암호화 키 조회 (48바이트 hex → key[:32]=AES, key[32:48]=IV)
-        msg_key = await self.get_message_key()
-        if not msg_key or len(msg_key) < 48:
-            logger.error("[Knox] 파일 업로드용 암호화 키 조회 실패")
-            return None
-
-        aes_key  = msg_key[:32]
-        aes_iv   = msg_key[32:48]
-
-        # 2. getCurrentTime으로 serverTime 조회
+        # 1. getCurrentTime으로 serverTime + word(암호화 키) 조회
         time_result = await self.get_file_server_time(upload_filename)
         if not time_result:
             logger.error("[Knox] 파일서버 Time 조회 실패 - 업로드 중단")
