@@ -903,7 +903,7 @@ def build_sn_input_card(receive_url: str) -> dict:
             },
             {
                 "type": "TextBlock",
-                "text": "분석할 단말기 SN을 채팅창에 직접 입력해주세요.",
+                "text": "분석할 단말기 SN을 채팅창에 입력해주세요.",
                 "wrap": True,
             },
             {
