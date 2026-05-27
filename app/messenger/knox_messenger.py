@@ -707,11 +707,12 @@ class KnoxMessengerClient:
         file_type = "image" if ext in _IMG_EXTS else ext.upper()
         media_obj = {
             "media": {
-                "extention": ext,
+                "extension": ext,
                 "type": file_type,
                 "filename": filename,
                 "sender": self.user_id or self.device_id,
                 "size": file_size,
+                "text": '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLD"}} -->',
                 "url": download_url,
             }
         }
