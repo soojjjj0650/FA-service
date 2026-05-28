@@ -191,7 +191,7 @@ class KnoxMessengerClient:
         system_id: str,
         device_id: str = "",
         receiver_user_id: str = "",
-        timeout: int = 60,
+        timeout: int = 120,
     ):
         self.base_url = base_url.rstrip("/")
         self.access_token = access_token
@@ -203,7 +203,8 @@ class KnoxMessengerClient:
 
     def _req(self, method: str, url: str, **kwargs) -> requests.Response:
         """동기 requests 호출 (SSL 검증 비활성화, 타임아웃 적용)."""
-        kwargs.setdefault("timeout", self.timeout)
+        # (connect_timeout, read_timeout) — Knox Stage 서버 응답이 느릴 수 있음
+        kwargs.setdefault("timeout", (15, self.timeout))
         kwargs["verify"] = False
         return requests.request(method, url, **kwargs)
 
