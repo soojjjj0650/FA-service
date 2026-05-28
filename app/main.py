@@ -115,7 +115,7 @@ def _parse_log_to_rows(log_path: str) -> list[dict]:
 # ─── FastAPI 앱 ───────────────────────────────────────────────────────────────
 app = FastAPI(
     title="통화품질 분석서비스",
-    description="단말기 SN 기반 FA 지원 챗봇",
+    description="단말기 SN 기반 통화품질 분석서비스",
     version="1.0.0",
 )
 
@@ -2660,7 +2660,7 @@ def _build_input_form_card() -> dict:
         "body": [
             {
                 "type": "TextBlock",
-                "text": "FA 단말기 SN 조회",
+                "text": "통화품질 분석서비스 SN 조회",
                 "size": "Medium",
                 "weight": "Bolder",
             },
