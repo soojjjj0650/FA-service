@@ -6,6 +6,8 @@ import logging
 import os
 import zipfile
 
+NETA_BASE_URL = "http://10.246.56.50:8000"
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +40,17 @@ def generate_analysis_zip(sn: str, html_path: str, save_dir: str) -> str | None:
     return zip_path if html_to_zip(html_path, zip_path, sn) else None
 
 
+async def _check_neta_reachable(timeout: float = 4.0) -> bool:
+    """NETA 서버 접근 가능 여부를 빠르게 확인합니다."""
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.get(NETA_BASE_URL, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
+                return resp.status < 500
+    except Exception:
+        return False
+
+
 async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) -> bool:
     """
     HTML 파일을 PDF로 변환합니다.
@@ -53,6 +66,15 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
     if not os.path.exists(html_path):
         logger.error(f"[PDF] HTML 파일 없음: {html_path}")
         return False
+
+    # NETA 서버 자동 감지: neta_enabled=True 여도 실제 접속 불가 시 스킵
+    if neta_enabled:
+        neta_reachable = await _check_neta_reachable()
+        if not neta_reachable:
+            logger.warning("[PDF] NETA 서버 접근 불가 — NETA 로딩 스킵")
+            neta_enabled = False
+        else:
+            logger.info("[PDF] NETA 서버 접근 가능 — NETA 로딩 활성화")
 
     try:
         async with async_playwright() as p:
