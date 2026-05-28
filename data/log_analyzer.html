@@ -1422,6 +1422,7 @@ function getISOWeek(d=new Date()){
   return Math.floor((d-w1Mon)/(7*864e5))+1;
 }
 function prefetchTop3Neta(){
+  if(window.NETA_ENABLED===false){window.netaPrefetchComplete=true;return;}
   const stations=getTop3Stations();
   if(!stations.length){window.netaPrefetchComplete=true;return;}
   let pending=stations.length;

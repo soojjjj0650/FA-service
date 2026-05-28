@@ -1303,7 +1303,7 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
 
     # HTML → PDF 변환
     try:
-        pdf_ok = await asyncio.wait_for(html_to_pdf(html_path, pdf_path), timeout=120)
+        pdf_ok = await asyncio.wait_for(html_to_pdf(html_path, pdf_path, neta_enabled=settings.NETA_ENABLED), timeout=120)
     except asyncio.TimeoutError:
         await _fail("PDF 변환 시간 초과.")
         return
@@ -1549,7 +1549,7 @@ async def upload_csv_and_generate_pdf(
 
         # PDF 변환
         pdf_path = os.path.join(tmpdir, f"{sn}_analysis.pdf")
-        ok = await html_to_pdf(html_path, pdf_path)
+        ok = await html_to_pdf(html_path, pdf_path, neta_enabled=settings.NETA_ENABLED)
         if not ok or not os.path.exists(pdf_path):
             raise HTTPException(status_code=500, detail="PDF 변환 실패")
 
@@ -2340,7 +2340,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             _send_path = None
             if _analysis_html_path:
                 _pdf_path = _os2.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
-                if await html_to_pdf(_analysis_html_path, _pdf_path):
+                if await html_to_pdf(_analysis_html_path, _pdf_path, neta_enabled=settings.NETA_ENABLED):
                     _send_path = _pdf_path
                 else:
                     logger.warning(f"[Chatbot Job {job_id}] PDF 생성 실패 - Knox 전송 스킵")

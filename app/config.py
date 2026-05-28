@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     AI_AGENT_ENABLED: bool = False
     # 기지국 정보 조회 활성화 여부 (false 시 스킵)
     STATION_SCRAPER_ENABLED: bool = False
+    # NETA 기지국 서버 연동 활성화 여부 (false 시 PDF/HTML 생성 시 NETA 로딩 스킵)
+    NETA_ENABLED: bool = True  # 서버 접근 불가 시 false로 설정
 
     # ─── Qings 사전 쿼리 (Pre-fetch) ─────────────────────────────────────────
     QINGS_URL: str = "qings.sec.samsung.net"

@@ -38,9 +38,10 @@ def generate_analysis_zip(sn: str, html_path: str, save_dir: str) -> str | None:
     return zip_path if html_to_zip(html_path, zip_path, sn) else None
 
 
-async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
+async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) -> bool:
     """
     HTML 파일을 PDF로 변환합니다.
+    neta_enabled=False 시 NETA 로딩 대기를 스킵합니다.
     반환: 성공 여부
     """
     try:
@@ -72,6 +73,9 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
                 return False
 
             page = await browser.new_page()
+            if not neta_enabled:
+                await page.add_init_script("window.NETA_ENABLED=false;")
+                logger.info("[PDF] NETA 비활성화 모드")
             await page.goto(f"file:///{html_path.replace(os.sep, '/')}", wait_until="domcontentloaded", timeout=30000)
 
             # NETA prefetch 완료까지 대기 (최대 90초, 조기 완료 시 바로 진행)
