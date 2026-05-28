@@ -1352,7 +1352,6 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         return
 
     logger.info(f"[Knox Pipeline] PDF 파일 전송 완료 | SN={sn}")
-        return
     await asyncio.sleep(2)
 
     # ── 2. SN 입력 카드 재전송 ────────────────────────────────────────────────
