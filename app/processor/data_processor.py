@@ -148,7 +148,7 @@ _NSVC_LEV_FOOTNOTES: dict[str, str] = {
 # ─── feature별 최종 표시 컬럼 (집계 완료 후 이 컬럼만 남김) ─────────────────────
 # 순서도 여기서 지정한 순서대로 유지됩니다.
 FEATURE_KEEP_COLS: dict[str, list[str]] = {
-    "MUTE": ["ACT", "TAC", "PCI", "Band", "ECNT", "RSRP", "SINR", "BLER"],
+    "MUTE": ["ACT", "TAC", "PCI", "Band", "ECNT", "RSMT", "UBMT", "RNMT", "DBMT", "RSRP", "SINR", "BLER"],
     "DROP": ["ACT", "TAC", "PCI", "DLCh", "Drop횟수", "RxP0_avg", "RxP1_avg", "BLER_avg", "SIPR_Counts"],
     "RLFI": ["ACT", "TAC", "PID", "DCh", "RLFI횟수", "RxP_avg", "CAU_Counts"],
     "SCGF": ["TAC", "PhID", "Lband", "Nband", "SCGF발생횟수", "Ftype_Counts"],
