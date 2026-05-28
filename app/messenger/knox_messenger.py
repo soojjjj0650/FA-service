@@ -478,7 +478,9 @@ class KnoxMessengerClient:
             msg_key = await self.get_message_key()
             logger.info(f"[Knox] 대화방 생성 payload(평문): {plain_payload}")
             if msg_key:
-                iv = msg_key[32:48]
+                logger.info(f"[Knox] 메시지 키 길이: {len(msg_key)} bytes")
+                # 키가 32바이트면 IV를 별도 슬라이싱 불가 → 앞 16바이트 재사용
+                iv = msg_key[32:48] if len(msg_key) >= 48 else msg_key[:16]
                 body = _encrypt_payload(plain_payload, msg_key[:32], iv)
                 headers["Content-Type"] = "text/plain"
                 resp = await self._areq("POST", url, data=body, headers=headers)
@@ -494,7 +496,7 @@ class KnoxMessengerClient:
 
             # 응답 복호화
             if msg_key:
-                iv = msg_key[32:48]
+                iv = msg_key[32:48] if len(msg_key) >= 48 else msg_key[:16]
                 data = _decrypt_payload(resp.text.strip(), msg_key[:32], iv)
             else:
                 data = resp.json()
@@ -603,7 +605,7 @@ class KnoxMessengerClient:
         try:
             msg_key = await self.get_message_key()
             if msg_key:
-                iv = msg_key[32:48]
+                iv = msg_key[32:48] if len(msg_key) >= 48 else msg_key[:16]
                 body = _encrypt_payload(plain_payload, msg_key[:32], iv)
                 headers["Content-Type"] = "text/plain"
                 resp = await self._areq("POST", url, data=body, headers=headers)
@@ -622,7 +624,7 @@ class KnoxMessengerClient:
 
             # 응답 복호화 및 결과 확인
             if msg_key:
-                iv = msg_key[32:48]
+                iv = msg_key[32:48] if len(msg_key) >= 48 else msg_key[:16]
                 data = _decrypt_payload(resp.text.strip(), msg_key[:32], iv)
             else:
                 data = resp.json()
@@ -702,7 +704,7 @@ class KnoxMessengerClient:
         try:
             msg_key = await self.get_message_key()
             if msg_key:
-                iv = msg_key[32:48]
+                iv = msg_key[32:48] if len(msg_key) >= 48 else msg_key[:16]
                 body = _encrypt_payload(plain_payload, msg_key[:32], iv)
                 headers["Content-Type"] = "text/plain"
                 resp = await self._areq("POST", url, data=body, headers=headers)
@@ -718,7 +720,7 @@ class KnoxMessengerClient:
                 return await self.send_message(chatroom_id, fallback)
 
             if msg_key:
-                iv = msg_key[32:48]
+                iv = msg_key[32:48] if len(msg_key) >= 48 else msg_key[:16]
                 data = _decrypt_payload(resp.text.strip(), msg_key[:32], iv)
             else:
                 data = resp.json()
@@ -790,7 +792,7 @@ class KnoxMessengerClient:
         try:
             msg_key = await self.get_message_key()
             if msg_key:
-                iv = msg_key[32:48]
+                iv = msg_key[32:48] if len(msg_key) >= 48 else msg_key[:16]
                 body = _encrypt_payload(plain_payload, msg_key[:32], iv)
                 headers["Content-Type"] = "text/plain"
                 resp = await self._areq("POST", url, data=body, headers=headers)
@@ -804,7 +806,7 @@ class KnoxMessengerClient:
                 return False
 
             if msg_key:
-                iv = msg_key[32:48]
+                iv = msg_key[32:48] if len(msg_key) >= 48 else msg_key[:16]
                 data = _decrypt_payload(resp.text.strip(), msg_key[:32], iv)
             else:
                 data = resp.json()

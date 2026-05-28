@@ -864,8 +864,9 @@ async def knox_register_device():
         receiver_user_id=settings.KNOX_RECEIVER_USER_ID,
     )
 
-    # 1. Device ID 획득
-    if not await client.ensure_device_id():
+    # 1. Device ID 강제 재등록 (항상 새로 등록)
+    device_id = await client.register_device()
+    if not device_id:
         raise HTTPException(status_code=502, detail="Device 등록 실패. 서버 로그를 확인하세요.")
 
     # 2. 대화방 생성 (register 시에는 항상 새로 생성)
