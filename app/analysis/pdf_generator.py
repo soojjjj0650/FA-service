@@ -85,6 +85,31 @@ async def html_to_pdf(html_path: str, pdf_path: str) -> bool:
             except Exception:
                 logger.warning("[PDF] NETA 대기 타임아웃(90s), 렌더링 계속 진행")
 
+            # NETA 캐시 추출 → HTML에 주입 (오프라인 열람용)
+            try:
+                neta_cache_json = await page.evaluate(
+                    "() => JSON.stringify(Object.fromEntries("
+                    "  Object.entries(window.netaCache||{}).filter(([,v])=>v&&v.data!==undefined)"
+                    "    .map(([k,v])=>[k,{data:v.data}])"
+                    "))"
+                )
+                if neta_cache_json and neta_cache_json != "{}":
+                    with open(html_path, encoding="utf-8") as _f:
+                        _html = _f.read()
+                    _inject = (
+                        "<script>\n"
+                        f"(function(){{var _nc={neta_cache_json};"
+                        "Object.assign(typeof netaCache!=='undefined'?netaCache:(netaCache={}),"
+                        "Object.fromEntries(Object.entries(_nc).map(([k,v])=>[k,v])));}})()\n"
+                        "</script>\n"
+                    )
+                    _html = _html.replace("</body>", _inject + "</body>", 1)
+                    with open(html_path, "w", encoding="utf-8") as _f:
+                        _f.write(_html)
+                    logger.info("[PDF] NETA 캐시 HTML 주입 완료")
+            except Exception as _e:
+                logger.warning(f"[PDF] NETA 캐시 주입 실패 (무시): {_e}")
+
             # lazy 렌더 강제 실행 + PDF용 전체 탭 표시
             await page.evaluate("""() => {
                 if (typeof renderStationTable === 'function') renderStationTable();
