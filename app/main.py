@@ -868,8 +868,8 @@ async def knox_register_device():
     if not await client.ensure_device_id():
         raise HTTPException(status_code=502, detail="Device 등록 실패. 서버 로그를 확인하세요.")
 
-    # 2. 대화방 생성
-    chatroom_id = await client.ensure_chatroom()
+    # 2. 대화방 생성 (register 시에는 항상 새로 생성)
+    chatroom_id = await client.create_chatroom()
     if not chatroom_id:
         raise HTTPException(status_code=502, detail="대화방 생성 실패. 서버 로그를 확인하세요.")
 
