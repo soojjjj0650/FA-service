@@ -1333,25 +1333,26 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     import time as _t
     feature_summary = job.get("feature_summary", "")
 
-    # ── 1. Knox 파일 서버 업로드 & 텍스트 링크 전송 ──────────────────────────────
-    # MEDIA msgType:1 → 링크로만 표시, msgType:2 → 아무것도 안 표시
-    # → 텍스트 메시지로 다운로드 URL 전달 (Knox Browser가 auth 처리 기대)
+    # ── 1. Knox 파일 서버 업로드 & 파일 메시지 전송 ─────────────────────────────
     pdf_upload = await client.upload_file(pdf_path)
     if not pdf_upload:
         await _fail("Knox 파일 업로드에 실패했습니다.")
         return
     pdf_url, pdf_size = pdf_upload
 
-    msg_lines = [f"[FA 분석 완료] SN: {sn}"]
-    if feature_summary:
-        msg_lines.append(feature_summary)
-    msg_lines.append(f"\nPDF 다운로드: {pdf_url}")
-    pdf_ok = await client.send_message(chatroom_id, "\n".join(msg_lines))
+    filename = _os.path.basename(pdf_path)
+    pdf_ok = await client.send_file_message(
+        chatroom_id=chatroom_id,
+        download_url=pdf_url,
+        filename=filename,
+        file_size=pdf_size,
+    )
     if not pdf_ok:
         await _fail("Knox 메시지 전송에 실패했습니다.")
         return
 
-    logger.info(f"[Knox Pipeline] PDF 링크 전송 완료 | SN={sn}")
+    logger.info(f"[Knox Pipeline] PDF 파일 전송 완료 | SN={sn}")
+        return
     await asyncio.sleep(2)
 
     # ── 2. SN 입력 카드 재전송 ────────────────────────────────────────────────
