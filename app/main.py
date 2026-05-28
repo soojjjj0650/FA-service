@@ -1286,6 +1286,11 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         await _fail("데이터 조회에 실패했습니다. SN을 확인해주세요.")
         return
 
+    # 데이터 없음 → PDF/ZIP 생성 없이 Knox에 바로 알림
+    if job.get("no_data"):
+        await _knox_reply(chatroom_id, f"[SN: {sn}] 최근 {settings.QUERY_LOOKBACK_DAYS}일간 조회되는 데이터가 없습니다.", with_card=True)
+        return
+
     if not settings.KNOX_MESSENGER_BASE_URL or not settings.KNOX_ACCESS_TOKEN:
         logger.warning(f"[Knox Pipeline] Knox 설정 미완료 (SN: {sn})")
         return
@@ -2294,9 +2299,11 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             query_result.csv_path is None
             or not _os.path.exists(query_result.csv_path)
             or _os.path.getsize(query_result.csv_path) == 0
+            or not query_result.rows
         )
         if no_data:
             job["status"] = "done"
+            job["no_data"] = True
             job["ai_response"] = f"최근 {days}일간 조회되는 데이터가 없습니다."
             job["feature_summary"] = ""
             await _push_card_to_chatroom(job)
