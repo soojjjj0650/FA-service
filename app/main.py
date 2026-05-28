@@ -1290,11 +1290,12 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         return
 
     import os as _os
-    from app.analysis.pdf_generator import html_to_pdf
+    from app.analysis.pdf_generator import html_to_pdf, html_to_zip
     from app.messenger.knox_messenger import KnoxMessengerClient, _load_cached_device_id
 
     html_path = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.html")
     pdf_path  = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.pdf")
+    zip_path  = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.zip")
 
     if not _os.path.exists(html_path):
         await _fail("분석 HTML 파일을 찾을 수 없습니다.")
@@ -1310,6 +1311,10 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     if not pdf_ok:
         await _fail("PDF 변환에 실패했습니다.")
         return
+
+    # HTML → ZIP 생성
+    loop = asyncio.get_event_loop()
+    zip_ok = await loop.run_in_executor(None, html_to_zip, html_path, zip_path, sn)
 
     # Knox Messenger 전송
     device_id = settings.KNOX_DEVICE_ID or _load_cached_device_id()
@@ -1333,25 +1338,36 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     import time as _t
     feature_summary = job.get("feature_summary", "")
 
-    # ── 1. Knox 파일 서버 업로드 & 파일 메시지 전송 ─────────────────────────────
+    # ── 1. PDF 업로드 & 전송 ───────────────────────────────────────────────────
     pdf_upload = await client.upload_file(pdf_path)
-    if not pdf_upload:
-        await _fail("Knox 파일 업로드에 실패했습니다.")
-        return
-    pdf_url, pdf_size = pdf_upload
+    if pdf_upload:
+        pdf_url, pdf_size = pdf_upload
+        await client.send_file_message(
+            chatroom_id=chatroom_id,
+            download_url=pdf_url,
+            filename=_os.path.basename(pdf_path),
+            file_size=pdf_size,
+        )
+        logger.info(f"[Knox Pipeline] PDF 전송 완료 | SN={sn}")
+    else:
+        logger.warning(f"[Knox Pipeline] PDF 업로드 실패 | SN={sn}")
 
-    filename = _os.path.basename(pdf_path)
-    pdf_ok = await client.send_file_message(
-        chatroom_id=chatroom_id,
-        download_url=pdf_url,
-        filename=filename,
-        file_size=pdf_size,
-    )
-    if not pdf_ok:
-        await _fail("Knox 메시지 전송에 실패했습니다.")
-        return
+    # ── 2. ZIP(HTML) 업로드 & 전송 ────────────────────────────────────────────
+    if zip_ok and _os.path.exists(zip_path):
+        zip_upload = await client.upload_file(zip_path)
+        if zip_upload:
+            zip_url, zip_size = zip_upload
+            await client.send_file_message(
+                chatroom_id=chatroom_id,
+                download_url=zip_url,
+                filename=_os.path.basename(zip_path),
+                file_size=zip_size,
+            )
+            logger.info(f"[Knox Pipeline] ZIP 전송 완료 | SN={sn}")
+        else:
+            logger.warning(f"[Knox Pipeline] ZIP 업로드 실패 | SN={sn}")
 
-    logger.info(f"[Knox Pipeline] PDF 파일 전송 완료 | SN={sn}")
+    logger.info(f"[Knox Pipeline] 전송 완료 | SN={sn}")
     await asyncio.sleep(2)
 
     # ── 2. SN 입력 카드 재전송 ────────────────────────────────────────────────
