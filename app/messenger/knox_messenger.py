@@ -460,7 +460,7 @@ class KnoxMessengerClient:
 
         request_id = int(time.time() * 1000)
         plain_payload = {
-            "chatType": 2,
+            "chatType": 1,
             "requestId": request_id,
             "receivers": [int(self.receiver_user_id)],
         }
@@ -476,6 +476,7 @@ class KnoxMessengerClient:
         try:
             # 메시지 키로 payload 암호화
             msg_key = await self.get_message_key()
+            logger.info(f"[Knox] 대화방 생성 payload(평문): {plain_payload}")
             if msg_key:
                 iv = msg_key[32:48]
                 body = _encrypt_payload(plain_payload, msg_key[:32], iv)
@@ -485,10 +486,10 @@ class KnoxMessengerClient:
                 logger.warning("[Knox] 메시지 키 없음 - 평문 전송 (테스트용)")
                 resp = await self._areq("POST", url, json=plain_payload, headers=headers)
 
-            logger.info(f"[Knox] 대화방 생성 | status={resp.status_code} | body={resp.text[:300]}")
+            logger.info(f"[Knox] 대화방 생성 | status={resp.status_code} | body={resp.text}")
 
             if resp.status_code >= 400:
-                logger.error(f"[Knox] 대화방 생성 실패: {resp.status_code} {resp.text[:200]}")
+                logger.error(f"[Knox] 대화방 생성 실패: {resp.status_code} | body={resp.text}")
                 return None
 
             # 응답 복호화
@@ -498,7 +499,7 @@ class KnoxMessengerClient:
             else:
                 data = resp.json()
 
-            logger.info(f"[Knox] 대화방 생성 응답: {data}")
+            logger.info(f"[Knox] 대화방 생성 응답(복호화): {data}")
 
             chatroom_id = data.get("chatroomId")
             result_code = data.get("result", {}).get("code")
