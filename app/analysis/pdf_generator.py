@@ -181,7 +181,7 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
                 ];
                 const nav = document.createElement('div');
                 nav.id = 'pdf-nav';
-                nav.innerHTML = '<span class="nav-logo">FA Report</span>'
+                nav.innerHTML = '<span class="nav-logo">통화품질 분석</span>'
                     + NAV_TABS.map(([id, label]) =>
                         '<a href="#tab-' + id + '">' + label + '</a>'
                     ).join('');

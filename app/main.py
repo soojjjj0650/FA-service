@@ -1,5 +1,5 @@
 """
-FA Chatbot Service - FastAPI 메인 애플리케이션
+통화품질 분석서비스 - FastAPI 메인 애플리케이션
 
 엔드포인트:
   GET  /                          → 챗봇 UI (HTML)
@@ -114,7 +114,7 @@ def _parse_log_to_rows(log_path: str) -> list[dict]:
 
 # ─── FastAPI 앱 ───────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="FA Chatbot Service",
+    title="통화품질 분석서비스",
     description="단말기 SN 기반 FA 지원 챗봇",
     version="1.0.0",
 )
@@ -185,14 +185,14 @@ async def startup():
         asyncio.create_task(_mail_scheduler())
         logger.info(f"[Scheduler] 메일 다운로드 스케줄러 시작 (매일 {settings.MAIL_SCHEDULE_HOUR:02d}:00)")
 
-    logger.info("FA Chatbot Service 시작")
+    logger.info("통화품질 분석서비스 시작")
 
 
 @app.on_event("shutdown")
 async def shutdown():
     await browser_pool.shutdown()
     await agent_client.close()
-    logger.info("FA Chatbot Service 종료")
+    logger.info("통화품질 분석서비스 종료")
 
 
 # ─── 요청/응답 스키마 ─────────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ async def root():
     html_file = FRONTEND_DIR / "index.html"
     if html_file.exists():
         return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
-    return HTMLResponse(content="<h1>FA Chatbot</h1><p>frontend/index.html을 확인하세요.</p>")
+    return HTMLResponse(content="<h1>통화품질 분석서비스</h1><p>frontend/index.html을 확인하세요.</p>")
 
 
 @app.get("/batch", response_class=HTMLResponse)
@@ -256,7 +256,7 @@ async def query_sn(request: SNQueryRequest):
 
     챗봇에서 호출 시:
       - 즉시 202 접수 응답 반환 (60초 timeout 대응)
-      - 백그라운드에서 FA 분석 후 완료 시 회사 챗봇 웹훅으로 결과 push
+      - 백그라운드에서 통화품질 분석 후 완료 시 회사 챗봇 웹훅으로 결과 push
     """
     if not settings.CHATBOT_WEBHOOK_URL:
         raise HTTPException(status_code=503, detail="CHATBOT_WEBHOOK_URL이 설정되지 않았습니다.")
@@ -327,7 +327,7 @@ async def _mail_scheduler() -> None:
 
 
 async def _run_and_push(sn: str) -> None:
-    """FA 분석 전체 파이프라인 실행 후 회사 챗봇 웹훅으로 결과 push."""
+    """통화품질 분석 전체 파이프라인 실행 후 회사 챗봇 웹훅으로 결과 push."""
     try:
         # 1. SQL 쿼리
         query_result = await query_runner.run(sn)
@@ -476,7 +476,7 @@ def _strip_markdown(text: str) -> str:
 
 async def _push_card_to_chatroom(job: dict) -> None:
     """
-    FA 분석 완료 후 결과 Adaptive Card를 채팅방으로 직접 push합니다.
+    통화품질 분석 완료 후 결과 Adaptive Card를 채팅방으로 직접 push합니다.
 
     CHATBOT_PUSH_URL이 설정된 경우에만 동작합니다.
     Samsung chatbot Builder outbound API 형식으로 전송합니다.
@@ -517,7 +517,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         payload = {
             "chatRoomId":    chat_room_id,
             "userId":        user_id,
-            "title":         f"[SN: {sn}] FA 분석 결과",
+            "title":         f"[SN: {sn}] 통화품질 분석 결과",
             "info_analysis": info_analysis,
             "ai_result":     ai_text,
             "station_info":  station_text,
@@ -527,7 +527,7 @@ async def _push_card_to_chatroom(job: dict) -> None:
         payload = {
             "chatRoomId":   chat_room_id,
             "userId":       user_id,
-            "title":        f"[SN: {sn}] FA 분석 오류",
+            "title":        f"[SN: {sn}] 통화품질 분석 오류",
             "ai_result":    job.get('error', '처리 중 오류가 발생했습니다.'),
             "station_info": "",
         }
@@ -667,7 +667,7 @@ async def test_result_card(request: TestResultRequest):
     """
     sn = request.sn.strip().upper() or "TEST-001"
     ai_text = request.ai_response or (
-        f"[TEST] SN [{sn}] FA 분석 결과\n\n"
+        f"[TEST] SN [{sn}] 통화품질 분석 결과\n\n"
         "■ MUTE 이벤트 주요 발생 지역\n"
         "- PLMN: 45008 / ACT: LTE / TAC: 12345\n"
         "  PCI: 100, ECNT: 150건, RSRP: -105.3 dBm, SINR: 2.1 dB\n\n"
@@ -735,7 +735,7 @@ async def get_appcard(sn: str = "", userId: str = ""):
             "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
             "version": "1.3",
             "body": [
-                {"type": "TextBlock", "text": f"[{job_sn}] FA 분석 오류",
+                {"type": "TextBlock", "text": f"[{job_sn}] 통화품질 분석 오류",
                  "weight": "Bolder", "color": "Attention"},
                 {"type": "TextBlock", "text": matched_job.get("error", "처리 중 오류 발생"),
                  "wrap": True, "color": "Attention"},
@@ -748,7 +748,7 @@ async def get_appcard(sn: str = "", userId: str = ""):
             "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
             "version": "1.3",
             "body": [
-                {"type": "TextBlock", "text": f"[{job_sn}] FA 분석 진행 중",
+                {"type": "TextBlock", "text": f"[{job_sn}] 통화품질 분석 진행 중",
                  "weight": "Bolder", "color": "Warning"},
                 {"type": "TextBlock", "text": "분석이 완료되면 결과가 자동으로 표시됩니다.",
                  "wrap": True, "isSubtle": True},
@@ -905,7 +905,7 @@ async def knox_test_message():
         device_id=settings.KNOX_DEVICE_ID or _load_cached_device_id(),
         receiver_user_id=settings.KNOX_RECEIVER_USER_ID,
     )
-    ok = await client.send_message(chatroom_id, "FA 서비스 연결 테스트 메시지입니다.")
+    ok = await client.send_message(chatroom_id, "통화품질 분석서비스 연결 테스트 메시지입니다.")
     return {"chatroom_id": chatroom_id, "sent": ok}
 
 
@@ -920,7 +920,7 @@ async def knox_send_file(request: Request):
 
     body = await request.json()
     file_path = (body.get("file_path") or "").strip()
-    message   = body.get("message") or "FA 분석 결과 파일입니다."
+    message   = body.get("message") or "통화품질 분석 결과 파일입니다."
 
     if not file_path:
         raise HTTPException(status_code=400, detail="file_path 필드가 필요합니다.")
@@ -961,7 +961,7 @@ async def knox_send_file(request: Request):
 @app.post("/api/knox/send-analysis")
 async def knox_send_analysis(request: Request):
     """
-    SN을 입력받아 FA 분석 → PDF 생성 → Knox Messenger 전송을 수동으로 실행합니다.
+    SN을 입력받아 통화품질 분석 → PDF 생성 → Knox Messenger 전송을 수동으로 실행합니다.
     Knox 웹훅 없이도 테스트 가능.
     body: {"sn": "R3CUFHDJF"}
     """
@@ -1155,7 +1155,7 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
     # 키워드 처리: 카드 재전송
     _CARD_KEYWORDS = {"시작", "start", "도움말", "help", "카드", "card", "ㅎ", "hi", "안녕"}
     if chat_msg.strip().lower() in _CARD_KEYWORDS:
-        asyncio.create_task(_knox_reply(chatroom_id, "FA 분석 카드를 전송합니다.", with_card=True))
+        asyncio.create_task(_knox_reply(chatroom_id, "통화품질 분석 카드를 전송합니다.", with_card=True))
         return JSONResponse(status_code=200, content={"status": "ignored", "reason": "empty"})
 
     # ── 여러 SN 지원: 쉼표/공백/줄바꿈으로 구분 ─────────────────────────────
@@ -1193,7 +1193,7 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
             "created_at": time.time(),
             "source":     "knox",
         }
-        logger.info(f"[Knox] FA 분석 시작 | SN={sn_raw} | job_id={job_id}")
+        logger.info(f"[Knox] 통화품질 분석 시작 | SN={sn_raw} | job_id={job_id}")
         asyncio.create_task(_run_knox_pipeline(job_id, sn_raw))
         job_ids.append(job_id)
 
@@ -1257,7 +1257,7 @@ async def knox_message_typo(request: Request):
 async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     """
     Knox Messenger 전용 파이프라인:
-    FA 분석 실행 → PDF 생성 → Knox Messenger로 전송
+    통화품질 분석 실행 → PDF 생성 → Knox Messenger로 전송
     성공/실패 모두 SN 입력 카드를 재전송합니다.
     """
     job = _chatbot_jobs[job_id]
@@ -1267,7 +1267,7 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
 
     async def _fail(reason: str) -> None:
         logger.error(f"[Knox Pipeline] 실패 | SN={sn} | reason={reason}")
-        await _knox_reply(chatroom_id, f"[FA 분석 실패] SN: {sn}\n{reason}", with_card=True)
+        await _knox_reply(chatroom_id, f"[통화품질 분석 실패] SN: {sn}\n{reason}", with_card=True)
 
     try:
         # 타임아웃 적용하여 분석 실행
@@ -1412,7 +1412,7 @@ async def upload_page():
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>FA 분석 파일 업로드</title>
+<title>통화품질 분석 파일 업로드</title>
 <style>
   body { font-family: sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; background: #f5f5f5; }
   h1 { color: #1a237e; font-size: 1.4em; }
@@ -1430,7 +1430,7 @@ async def upload_page():
 </style>
 </head>
 <body>
-<h1>📄 FA 분석 파일 업로드</h1>
+<h1>📄 통화품질 분석 파일 업로드</h1>
 <div class="card">
   <p class="hint">CSV 또는 Excel 파일을 업로드하면 분석 HTML과 PDF를 생성합니다.</p>
   <form id="uploadForm">

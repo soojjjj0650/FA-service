@@ -716,7 +716,7 @@ class KnoxMessengerClient:
 
             if resp.status_code >= 400:
                 logger.warning(f"[Knox] MEDIA 전송 실패({resp.status_code}) body={resp.text[:300]} - 텍스트로 fallback")
-                fallback = f"[FA 분석] {filename}\n다운로드: {download_url}"
+                fallback = f"[통화품질 분석] {filename}\n다운로드: {download_url}"
                 return await self.send_message(chatroom_id, fallback)
 
             if msg_key:
@@ -731,7 +731,7 @@ class KnoxMessengerClient:
                 return True
 
             logger.warning(f"[Knox] Media 전송 실패(code={result_code}) - 텍스트로 fallback")
-            fallback = f"[FA 분석] {filename}\n다운로드: {download_url}"
+            fallback = f"[통화품질 분석] {filename}\n다운로드: {download_url}"
             return await self.send_message(chatroom_id, fallback)
 
         except Exception as e:
@@ -755,7 +755,7 @@ class KnoxMessengerClient:
             "type": "AdaptiveCard",
             "version": "1.0",
             "body": [
-                {"type": "TextBlock", "text": "FA 분석 요청"},
+                {"type": "TextBlock", "text": "통화품질 분석 요청"},
                 {"type": "Input.Text", "id": "sn", "placeholder": "SN 입력"}
             ],
             "actions": [{
@@ -857,7 +857,7 @@ def build_sn_input_card(receive_url: str) -> dict:
         "body": [
             {
                 "type": "TextBlock",
-                "text": "FA 분석 서비스",
+                "text": "통화품질 분석서비스",
                 "size": "Medium",
                 "weight": "Bolder",
                 "color": "Accent",
@@ -944,9 +944,9 @@ async def send_pdf_via_knox(
     # 3. 파일 메시지 전송
     ext = os.path.splitext(pdf_path)[1].lower()
     if ext == ".zip":
-        message = f"[FA 분석] SN: {sn}\n분석 결과 파일({filename})을 다운로드하여 브라우저로 열어주세요."
+        message = f"[통화품질 분석] SN: {sn}\n분석 결과 파일({filename})을 다운로드하여 브라우저로 열어주세요."
     else:
-        message = f"[FA 분석] SN: {sn}\n상세 분석 결과 파일({filename})을 확인하세요."
+        message = f"[통화품질 분석] SN: {sn}\n상세 분석 결과 파일({filename})을 확인하세요."
     success = await client.send_file_message(
         chatroom_id=chatroom_id,
         download_url=download_url,

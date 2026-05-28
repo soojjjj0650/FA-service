@@ -1,5 +1,5 @@
 """
-FA Chatbot Service - Configuration
+통화품질 분석서비스 - Configuration
 """
 from pydantic_settings import BaseSettings
 from pathlib import Path
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # AI Agent 입력 포맷: "table" (표 형식) 또는 "narrative" (서술형)
     AI_AGENT_INPUT_FORMAT: str = "narrative"
 
-    # ─── 회사 챗봇 웹훅 (FA 분석 완료 시 결과 push) ──────────────────────────
+    # ─── 회사 챗봇 웹훅 (통화품질 분석 완료 시 결과 push) ──────────────────────────
     CHATBOT_WEBHOOK_URL: str = "https://botbuilder.samsung.net/webhook/fa.service"
     # 분석 완료 후 채팅방으로 결과 카드를 push하는 URL
     # chatRoomId가 URL 끝에 자동으로 붙음: {CHATBOT_PUSH_URL}/{chatRoomId}
