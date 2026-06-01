@@ -2307,7 +2307,6 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             query_result.csv_path is None
             or not _os.path.exists(query_result.csv_path)
             or _os.path.getsize(query_result.csv_path) == 0
-            or not query_result.rows
         )
         if no_data:
             job["status"] = "done"
