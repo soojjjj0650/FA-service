@@ -1359,7 +1359,10 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         logger.info(f"[Knox Pipeline] PDF 전송 완료 | SN={sn}")
     else:
         logger.warning(f"[Knox Pipeline] PDF 업로드 실패 | SN={sn} | 크기={pdf_size_kb}KB")
-        await client.send_message(chatroom_id, f"[{sn}] PDF 업로드 실패 (ZIP 파일로 대체 전송합니다)")
+        await client.send_message(
+            chatroom_id,
+            f"[{sn}] PDF 업로드 실패 (파일 크기 {pdf_size_kb}KB — Knox 업로드 한도 초과 추정)\nZIP 파일로 대체 전송합니다."
+        )
 
     # ── 2. ZIP(HTML) 업로드 & 전송 ────────────────────────────────────────────
     if zip_ok and _os.path.exists(zip_path):

@@ -394,9 +394,9 @@ class KnoxMessengerClient:
             server_time, word_key = time_result
             formatted_time = _format_server_time(server_time)
 
-            # word_key: base64 인코딩이면 디코딩, 아니면 UTF-8 바이트로 처리
+            # word_key: 순수 base64이면 디코딩, 아닌 경우 UTF-8 바이트로 처리
             try:
-                word_bytes = base64.b64decode(word_key)
+                word_bytes = base64.b64decode(word_key, validate=True)
                 logger.info(f"[Knox] word_key base64 디코딩 성공 | len={len(word_bytes)}")
             except Exception:
                 word_bytes = word_key.encode("utf-8")

@@ -236,15 +236,42 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
             # 차트 + 원본 데이터 렌더링 완료 대기
             await page.wait_for_timeout(10000)
             await page.pdf(
-                path=pdf_path, format="A4", print_background=True, scale=0.75,
+                path=pdf_path, format="A4", print_background=True, scale=0.65,
                 margin={"top": "12mm", "bottom": "8mm", "left": "0mm", "right": "0mm"},
             )
             await browser.close()
-        logger.info(f"[PDF] 변환 완료: {pdf_path}")
+        size_kb = os.path.getsize(pdf_path) // 1024 if os.path.exists(pdf_path) else 0
+        logger.info(f"[PDF] 변환 완료: {pdf_path} ({size_kb}KB)")
+        _compress_pdf(pdf_path)
         return True
     except Exception as e:
         logger.error(f"[PDF] 변환 실패: {type(e).__name__}: {e}", exc_info=True)
         return False
+
+
+def _compress_pdf(pdf_path: str) -> None:
+    """생성된 PDF를 pypdf로 인플레이스 압축합니다. pypdf 미설치 시 무시."""
+    try:
+        from pypdf import PdfWriter
+        before = os.path.getsize(pdf_path)
+        tmp = pdf_path + ".tmp"
+        writer = PdfWriter(clone_from=pdf_path)
+        writer.compress_identical_objects(remove_identicals=True, remove_orphans=True)
+        for page in writer.pages:
+            page.compress_content_streams()
+        with open(tmp, "wb") as f:
+            writer.write(f)
+        after = os.path.getsize(tmp)
+        if after < before:
+            os.replace(tmp, pdf_path)
+            logger.info(f"[PDF] 압축 완료: {before//1024}KB → {after//1024}KB")
+        else:
+            os.remove(tmp)
+            logger.info(f"[PDF] 압축 효과 없음 ({before//1024}KB), 원본 유지")
+    except ImportError:
+        logger.debug("[PDF] pypdf 미설치 - 압축 건너뜀")
+    except Exception as e:
+        logger.warning(f"[PDF] 압축 실패 (원본 유지): {e}")
 
 
 def generate_analysis_pdf(sn: str, html_path: str, save_dir: str) -> str | None:
