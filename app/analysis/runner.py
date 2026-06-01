@@ -140,18 +140,20 @@ def _make_offline(html: str) -> str:
     # 1. Chart.js CDN → 인라인 <script>
     chartjs = _get_chartjs()
     if chartjs:
+        _chartjs_repl = f"<script>{chartjs}</script>"
         html = re.sub(
             r'<script\s+src=["\']https://cdnjs\.cloudflare\.com/ajax/libs/Chart\.js/[^"\']+["\']></script>',
-            f"<script>{chartjs}</script>",
+            lambda m: _chartjs_repl,
             html,
         )
 
     # 2. Leaflet JS CDN → 인라인 <script>
     leaflet_js = _fetch_and_cache(_LEAFLET_JS_URL, _LEAFLET_JS_CACHE_PATH, "Leaflet.js")
     if leaflet_js:
+        _leaflet_js_repl = f"<script>{leaflet_js}</script>"
         html = re.sub(
             r'<script\s+src=["\']https://unpkg\.com/leaflet[^"\']+\.js["\']></script>',
-            f"<script>{leaflet_js}</script>",
+            lambda m: _leaflet_js_repl,
             html,
         )
 
@@ -160,16 +162,18 @@ def _make_offline(html: str) -> str:
     if leaflet_css:
         # url(images/...) 제거 — 오프라인에서 마커 이미지 없어도 지도 동작
         leaflet_css_clean = re.sub(r'url\([^)]*images/[^)]*\)', 'none', leaflet_css)
+        _leaflet_css_repl = f"<style>{leaflet_css_clean}</style>"
         html = re.sub(
             r'<link[^>]+leaflet[^>]+\.css[^>]*/?>',
-            f"<style>{leaflet_css_clean}</style>",
+            lambda m: _leaflet_css_repl,
             html,
         )
 
     # 4. Font Awesome CDN → 인라인 SVG CSS
+    _fa_repl = _fa_inline_css()
     html = re.sub(
         r'<link[^>]+font-awesome[^>]+/>',
-        _fa_inline_css(),
+        lambda m: _fa_repl,
         html,
     )
 
