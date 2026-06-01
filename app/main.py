@@ -1467,7 +1467,7 @@ async def upload_page():
 <script>
 document.getElementById('fileInput').addEventListener('change', function() {
   const name = this.files[0]?.name || '';
-  const sn = name.replace(/(_inputdata|_analysis)?(\.csv|\.xlsx|\.xls)$/i, '');
+  const sn = name.replace(/(_inputdata|_analysis)?(\\.csv|\\.xlsx|\\.xls)$/i, '');
   if (sn && !document.getElementById('snInput').value) {
     document.getElementById('snInput').value = sn;
   }
