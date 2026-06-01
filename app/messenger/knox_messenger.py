@@ -370,34 +370,41 @@ class KnoxMessengerClient:
             logger.error(f"[Knox] 업로드 파일 없음: {file_path}")
             return None
 
-        ext = os.path.splitext(file_path)[1]  # .pdf
-        upload_filename = f"r{time.strftime('%Y%m%d%H%M%S')}{ext}"
-        url = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
-
-        time_result = await self.get_file_server_time(upload_filename)
-        if not time_result:
-            logger.error("[Knox] 파일서버 Time 조회 실패 - 업로드 중단")
-            return None
-
-        server_time, word_key = time_result
-        formatted_time = _format_server_time(server_time)
-        import hashlib
-        word_bytes = word_key.encode("utf-8")
-        file_aes_key = word_bytes[:32] if len(word_bytes) >= 32 else hashlib.sha256(word_bytes).digest()
-        file_aes_iv = b'\x00' * 16
-
-        try:
-            enc_device_id   = _aes256_encrypt(self.device_id, file_aes_key, file_aes_iv)
-            enc_device_type = _aes256_encrypt("relation",     file_aes_key, file_aes_iv)
-            enc_server_time = _aes256_encrypt(formatted_time, file_aes_key, file_aes_iv)
-            logger.info(f"[Knox] server_time: {server_time!r} → formatted: {formatted_time!r}")
-        except Exception as e:
-            logger.error(f"[Knox] 헤더 암호화 실패: {e}")
-            return None
-
+        # 파일을 먼저 읽은 후 서버 시간 조회 (시간 만료 방지)
         try:
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
+        except Exception as e:
+            logger.error(f"[Knox] 파일 읽기 실패: {e}")
+            return None
+
+        import hashlib
+
+        async def _try_upload() -> str | None:
+            ext = os.path.splitext(file_path)[1]  # .pdf
+            upload_filename = f"r{time.strftime('%Y%m%d%H%M%S')}{ext}"
+            url = f"{self.base_url}/messenger/file/api/v2.0/file/v1s/file/{upload_filename}"
+
+            # 파일 읽기 완료 후 바로 서버 시간 조회 → 암호화 → PUT
+            time_result = await self.get_file_server_time(upload_filename)
+            if not time_result:
+                logger.error("[Knox] 파일서버 Time 조회 실패 - 업로드 중단")
+                return None
+
+            server_time, word_key = time_result
+            formatted_time = _format_server_time(server_time)
+            word_bytes = word_key.encode("utf-8")
+            file_aes_key = word_bytes[:32] if len(word_bytes) >= 32 else hashlib.sha256(word_bytes).digest()
+            file_aes_iv = b'\x00' * 16
+
+            try:
+                enc_device_id   = _aes256_encrypt(self.device_id, file_aes_key, file_aes_iv)
+                enc_device_type = _aes256_encrypt("relation",     file_aes_key, file_aes_iv)
+                enc_server_time = _aes256_encrypt(formatted_time, file_aes_key, file_aes_iv)
+                logger.info(f"[Knox] server_time: {server_time!r} → formatted: {formatted_time!r}")
+            except Exception as e:
+                logger.error(f"[Knox] 헤더 암호화 실패: {e}")
+                return None
 
             headers = {
                 "Authorization": f"Bearer {self.access_token}",
@@ -409,7 +416,7 @@ class KnoxMessengerClient:
                 "x-device-type":  enc_device_type,
                 "x-request-time": enc_server_time,
             }
-            logger.info(f"[Knox] 업로드 요청(v1s) | url={url} | filename={upload_filename}")
+            logger.info(f"[Knox] 업로드 요청(v1s) | url={url} | filename={upload_filename} | size={len(file_bytes)//1024}KB")
 
             resp = await self._areq("PUT", url, data=file_bytes, headers=headers)
             logger.info(f"[Knox] 파일 업로드(v1s) | status={resp.status_code} | body={resp.text[:200]}")
@@ -425,7 +432,22 @@ class KnoxMessengerClient:
                 return None
 
             logger.info(f"[Knox] 파일 업로드 완료(v1s): {download_url}")
-            return download_url, len(file_bytes)
+            return download_url
+
+        try:
+            result = await _try_upload()
+            if result:
+                return result, len(file_bytes)
+
+            # 1회 재시도 (서버 시간 만료 대비)
+            logger.warning(f"[Knox] 업로드 실패 → 2초 후 재시도: {os.path.basename(file_path)}")
+            await asyncio.sleep(2)
+            result = await _try_upload()
+            if result:
+                logger.info(f"[Knox] 재시도 업로드 성공: {os.path.basename(file_path)}")
+                return result, len(file_bytes)
+
+            return None
 
         except Exception as e:
             logger.error(f"[Knox] 파일 업로드 예외: {type(e).__name__}: {e}", exc_info=True)
