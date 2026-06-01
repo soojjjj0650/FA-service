@@ -393,15 +393,24 @@ class KnoxMessengerClient:
 
             server_time, word_key = time_result
             formatted_time = _format_server_time(server_time)
-            word_bytes = word_key.encode("utf-8")
+
+            # word_key: base64 인코딩이면 디코딩, 아니면 UTF-8 바이트로 처리
+            try:
+                word_bytes = base64.b64decode(word_key)
+                logger.info(f"[Knox] word_key base64 디코딩 성공 | len={len(word_bytes)}")
+            except Exception:
+                word_bytes = word_key.encode("utf-8")
+                logger.info(f"[Knox] word_key UTF-8 bytes 사용 | len={len(word_bytes)}")
+
             file_aes_key = word_bytes[:32] if len(word_bytes) >= 32 else hashlib.sha256(word_bytes).digest()
             file_aes_iv = b'\x00' * 16
+
+            logger.info(f"[Knox] 업로드 암호화 파라미터 | server_time={server_time!r} | formatted={formatted_time!r} | word_key_prefix={word_key[:8]!r} | key_len={len(file_aes_key)}")
 
             try:
                 enc_device_id   = _aes256_encrypt(self.device_id, file_aes_key, file_aes_iv)
                 enc_device_type = _aes256_encrypt("relation",     file_aes_key, file_aes_iv)
                 enc_server_time = _aes256_encrypt(formatted_time, file_aes_key, file_aes_iv)
-                logger.info(f"[Knox] server_time: {server_time!r} → formatted: {formatted_time!r}")
             except Exception as e:
                 logger.error(f"[Knox] 헤더 암호화 실패: {e}")
                 return None
@@ -419,10 +428,10 @@ class KnoxMessengerClient:
             logger.info(f"[Knox] 업로드 요청(v1s) | url={url} | filename={upload_filename} | size={len(file_bytes)//1024}KB")
 
             resp = await self._areq("PUT", url, data=file_bytes, headers=headers)
-            logger.info(f"[Knox] 파일 업로드(v1s) | status={resp.status_code} | body={resp.text[:200]}")
+            logger.info(f"[Knox] 파일 업로드(v1s) | status={resp.status_code} | body={resp.text[:500]}")
 
             if resp.status_code >= 400:
-                logger.error(f"[Knox] 파일 업로드 실패: {resp.status_code} {resp.text[:200]}")
+                logger.error(f"[Knox] 파일 업로드 403 상세 | status={resp.status_code} | body={resp.text}")
                 return None
 
             data = resp.json()
