@@ -1345,6 +1345,8 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     feature_summary = job.get("feature_summary", "")
 
     # ── 1. PDF 업로드 & 전송 ───────────────────────────────────────────────────
+    pdf_size_kb = _os.path.getsize(pdf_path) // 1024 if _os.path.exists(pdf_path) else 0
+    logger.info(f"[Knox Pipeline] PDF 업로드 시도 | SN={sn} | 크기={pdf_size_kb}KB")
     pdf_upload = await client.upload_file(pdf_path)
     if pdf_upload:
         pdf_url, pdf_size = pdf_upload
@@ -1356,10 +1358,13 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         )
         logger.info(f"[Knox Pipeline] PDF 전송 완료 | SN={sn}")
     else:
-        logger.warning(f"[Knox Pipeline] PDF 업로드 실패 | SN={sn}")
+        logger.warning(f"[Knox Pipeline] PDF 업로드 실패 | SN={sn} | 크기={pdf_size_kb}KB")
+        await client.send_message(chatroom_id, f"[{sn}] PDF 업로드 실패 (ZIP 파일로 대체 전송합니다)")
 
     # ── 2. ZIP(HTML) 업로드 & 전송 ────────────────────────────────────────────
     if zip_ok and _os.path.exists(zip_path):
+        zip_size_kb = _os.path.getsize(zip_path) // 1024
+        logger.info(f"[Knox Pipeline] ZIP 업로드 시도 | SN={sn} | 크기={zip_size_kb}KB")
         zip_upload = await client.upload_file(zip_path)
         if zip_upload:
             zip_url, zip_size = zip_upload
