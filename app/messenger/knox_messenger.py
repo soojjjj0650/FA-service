@@ -664,7 +664,7 @@ class KnoxMessengerClient:
         # chatMsg = {"media":{...}} JSON 형식
         ext = os.path.splitext(filename)[1].lstrip(".").lower()  # "pdf"
         _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
-        file_type = "image" if ext in _IMG_EXTS else ext.upper()
+        file_type = "image" if ext in _IMG_EXTS else "file"
         media_obj = {
             "media": {
                 "extension": ext,
@@ -672,7 +672,6 @@ class KnoxMessengerClient:
                 "filename": filename,
                 "sender": self.user_id or self.device_id,
                 "size": file_size,
-                "text": '<!--{"COMMAND":"SNDCL","SNDCL":{"KND":"CLD"}} -->',
                 "url": download_url,
             }
         }
