@@ -1304,8 +1304,17 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
     zip_path  = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_analysis.zip")
 
     if not _os.path.exists(html_path):
-        await _fail("분석 HTML 파일을 찾을 수 없습니다.")
-        return
+        # HTML 미생성 → csv/log 파일로 재시도
+        logger.warning(f"[Knox Pipeline] HTML 없음 → 재생성 시도 | {html_path}")
+        from app.analysis.runner import generate_analysis_html as _gen_html
+        _csv_path = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_inputdata.csv")
+        _log_path = _os.path.join(settings.CSV_DOWNLOAD_PATH, f"{sn}_inputdata.LOG")
+        _src = _log_path if _os.path.exists(_log_path) else (_csv_path if _os.path.exists(_csv_path) else None)
+        if _src:
+            _gen_html(sn, _src, settings.CSV_DOWNLOAD_PATH)
+        if not _os.path.exists(html_path):
+            await _fail("분석 HTML 파일을 찾을 수 없습니다.")
+            return
 
     # HTML → PDF 변환
     try:
@@ -2332,6 +2341,8 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
         _analysis_html_path = generate_analysis_html(
             sn, query_result.csv_path, settings.CSV_DOWNLOAD_PATH
         )
+        if not _analysis_html_path:
+            logger.error(f"[Chatbot Job {job_id}] HTML 생성 실패 | csv={query_result.csv_path}")
         job["analysis_url"] = (
             f"{settings.BASE_URL}/analysis/{sn}" if _analysis_html_path else None
         )
