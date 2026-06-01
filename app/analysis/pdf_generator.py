@@ -100,16 +100,16 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
                 logger.info("[PDF] NETA 비활성화 모드")
             await page.goto(f"file:///{html_path.replace(os.sep, '/')}", wait_until="domcontentloaded", timeout=30000)
 
-            # NETA prefetch 완료까지 대기 (최대 90초, 조기 완료 시 바로 진행)
+            # NETA prefetch 완료까지 대기 (최대 60초, 조기 완료 시 바로 진행)
             logger.info("[PDF] NETA 데이터 로딩 대기 중...")
             try:
                 await page.wait_for_function(
                     "() => window.netaPrefetchComplete === true",
-                    timeout=90000,
+                    timeout=60000,
                 )
                 logger.info("[PDF] NETA 로딩 완료")
             except Exception:
-                logger.warning("[PDF] NETA 대기 타임아웃(90s), 렌더링 계속 진행")
+                logger.warning("[PDF] NETA 대기 타임아웃(60s), 렌더링 계속 진행")
 
             # NETA 캐시 추출 → HTML에 주입 (오프라인 열람용)
             try:
