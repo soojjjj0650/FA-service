@@ -17,6 +17,15 @@ _CHARTJS_CACHE_PATH = os.path.abspath(
 )
 _CHARTJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"
 
+_LEAFLET_JS_CACHE_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "leaflet.cache.js")
+)
+_LEAFLET_CSS_CACHE_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "leaflet.cache.css")
+)
+_LEAFLET_JS_URL  = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+_LEAFLET_CSS_URL = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+
 # ─── SVG 아이콘 정의 (Font Awesome 대체) ─────────────────────────────────────
 _SVG = {
     "clipboard":    ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512">'
@@ -99,26 +108,30 @@ def _fa_inline_css() -> str:
     return "<style>" + "".join(rules) + "</style>"
 
 
-def _get_chartjs() -> str | None:
-    """Chart.js를 로컬 캐시에서 읽거나 CDN에서 다운로드합니다."""
-    if os.path.exists(_CHARTJS_CACHE_PATH):
+def _fetch_and_cache(url: str, cache_path: str, name: str) -> str | None:
+    """CDN 리소스를 로컬 캐시에서 읽거나 다운로드하여 반환합니다."""
+    if os.path.exists(cache_path):
         try:
-            with open(_CHARTJS_CACHE_PATH, encoding="utf-8") as f:
+            with open(cache_path, encoding="utf-8") as f:
                 return f.read()
         except Exception:
             pass
     try:
         import httpx
-        r = httpx.get(_CHARTJS_URL, timeout=15, follow_redirects=True)
+        r = httpx.get(url, timeout=15, follow_redirects=True)
         if r.status_code == 200:
             content = r.text
-            with open(_CHARTJS_CACHE_PATH, "w", encoding="utf-8") as f:
+            with open(cache_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            logger.info(f"Chart.js 다운로드 완료 → {_CHARTJS_CACHE_PATH}")
+            logger.info(f"{name} 다운로드 완료 → {cache_path}")
             return content
     except Exception as e:
-        logger.warning(f"Chart.js 다운로드 실패 (오프라인 모드로 계속): {e}")
+        logger.warning(f"{name} 다운로드 실패 (오프라인 모드로 계속): {e}")
     return None
+
+
+def _get_chartjs() -> str | None:
+    return _fetch_and_cache(_CHARTJS_URL, _CHARTJS_CACHE_PATH, "Chart.js")
 
 
 def _make_offline(html: str) -> str:
@@ -133,17 +146,37 @@ def _make_offline(html: str) -> str:
             html,
         )
 
-    # 2. Font Awesome CDN → 인라인 SVG CSS
+    # 2. Leaflet JS CDN → 인라인 <script>
+    leaflet_js = _fetch_and_cache(_LEAFLET_JS_URL, _LEAFLET_JS_CACHE_PATH, "Leaflet.js")
+    if leaflet_js:
+        html = re.sub(
+            r'<script\s+src=["\']https://unpkg\.com/leaflet[^"\']+\.js["\']></script>',
+            f"<script>{leaflet_js}</script>",
+            html,
+        )
+
+    # 3. Leaflet CSS CDN → 인라인 <style> (이미지 참조는 무시 — 마커 아이콘만 영향)
+    leaflet_css = _fetch_and_cache(_LEAFLET_CSS_URL, _LEAFLET_CSS_CACHE_PATH, "Leaflet.css")
+    if leaflet_css:
+        # url(images/...) 제거 — 오프라인에서 마커 이미지 없어도 지도 동작
+        leaflet_css_clean = re.sub(r'url\([^)]*images/[^)]*\)', 'none', leaflet_css)
+        html = re.sub(
+            r'<link[^>]+leaflet[^>]+\.css[^>]*/?>',
+            f"<style>{leaflet_css_clean}</style>",
+            html,
+        )
+
+    # 4. Font Awesome CDN → 인라인 SVG CSS
     html = re.sub(
         r'<link[^>]+font-awesome[^>]+/>',
         _fa_inline_css(),
         html,
     )
 
-    # 3. Pretendard 폰트 → 제거 (시스템 폰트로 fallback)
+    # 5. Pretendard 폰트 → 제거 (시스템 폰트로 fallback)
     html = re.sub(r'<link[^>]+pretendard[^>]+/>', '', html)
 
-    # 4. body/html 기본 폰트를 시스템 폰트로 교체
+    # 6. body/html 기본 폰트를 시스템 폰트로 교체
     html = html.replace(
         "font-family:'Pretendard'",
         "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
