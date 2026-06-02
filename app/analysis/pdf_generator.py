@@ -160,8 +160,6 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
                     '#tab-raw .tw { overflow-x:visible !important; overflow:visible !important; }',
                     '#tab-raw table { font-size:9px !important; table-layout:fixed; width:100%; }',
                     '#tab-raw th, #tab-raw td { white-space:normal !important; word-break:break-all; padding:2px 3px !important; }',
-                    // 지도 타일 이미지를 PDF에서 제거 (파일 크기 절감)
-                    '.neta-leaflet-mini, .leaflet-container { display:none !important; }',
                     // 상단 고정 탭 네비게이션 바
                     '#pdf-nav { position:fixed; top:0; left:0; right:0; height:26px; background:linear-gradient(135deg,#1e3a5f 0%,#2d5a9e 100%); display:flex; align-items:center; padding:0 12px; gap:1px; z-index:9999; box-sizing:border-box; box-shadow:0 2px 6px rgba(0,0,0,0.3); }',
                     '#pdf-nav .nav-logo { color:#93c5fd; font-size:9px; font-weight:800; letter-spacing:1px; margin-right:10px; padding-right:10px; border-right:1px solid rgba(255,255,255,0.2); white-space:nowrap; }',
