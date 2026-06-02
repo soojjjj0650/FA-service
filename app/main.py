@@ -302,11 +302,38 @@ async def _prefetch_scheduler() -> None:
             logger.error(f"[Scheduler] 사전 쿼리 오류: {e}", exc_info=True)
 
 
+def _prevent_sleep() -> bool:
+    """Windows 절전 방지 활성화. 비Windows 또는 실패 시 False 반환."""
+    try:
+        import ctypes
+        ES_CONTINUOUS      = 0x80000000
+        ES_SYSTEM_REQUIRED = 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+        return True
+    except Exception:
+        return False
+
+
+def _restore_sleep() -> None:
+    """Windows 절전 방지 해제."""
+    try:
+        import ctypes
+        ES_CONTINUOUS = 0x80000000
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+    except Exception:
+        pass
+
+
 async def _mail_and_query_pipeline() -> dict:
     """FA 미결건 메일 다운로드 → SN 추출 → Superset 쿼리 → CSV 저장 전체 파이프라인."""
     import os
     from app.scraper.mail_downloader import download_mail_attachments
     from app.prefetch.prefetch_runner import extract_sns_from_excel
+
+    # 파이프라인 실행 중 Windows 절전 방지
+    sleep_prevented = _prevent_sleep()
+    if sleep_prevented:
+        logger.info("[MailPipeline] 절전 방지 활성화")
 
     result = {"files": [], "sns": [], "query_results": []}
 
@@ -318,6 +345,8 @@ async def _mail_and_query_pipeline() -> dict:
 
     if not files:
         logger.info("[MailPipeline] 다운로드된 파일 없음 — 쿼리 생략")
+        if sleep_prevented:
+            _restore_sleep()
         return result
 
     # 2. 엑셀에서 SN 추출
@@ -337,6 +366,8 @@ async def _mail_and_query_pipeline() -> dict:
 
     if not sns:
         logger.warning("[MailPipeline] 추출된 SN 없음 — 쿼리 생략")
+        if sleep_prevented:
+            _restore_sleep()
         return result
 
     # 3. SN별 Superset 쿼리 실행 (BATCH_CONCURRENCY 제한)
@@ -359,6 +390,11 @@ async def _mail_and_query_pipeline() -> dict:
 
     success_cnt = sum(1 for r in query_results if r.get("success"))
     logger.info(f"[MailPipeline] 쿼리 완료 — {success_cnt}/{len(sns)}개 성공")
+
+    if sleep_prevented:
+        _restore_sleep()
+        logger.info("[MailPipeline] 절전 방지 해제")
+
     return result
 
 
