@@ -1335,7 +1335,12 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
         return
 
     if not pdf_ok:
-        await _fail("PDF 변환에 실패했습니다.")
+        # PDF 변환 실패가 실제 데이터 없음 때문인지 확인
+        if not job.get("analysis_url"):
+            days_val = settings.QUERY_LOOKBACK_DAYS
+            await _knox_reply(chatroom_id, f"[SN: {sn}] 최근 {days_val}일간 조회되는 데이터가 없습니다.", with_card=True)
+        else:
+            await _fail("PDF 변환에 실패했습니다.")
         return
 
     # HTML → ZIP 생성
@@ -2328,6 +2333,15 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             or not _os.path.exists(query_result.csv_path)
             or _os.path.getsize(query_result.csv_path) == 0
         )
+        # 헤더만 있고 실제 데이터 행이 없는 CSV도 no_data로 처리
+        if not no_data:
+            try:
+                with open(query_result.csv_path, encoding="utf-8-sig", errors="ignore") as _csv_f:
+                    _data_rows = sum(1 for ln in _csv_f if ln.strip()) - 1  # 헤더 제외
+                if _data_rows <= 0:
+                    no_data = True
+            except Exception:
+                pass
         if no_data:
             job["status"] = "done"
             job["no_data"] = True
