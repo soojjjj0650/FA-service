@@ -302,26 +302,88 @@ async def _prefetch_scheduler() -> None:
             logger.error(f"[Scheduler] 사전 쿼리 오류: {e}", exc_info=True)
 
 
+async def _mail_and_query_pipeline() -> dict:
+    """FA 미결건 메일 다운로드 → SN 추출 → Superset 쿼리 → CSV 저장 전체 파이프라인."""
+    import os
+    from app.scraper.mail_downloader import download_mail_attachments
+    from app.prefetch.prefetch_runner import extract_sns_from_excel
+
+    result = {"files": [], "sns": [], "query_results": []}
+
+    # 1. 메일 첨부파일 다운로드
+    logger.info("[MailPipeline] 메일 다운로드 시작...")
+    files = await download_mail_attachments()
+    result["files"] = files
+    logger.info(f"[MailPipeline] 다운로드 완료 — {len(files)}개 파일")
+
+    if not files:
+        logger.info("[MailPipeline] 다운로드된 파일 없음 — 쿼리 생략")
+        return result
+
+    # 2. 엑셀에서 SN 추출
+    sns: list[str] = []
+    for f in files:
+        try:
+            extracted = extract_sns_from_excel(f)
+            logger.info(f"[MailPipeline] {os.path.basename(f)} → SN {len(extracted)}개: {extracted[:5]}")
+            for sn in extracted:
+                if sn and sn not in sns:
+                    sns.append(sn)
+        except Exception as e:
+            logger.warning(f"[MailPipeline] SN 추출 실패 ({f}): {e}")
+
+    result["sns"] = sns
+    logger.info(f"[MailPipeline] 총 SN {len(sns)}개 추출")
+
+    if not sns:
+        logger.warning("[MailPipeline] 추출된 SN 없음 — 쿼리 생략")
+        return result
+
+    # 3. SN별 Superset 쿼리 실행 (BATCH_CONCURRENCY 제한)
+    sem = asyncio.Semaphore(settings.BATCH_CONCURRENCY)
+
+    async def _query_one(sn: str) -> dict:
+        async with sem:
+            logger.info(f"[MailPipeline] [{sn}] 쿼리 시작")
+            try:
+                qr = await query_runner.run(sn)
+                status = "success" if qr.success else "fail"
+                logger.info(f"[MailPipeline] [{sn}] {status} | csv={qr.csv_path}")
+                return {"sn": sn, "success": qr.success, "csv_path": qr.csv_path, "error": qr.error}
+            except Exception as e:
+                logger.error(f"[MailPipeline] [{sn}] 쿼리 오류: {e}")
+                return {"sn": sn, "success": False, "error": str(e)}
+
+    query_results = await asyncio.gather(*[_query_one(sn) for sn in sns])
+    result["query_results"] = list(query_results)
+
+    success_cnt = sum(1 for r in query_results if r.get("success"))
+    logger.info(f"[MailPipeline] 쿼리 완료 — {success_cnt}/{len(sns)}개 성공")
+    return result
+
+
 async def _mail_scheduler() -> None:
-    """매일 MAIL_SCHEDULE_HOUR시에 FA 미결건 메일 첨부파일을 자동 다운로드합니다."""
+    """매일 MAIL_SCHEDULE_HOUR:MAIL_SCHEDULE_MINUTE에 메일→SN→쿼리 파이프라인 실행."""
     while True:
         now = datetime.now()
-        target = now.replace(hour=settings.MAIL_SCHEDULE_HOUR, minute=0, second=0, microsecond=0)
+        target = now.replace(
+            hour=settings.MAIL_SCHEDULE_HOUR,
+            minute=settings.MAIL_SCHEDULE_MINUTE,
+            second=0, microsecond=0,
+        )
         if now >= target:
-            target = target.replace(day=target.day + 1)
+            target = target + timedelta(days=1)
 
         wait_sec = (target - datetime.now()).total_seconds()
         logger.info(
-            f"[MailScheduler] 다음 메일 수집: {target.strftime('%Y-%m-%d %H:%M')} "
+            f"[MailScheduler] 다음 실행: {target.strftime('%Y-%m-%d %H:%M')} "
             f"(대기 {wait_sec/3600:.1f}h)"
         )
         await asyncio.sleep(max(wait_sec, 1))
 
-        logger.info("[MailScheduler] 메일 다운로드 시작")
+        logger.info("[MailScheduler] 메일→쿼리 파이프라인 시작")
         try:
-            from app.scraper.mail_downloader import download_mail_attachments
-            files = await download_mail_attachments()
-            logger.info(f"[MailScheduler] 완료 — {len(files)}개 파일 저장")
+            await _mail_and_query_pipeline()
         except Exception as e:
             logger.error(f"[MailScheduler] 오류: {e}", exc_info=True)
 
@@ -793,13 +855,9 @@ async def prefetch_trigger(request: PrefetchTriggerRequest):
 
 @app.post("/api/mail/trigger")
 async def mail_trigger():
-    """FA 미결건 메일 다운로드를 수동으로 즉시 실행합니다."""
-    async def _run():
-        from app.scraper.mail_downloader import download_mail_attachments
-        files = await download_mail_attachments()
-        logger.info(f"[Mail/수동] 완료 — {len(files)}개 파일")
-    asyncio.create_task(_run())
-    return {"status": "started", "message": "메일 다운로드가 백그라운드에서 시작되었습니다."}
+    """FA 미결건 메일 다운로드 → SN 추출 → Superset 쿼리 전체 파이프라인을 즉시 실행합니다."""
+    asyncio.create_task(_mail_and_query_pipeline())
+    return {"status": "started", "message": "메일→SN 추출→쿼리 파이프라인이 백그라운드에서 시작되었습니다."}
 
 
 @app.get("/api/prefetch/status")
