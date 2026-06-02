@@ -289,9 +289,13 @@ async def _process_mail_list(
                 logger.info(f"[Mail] [{i+1}] 헤더 행 건너뜀 ('{subject}')")
                 continue
 
-            if subject in done_ids or subject in processed_this_run:
+            # 첫 번째 메일(가장 최근)은 이미 처리됐어도 무조건 다운로드
+            is_first = len(processed_this_run) == 0
+            if not is_first and (subject in done_ids or subject in processed_this_run):
                 logger.info(f"[Mail] [{i+1}] '{subject}' 이미 처리됨 — 건너뜀")
                 continue
+            if is_first and subject in done_ids:
+                logger.info(f"[Mail] [{i+1}] '{subject}' 최근 메일 — 강제 다운로드")
 
             logger.info(f"[Mail] [{i+1}/{count}] '{subject}' 처리 중...")
             files = await _open_and_download(page, chk_frame, chk, i, save_dir)
