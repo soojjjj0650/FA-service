@@ -496,7 +496,18 @@ async def _push_card_to_chatroom(job: dict) -> None:
 
     # Samsung chatbot Builder push payload
     # - 앱카드 템플릿 : ${body.title} / ${body.ai_result} / ${body.station_info}
-    if status == "done":
+    if status == "done" and job.get("no_data"):
+        days_val = job.get('query_days') or settings.QUERY_LOOKBACK_DAYS
+        payload = {
+            "chatRoomId":    chat_room_id,
+            "userId":        user_id,
+            "title":         f"[SN: {sn}] 통화품질 분석 결과",
+            "info_analysis": "",
+            "ai_result":     f"최근 {days_val}일간 조회되는 데이터가 없습니다.",
+            "station_info":  "",
+            "analysis_url":  "",
+        }
+    elif status == "done":
         ai_text = _strip_markdown(job.get('ai_response', ''))
         station_text = job.get('station_text', '')
         feature_tables = job.get('feature_tables') or {}
