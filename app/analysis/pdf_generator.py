@@ -105,11 +105,11 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
             try:
                 await page.wait_for_function(
                     "() => window.netaPrefetchComplete === true",
-                    timeout=60000,
+                    timeout=90000,
                 )
                 logger.info("[PDF] NETA 로딩 완료")
             except Exception:
-                logger.warning("[PDF] NETA 대기 타임아웃(60s), 렌더링 계속 진행")
+                logger.warning("[PDF] NETA 대기 타임아웃(90s), 렌더링 계속 진행")
 
             # NETA 캐시 추출 → HTML에 주입 (오프라인 열람용)
             try:
