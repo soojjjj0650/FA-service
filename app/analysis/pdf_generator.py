@@ -43,10 +43,10 @@ def generate_analysis_zip(sn: str, html_path: str, save_dir: str) -> str | None:
 async def _check_neta_reachable(timeout: float = 4.0) -> bool:
     """NETA 서버 접근 가능 여부를 빠르게 확인합니다."""
     try:
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            async with session.get(NETA_BASE_URL, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
-                return resp.status < 500
+        import httpx
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout)) as client:
+            resp = await client.get(NETA_BASE_URL)
+            return resp.status_code < 500
     except Exception:
         return False
 
