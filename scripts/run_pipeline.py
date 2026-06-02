@@ -1,16 +1,17 @@
 """
-FA 전체 파이프라인 단독 실행 스크립트
+FA Pipeline - Mail Download + SN Query
 
-순서:
-  1. Samsung 메일에서 FA 미결건 첨부파일 다운로드
-  2. 다운로드된 Excel로 SN 쿼리 실행
-  3. 결과 CSV 저장
+Steps:
+  1. Download FA Excel attachments from samsung.net mail
+  2. Extract SNs from Excel, run Superset queries
+  3. Save result CSVs
 
-사용법:
+Usage:
     python scripts/run_pipeline.py
 """
 
 import asyncio
+import ctypes
 import logging
 import sys
 import traceback
@@ -18,6 +19,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
+
+
+def _prevent_sleep():
+    if sys.platform == "win32":
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)  # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+
+
+def _allow_sleep():
+    if sys.platform == "win32":
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)  # ES_CONTINUOUS
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,7 +41,6 @@ logger = logging.getLogger(__name__)
 
 
 def find_latest_excel(folder: Path) -> Path | None:
-    """폴더에서 가장 최근 수정된 Excel 파일 탐색"""
     files = list(folder.glob("*.xlsx")) + list(folder.glob("*.xls")) + list(folder.glob("*.xlsm"))
     if not files:
         return None
@@ -37,42 +48,40 @@ def find_latest_excel(folder: Path) -> Path | None:
 
 
 async def main():
+    _prevent_sleep()
+
     print("=" * 60)
-    print("  FA 전체 파이프라인")
-    print("  1단계: 메일 첨부파일 다운로드")
-    print("  2단계: SN 쿼리 실행 및 결과 저장")
+    print("  FA Pipeline - Mail Download + SN Query")
     print("=" * 60)
     print()
 
-    # ── 1단계: 메일 다운로드 ──────────────────────────────────
-    print("[1/2] 메일 다운로드 시작...")
+    # Step 1: Mail download
+    print("[1/2] Downloading mail attachments...")
     downloaded_files = []
     try:
         from app.scraper.mail_downloader import download_mail_attachments
         downloaded_files = await download_mail_attachments()
         if downloaded_files:
-            print(f"  → {len(downloaded_files)}개 파일 다운로드 완료:")
+            print(f"  -> {len(downloaded_files)} file(s) downloaded:")
             for f in downloaded_files:
                 print(f"      {f}")
         else:
-            print("  → 새로운 첨부파일 없음")
+            print("  -> No new attachments found")
     except Exception as e:
-        print(f"  [오류] 메일 다운로드 실패: {e}")
+        print(f"  [ERROR] Mail download failed: {e}")
         traceback.print_exc()
+        _allow_sleep()
         print()
-        input("  아무 키나 누르면 닫힙니다...")
+        input("  Press any key to close...")
         return
 
     print()
 
-    # ── 2단계: Excel 파일 탐색 ───────────────────────────────
-    print("[2/2] 쿼리 실행 시작...")
+    # Step 2: Find Excel file
+    print("[2/2] Running SN queries...")
     from app.config import settings
 
-    # 다운로드된 파일 중 Excel이 있으면 최신 것 사용,
-    # 없으면 FAdata 폴더에서 최신 Excel 탐색
     excel_path = None
-
     if downloaded_files:
         excel_files = [
             Path(f) for f in downloaded_files
@@ -88,26 +97,28 @@ async def main():
         excel_path = find_latest_excel(fa_data_dir)
 
     if excel_path is None or not excel_path.exists():
-        print(f"  [오류] Excel 파일을 찾을 수 없습니다.")
-        print(f"  탐색 경로: {fa_data_dir}")
+        print(f"  [ERROR] Excel file not found.")
+        print(f"  Search path: {fa_data_dir}")
+        _allow_sleep()
         print()
-        input("  아무 키나 누르면 닫힙니다...")
+        input("  Press any key to close...")
         return
 
-    print(f"  → 사용할 Excel: {excel_path}")
+    print(f"  -> Excel: {excel_path}")
     print()
 
-    # ── 3단계: SN 쿼리 실행 ─────────────────────────────────
+    # Step 3: Run batch queries
     try:
         from run_batch import main as run_batch_main
         sys.argv = ["run_batch.py", str(excel_path)]
         await run_batch_main()
     except Exception as e:
-        print(f"  [오류] 쿼리 실행 실패: {e}")
+        print(f"  [ERROR] Query failed: {e}")
         traceback.print_exc()
 
+    _allow_sleep()
     print()
-    input("  아무 키나 누르면 닫힙니다...")
+    input("  Press any key to close...")
 
 
 if __name__ == "__main__":
