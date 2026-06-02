@@ -1,13 +1,13 @@
 @echo off
 chcp 65001 > nul
-title 통화품질 분석서비스 - 세션 갱신
+title FA Service - Session Refresh
 
 echo ====================================================
-echo  통화품질 분석서비스 - Superset 로그인 세션 갱신
+echo  FA Service - Superset Login Session Refresh
 echo ====================================================
 echo.
-echo  브라우저가 자동으로 열립니다.
-echo  핸드폰에서 Bio 인증(지문/Face ID)을 승인해주세요.
+echo  Browser will open automatically.
+echo  Please approve Bio authentication (fingerprint/Face ID) on your phone.
 echo.
 
 cd /d "%~dp0\.."
@@ -15,11 +15,11 @@ cd /d "%~dp0\.."
 
 if errorlevel 1 (
     echo.
-    echo [오류] 로그인 실패. 수동으로 다시 시도해주세요.
+    echo [ERROR] Login failed. Please try again manually.
     pause
     exit /b 1
 )
 
 echo.
-echo  세션 갱신 완료!
+echo  Session refresh complete!
 timeout /t 3 > nul
