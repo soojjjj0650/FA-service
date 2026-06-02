@@ -1682,6 +1682,8 @@ function renderStationTable(){
     const cached=netaCache[cacheKey]?.data;
     if(cached){
       expRow.innerHTML=`<td colspan="15">${buildNetaPanel(cached,plmn,s.tac,s.pid)}</td>`;
+    }else if(window.NETA_ENABLED===false){
+      expRow.innerHTML='<td colspan="15"><div style="color:#94a3b8;font-size:12px;padding:10px 16px">⊘ NETA 비활성화</div></td>';
     }else{
       let sec=0;
       const loadId='nl-'+Math.random().toString(36).slice(2);

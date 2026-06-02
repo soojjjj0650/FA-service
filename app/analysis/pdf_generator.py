@@ -233,8 +233,19 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
                 })();
             }""")
 
-            # 차트 + 원본 데이터 렌더링 완료 대기
-            await page.wait_for_timeout(10000)
+            # 차트 렌더링 기본 대기
+            await page.wait_for_timeout(3000)
+
+            # NETA 스피너가 모두 사라질 때까지 대기 (늦게 완료되는 fetch 대응, 최대 25s)
+            try:
+                await page.wait_for_function(
+                    "() => document.querySelectorAll('.neta-loading').length === 0",
+                    timeout=25000,
+                )
+                logger.info("[PDF] 모든 NETA 패널 로드 완료")
+            except Exception:
+                logger.warning("[PDF] NETA 패널 25s 대기 타임아웃 — 미완료 스피너 포함 PDF 생성")
+
             await page.pdf(
                 path=pdf_path, format="A4", print_background=True, scale=0.75,
                 margin={"top": "12mm", "bottom": "8mm", "left": "0mm", "right": "0mm"},
