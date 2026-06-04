@@ -1381,14 +1381,17 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
             timeout=PIPELINE_TIMEOUT,
         )
     except asyncio.TimeoutError:
-        await _fail(f"분석 시간 초과 ({PIPELINE_TIMEOUT//60}분). 잠시 후 다시 시도해주세요.")
+        await _fail("내부 DB가 불안정합니다. 추후에 재시도 해주세요.")
         return
     except Exception as e:
         await _fail(f"분석 중 오류 발생: {type(e).__name__}")
         return
 
     if job.get("status") != "done":
-        await _fail("데이터 조회에 실패했습니다. SN을 확인해주세요.")
+        if job.get("error") == "db_unstable":
+            await _fail("내부 DB가 불안정합니다. 추후에 재시도 해주세요.")
+        else:
+            await _fail(job.get("error") or "데이터 조회에 실패했습니다. SN을 확인해주세요.")
         return
 
     # 데이터 없음 → PDF/ZIP 생성 없이 Knox에 바로 알림
@@ -2412,11 +2415,14 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
 
         if not query_result.success:
             job["status"] = "error"
-            job["error"] = (
-                "세션이 만료되었습니다. 관리자에게 재로그인을 요청해 주세요."
-                if query_result.session_expired
-                else (query_result.error or "데이터 조회 실패")
-            )
+            err_msg = query_result.error or ""
+            _db_unstable_kw = ["timeout", "timed out", "TimeoutError", "connection", "network", "ERR_", "불안정"]
+            if query_result.session_expired:
+                job["error"] = "세션이 만료되었습니다. 관리자에게 재로그인을 요청해 주세요."
+            elif any(kw.lower() in err_msg.lower() for kw in _db_unstable_kw):
+                job["error"] = "db_unstable"
+            else:
+                job["error"] = err_msg or "데이터 조회 실패"
             await _push_card_to_chatroom(job)
             return
 
