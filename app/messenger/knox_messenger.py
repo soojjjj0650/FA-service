@@ -695,10 +695,7 @@ class KnoxMessengerClient:
         # chatMsg = {"media":{...}} JSON 형식
         ext = os.path.splitext(filename)[1].lstrip(".").lower()  # "pdf", "zip"
         _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
-        if ext in _IMG_EXTS:
-            file_type = "image"
-        else:
-            file_type = ext.upper()  # "PDF", "ZIP" 등 Knox 스펙 형식
+        file_type = "image" if ext in _IMG_EXTS else "file"
         media_obj = {
             "media": {
                 "extension": ext,
