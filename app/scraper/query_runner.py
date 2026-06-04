@@ -298,9 +298,9 @@ ORDER by Date,Time"""
         except PlaywrightTimeout:
             pass  # 일부 환경에서 즉시 완료될 수 있음
 
-        # 완료 대기: "Download to CSV" 또는 "Fetch" 또는 "no data" 중 먼저 등장하는 것 감지
+        # 완료 대기: "Download to CSV" 또는 "Fetch"/"Refetch results" 또는 "no data" 중 먼저 등장하는 것 감지
         download_sel = 'button:has-text("Download to CSV")'
-        fetch_sel    = 'button:has-text("Fetch")'
+        fetch_sel    = 'button:has-text("Fetch"), button:has-text("Refetch results")'
         no_data_sel  = '.ant-alert-message'
 
         async def wait_download():
@@ -359,10 +359,10 @@ ORDER by Date,Time"""
             logger.info("쿼리 결과 없음 (The query returned no data)")
             return False
 
-        # Fetch 버튼이 먼저 나온 경우 → 클릭 후 Download to CSV 대기
+        # Fetch / Refetch results 버튼이 먼저 나온 경우 → 클릭 후 Download to CSV 대기
         if result == "fetch":
-            logger.info("Fetch 버튼 감지 → 클릭 후 Download to CSV 대기")
-            await page.click(fetch_sel)
+            logger.info("Fetch/Refetch 버튼 감지 → 클릭 후 Download to CSV 대기")
+            await page.locator(fetch_sel).first.click()
             try:
                 await page.wait_for_selector(download_sel, state="visible", timeout=timeout_ms)
             except PlaywrightTimeout:
