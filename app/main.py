@@ -573,15 +573,7 @@ def _strip_markdown(text: str) -> str:
 
 
 async def _push_card_to_chatroom(job: dict) -> None:
-    """
-    통화품질 분석 완료 후 결과 Adaptive Card를 채팅방으로 직접 push합니다.
-
-    CHATBOT_PUSH_URL이 설정된 경우에만 동작합니다.
-    Samsung chatbot Builder outbound API 형식으로 전송합니다.
-    """
-    if not settings.CHATBOT_PUSH_URL:
-        logger.warning("[Push] CHATBOT_PUSH_URL 미설정 → webhook push 스킵! .env에 CHATBOT_PUSH_URL을 설정하세요.")
-        return
+    return  # botbuilder push 비활성화
 
     chat_room_id = job.get("chatRoomId")
     user_id = job.get("userId")
