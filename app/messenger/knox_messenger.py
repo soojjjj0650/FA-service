@@ -701,7 +701,7 @@ class KnoxMessengerClient:
             file_type = ext.upper()  # "PDF", "ZIP" 등 Knox 스펙 형식
         media_obj = {
             "media": {
-                "extention": ext,   # Knox API 스펙 오타 그대로 사용 (extension → extention)
+                "extension": ext,
                 "type": file_type,
                 "filename": filename,
                 "sender": self.user_id or self.device_id,
