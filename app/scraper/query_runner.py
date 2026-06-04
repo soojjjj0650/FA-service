@@ -298,13 +298,18 @@ ORDER by Date,Time"""
         except PlaywrightTimeout:
             pass  # 일부 환경에서 즉시 완료될 수 있음
 
-        # 완료 대기: "Download to CSV" 또는 "no data" 메시지 중 먼저 등장하는 것 감지
+        # 완료 대기: "Download to CSV" 또는 "Fetch" 또는 "no data" 중 먼저 등장하는 것 감지
         download_sel = 'button:has-text("Download to CSV")'
-        no_data_sel = '.ant-alert-message'
+        fetch_sel    = 'button:has-text("Fetch")'
+        no_data_sel  = '.ant-alert-message'
 
         async def wait_download():
             await page.wait_for_selector(download_sel, state="visible", timeout=timeout_ms)
             return "download"
+
+        async def wait_fetch():
+            await page.wait_for_selector(fetch_sel, state="visible", timeout=timeout_ms)
+            return "fetch"
 
         async def wait_no_data():
             while True:
@@ -325,7 +330,7 @@ ORDER by Date,Time"""
                     return "cancelled"
 
         done, pending = await asyncio.wait(
-            [asyncio.create_task(wait_download()), asyncio.create_task(wait_no_data())],
+            [asyncio.create_task(wait_download()), asyncio.create_task(wait_fetch()), asyncio.create_task(wait_no_data())],
             return_when=asyncio.FIRST_COMPLETED,
         )
         for task in pending:
@@ -353,6 +358,15 @@ ORDER by Date,Time"""
         if result == "no_data":
             logger.info("쿼리 결과 없음 (The query returned no data)")
             return False
+
+        # Fetch 버튼이 먼저 나온 경우 → 클릭 후 Download to CSV 대기
+        if result == "fetch":
+            logger.info("Fetch 버튼 감지 → 클릭 후 Download to CSV 대기")
+            await page.click(fetch_sel)
+            try:
+                await page.wait_for_selector(download_sel, state="visible", timeout=timeout_ms)
+            except PlaywrightTimeout:
+                raise RuntimeError("Fetch 후 Download to CSV 버튼 대기 타임아웃")
 
         # 에러 메시지 확인
         error_el = await page.query_selector('[class*="QueryTable--error"], [class*="error-message"]')
