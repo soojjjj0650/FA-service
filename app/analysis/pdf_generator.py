@@ -236,6 +236,31 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
             # 차트 렌더링 기본 대기
             await page.wait_for_timeout(3000)
 
+            # Leaflet 지도 invalidateSize — 탭 강제 표시 후 크기 재계산
+            await page.evaluate("""() => {
+                if (typeof L === 'undefined') return;
+                document.querySelectorAll('.leaflet-container').forEach(el => {
+                    if (el._leaflet_id && L.map) {
+                        try { L.map(el).invalidateSize(); } catch(e) {}
+                    }
+                    // stationLeafletMap 전역 변수
+                    if (typeof stationLeafletMap !== 'undefined' && stationLeafletMap) {
+                        try { stationLeafletMap.invalidateSize(); } catch(e) {}
+                    }
+                });
+            }""")
+
+            # Leaflet 타일 로드 대기 (최대 10s)
+            try:
+                await page.wait_for_function(
+                    "() => document.querySelectorAll('.leaflet-tile-pane img.leaflet-tile:not(.leaflet-tile-loaded)').length === 0"
+                    " || document.querySelectorAll('.leaflet-tile-pane').length === 0",
+                    timeout=10000,
+                )
+                logger.info("[PDF] Leaflet 타일 로드 완료")
+            except Exception:
+                logger.warning("[PDF] Leaflet 타일 10s 대기 타임아웃 — 계속 진행")
+
             # NETA 스피너가 모두 사라질 때까지 대기 (늦게 완료되는 fetch 대응, 최대 25s)
             try:
                 await page.wait_for_function(
