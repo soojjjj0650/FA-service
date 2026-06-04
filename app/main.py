@@ -1314,16 +1314,24 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
 
 @app.post("/message")
 async def knox_message_receive(request: Request):
-    """
-    Knox Messenger 공식 수신 엔드포인트 (스펙 URL: /message).
-
-    Knox 서버 출발지 IP (방화벽 허용 필요):
-      스테이지: 112.106.197.161, 112.106.197.162
-      운  영:   182.195.35.15,  182.195.35.16
-    """
+    """Knox Messenger 수신 엔드포인트 — 스테이지봇."""
     raw_body = await request.body()
     raw_text = raw_body.decode("utf-8", errors="replace")
-    logger.info(f"[Knox /message] body={raw_text[:500]}")
+    logger.info(f"[Knox /message STAGE] body={raw_text[:500]}")
+
+    data = await _knox_parse_body(raw_text)
+    if not data:
+        return JSONResponse(status_code=200, content={"status": "ignored"})
+
+    return await _knox_handle_message(data)
+
+
+@app.post("/prod/message")
+async def knox_prod_message_receive(request: Request):
+    """Knox Messenger 수신 엔드포인트 — 운영봇."""
+    raw_body = await request.body()
+    raw_text = raw_body.decode("utf-8", errors="replace")
+    logger.info(f"[Knox /prod/message PROD] body={raw_text[:500]}")
 
     data = await _knox_parse_body(raw_text)
     if not data:
