@@ -236,14 +236,22 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
             # 차트 렌더링 기본 대기
             await page.wait_for_timeout(3000)
 
-            # Leaflet 지도 invalidateSize — 탭 강제 표시 후 크기 재계산
+            # NETA 스피너가 모두 사라질 때까지 대기 — 미니맵은 NETA 로드 후 생성되므로 먼저 대기
+            try:
+                await page.wait_for_function(
+                    "() => document.querySelectorAll('.neta-loading').length === 0",
+                    timeout=25000,
+                )
+                logger.info("[PDF] 모든 NETA 패널 로드 완료")
+            except Exception:
+                logger.warning("[PDF] NETA 패널 25s 대기 타임아웃 — 미완료 스피너 포함 PDF 생성")
+
+            # NETA 로드 완료 후 모든 Leaflet 지도 invalidateSize (미니맵 포함)
             await page.evaluate("""() => {
                 if (typeof L === 'undefined') return;
-                // 전역 stationLeafletMap
                 if (typeof stationLeafletMap !== 'undefined' && stationLeafletMap) {
                     try { stationLeafletMap.invalidateSize(true); } catch(e) {}
                 }
-                // NETA 미니맵 (_leafletMap 인스턴스)
                 document.querySelectorAll('.leaflet-container').forEach(el => {
                     if (el._leafletMap) {
                         try { el._leafletMap.invalidateSize(true); } catch(e) {}
@@ -264,16 +272,6 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
                 logger.info("[PDF] Leaflet 타일 렌더링 완료")
             except Exception:
                 logger.warning("[PDF] Leaflet 타일 15s 대기 타임아웃 — 계속 진행")
-
-            # NETA 스피너가 모두 사라질 때까지 대기 (늦게 완료되는 fetch 대응, 최대 25s)
-            try:
-                await page.wait_for_function(
-                    "() => document.querySelectorAll('.neta-loading').length === 0",
-                    timeout=25000,
-                )
-                logger.info("[PDF] 모든 NETA 패널 로드 완료")
-            except Exception:
-                logger.warning("[PDF] NETA 패널 25s 대기 타임아웃 — 미완료 스피너 포함 PDF 생성")
 
             await page.pdf(
                 path=pdf_path, format="A4", print_background=True, scale=0.75,
