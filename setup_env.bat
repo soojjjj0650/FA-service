@@ -10,13 +10,13 @@ echo PORT=80
 echo LOG_LEVEL=INFO
 echo BASE_URL=http://10.246.9.74
 echo.
-echo KNOX_MESSENGER_BASE_URL=https://openapi.stage.samsung.net
-echo KNOX_ACCESS_TOKEN=c5e2b6bd-6f1f-3a35-b5a9-a88e2f0222de
+echo KNOX_MESSENGER_BASE_URL=https://openapi.samsung.net
+echo KNOX_ACCESS_TOKEN=b0df5ab5-e432-37c4-8683-001f61150c49
 echo KNOX_SYSTEM_ID=KCC10REST04505
 echo KNOX_DEVICE_ID=21005797091
 echo KNOX_RECEIVER_USER_ID=929628016553234433
 echo KNOX_MESSENGER_ENABLED=true
-echo KNOX_RECEIVE_URL=http://10.246.9.74:80/message
+echo KNOX_RECEIVE_URL=http://10.246.9.74:80/pro/message
 echo.
 echo NETA_ENABLED=true
 echo MOCK_MODE=false
