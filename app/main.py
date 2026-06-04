@@ -1326,12 +1326,12 @@ async def knox_message_receive(request: Request):
     return await _knox_handle_message(data)
 
 
-@app.post("/prod/message")
+@app.post("/pro/message")
 async def knox_prod_message_receive(request: Request):
     """Knox Messenger 수신 엔드포인트 — 운영봇."""
     raw_body = await request.body()
     raw_text = raw_body.decode("utf-8", errors="replace")
-    logger.info(f"[Knox /prod/message PROD] body={raw_text[:500]}")
+    logger.info(f"[Knox /pro/message PROD] body={raw_text[:500]}")
 
     data = await _knox_parse_body(raw_text)
     if not data:
