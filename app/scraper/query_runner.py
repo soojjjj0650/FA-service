@@ -300,7 +300,7 @@ ORDER by Date,Time"""
 
         # 완료 대기: "Download to CSV" 또는 "Fetch"/"Refetch results" 또는 "no data" 중 먼저 등장하는 것 감지
         download_sel = 'button:has-text("Download to CSV")'
-        fetch_sel    = 'button:has-text("Fetch"), button:has-text("Refetch results")'
+        fetch_sel    = 'button:has-text("Refetch results")'
         no_data_sel  = '.ant-alert-message'
 
         async def wait_download():
