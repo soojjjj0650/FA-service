@@ -2405,12 +2405,19 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
         else:
             from app.prefetch.cache_manager import get_cached_csv_path, is_cached
             cached_path = get_cached_csv_path(sn)
-            if cached_path and is_cached(sn):
-                logger.info(f"[Chatbot Job {job_id}] 캐시 히트 → {cached_path} (쿼리 생략)")
-                query_result = QueryResult(sn=sn, success=True, csv_path=cached_path)
-            else:
-                if cached_path:
+            if cached_path:
+                import os as _os2
+                # 빈 CSV(no data) = 캐시 만료 무관하게 재쿼리 스킵
+                if _os2.path.getsize(cached_path) == 0:
+                    logger.info(f"[Chatbot Job {job_id}] no data 캐시 → 쿼리 스킵: {cached_path}")
+                    query_result = QueryResult(sn=sn, success=True, csv_path=cached_path)
+                elif is_cached(sn):
+                    logger.info(f"[Chatbot Job {job_id}] 캐시 히트 → {cached_path} (쿼리 생략)")
+                    query_result = QueryResult(sn=sn, success=True, csv_path=cached_path)
+                else:
                     logger.info(f"[Chatbot Job {job_id}] 캐시 만료 → live 쿼리 실행")
+                    query_result = await query_runner.run(sn, days=days)
+            else:
                 query_result = await query_runner.run(sn, days=days)
 
         if not query_result.success:
