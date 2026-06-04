@@ -239,27 +239,31 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
             # Leaflet 지도 invalidateSize — 탭 강제 표시 후 크기 재계산
             await page.evaluate("""() => {
                 if (typeof L === 'undefined') return;
+                // 전역 stationLeafletMap
+                if (typeof stationLeafletMap !== 'undefined' && stationLeafletMap) {
+                    try { stationLeafletMap.invalidateSize(true); } catch(e) {}
+                }
+                // NETA 미니맵 (_leafletMap 인스턴스)
                 document.querySelectorAll('.leaflet-container').forEach(el => {
-                    if (el._leaflet_id && L.map) {
-                        try { L.map(el).invalidateSize(); } catch(e) {}
-                    }
-                    // stationLeafletMap 전역 변수
-                    if (typeof stationLeafletMap !== 'undefined' && stationLeafletMap) {
-                        try { stationLeafletMap.invalidateSize(); } catch(e) {}
+                    if (el._leafletMap) {
+                        try { el._leafletMap.invalidateSize(true); } catch(e) {}
                     }
                 });
             }""")
 
-            # Leaflet 타일 로드 대기 (최대 10s)
+            # invalidateSize 후 타일 재요청 대기
+            await page.wait_for_timeout(2000)
+
+            # Leaflet 타일 이미지가 실제로 로드될 때까지 대기 (naturalWidth 체크, 최대 15s)
             try:
                 await page.wait_for_function(
-                    "() => document.querySelectorAll('.leaflet-tile-pane img.leaflet-tile:not(.leaflet-tile-loaded)').length === 0"
-                    " || document.querySelectorAll('.leaflet-tile-pane').length === 0",
-                    timeout=10000,
+                    "() => Array.from(document.querySelectorAll('.leaflet-tile-pane img.leaflet-tile'))"
+                    "  .every(img => img.naturalWidth > 0)",
+                    timeout=15000,
                 )
-                logger.info("[PDF] Leaflet 타일 로드 완료")
+                logger.info("[PDF] Leaflet 타일 렌더링 완료")
             except Exception:
-                logger.warning("[PDF] Leaflet 타일 10s 대기 타임아웃 — 계속 진행")
+                logger.warning("[PDF] Leaflet 타일 15s 대기 타임아웃 — 계속 진행")
 
             # NETA 스피너가 모두 사라질 때까지 대기 (늦게 완료되는 fetch 대응, 최대 25s)
             try:
