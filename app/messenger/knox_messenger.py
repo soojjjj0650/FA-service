@@ -28,10 +28,30 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
-# 캐시 파일 경로
-_DEVICE_ID_CACHE   = Path(__file__).parent.parent.parent / "data" / "knox_device_id.txt"
-_USER_ID_CACHE     = Path(__file__).parent.parent.parent / "data" / "knox_user_id.txt"
-_CHATROOM_ID_CACHE = Path(__file__).parent.parent.parent / "data" / "knox_chatroom_id.txt"
+_DATA_DIR = Path(__file__).parent.parent.parent / "data"
+
+
+def _env_suffix() -> str:
+    """Returns 'prod' or 'stage' based on KNOX_MESSENGER_BASE_URL env var."""
+    import os as _os
+    url = _os.environ.get("KNOX_MESSENGER_BASE_URL", "").lower()
+    return "prod" if "openapi.samsung.net" in url and "stage" not in url else "stage"
+
+
+# 캐시 파일 경로 (환경별 분리)
+def _device_id_cache() -> Path:
+    return _DATA_DIR / f"knox_device_id_{_env_suffix()}.txt"
+
+def _user_id_cache() -> Path:
+    return _DATA_DIR / f"knox_user_id_{_env_suffix()}.txt"
+
+def _chatroom_id_cache() -> Path:
+    return _DATA_DIR / f"knox_chatroom_id_{_env_suffix()}.txt"
+
+# legacy aliases kept for migration
+_DEVICE_ID_CACHE   = _DATA_DIR / "knox_device_id.txt"
+_USER_ID_CACHE     = _DATA_DIR / "knox_user_id.txt"
+_CHATROOM_ID_CACHE = _DATA_DIR / "knox_chatroom_id.txt"
 
 
 # ─── AES256 암호화/복호화 헬퍼 ───────────────────────────────────────────────
@@ -113,8 +133,12 @@ def _decrypt_payload(ciphertext_b64: str, key: bytes, iv: bytes) -> dict:
 # ─── Device ID 캐시 관리 ─────────────────────────────────────────────────────
 
 def _load_cached_device_id() -> str:
-    """저장된 Device ID를 읽어옵니다."""
+    """저장된 Device ID를 읽어옵니다 (환경별 파일 우선)."""
     try:
+        env_path = _device_id_cache()
+        if env_path.exists():
+            return env_path.read_text(encoding="utf-8").strip()
+        # 레거시 파일 마이그레이션
         if _DEVICE_ID_CACHE.exists():
             return _DEVICE_ID_CACHE.read_text(encoding="utf-8").strip()
     except Exception:
@@ -123,17 +147,21 @@ def _load_cached_device_id() -> str:
 
 
 def _save_device_id(device_id: str) -> None:
-    """Device ID를 파일에 저장합니다."""
+    """Device ID를 파일에 저장합니다 (환경별 파일)."""
     try:
-        _DEVICE_ID_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        _DEVICE_ID_CACHE.write_text(device_id, encoding="utf-8")
-        logger.info(f"[Knox] Device ID 저장 완료: {_DEVICE_ID_CACHE}")
+        p = _device_id_cache()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(device_id, encoding="utf-8")
+        logger.info(f"[Knox] Device ID 저장 완료: {p}")
     except Exception as e:
         logger.warning(f"[Knox] Device ID 저장 실패: {e}")
 
 
 def _load_cached_user_id() -> str:
     try:
+        env_path = _user_id_cache()
+        if env_path.exists():
+            return env_path.read_text(encoding="utf-8").strip()
         if _USER_ID_CACHE.exists():
             return _USER_ID_CACHE.read_text(encoding="utf-8").strip()
     except Exception:
@@ -143,29 +171,33 @@ def _load_cached_user_id() -> str:
 
 def _save_user_id(user_id: str) -> None:
     try:
-        _USER_ID_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        _USER_ID_CACHE.write_text(user_id, encoding="utf-8")
-        logger.info(f"[Knox] User ID 저장 완료: {_USER_ID_CACHE}")
+        p = _user_id_cache()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(user_id, encoding="utf-8")
+        logger.info(f"[Knox] User ID 저장 완료: {p}")
     except Exception as e:
         logger.warning(f"[Knox] User ID 저장 실패: {e}")
 
 
 def _load_cached_chatroom_id() -> str:
-    """저장된 대화방 ID를 읽어옵니다."""
+    """저장된 대화방 ID를 읽어옵니다 (환경별 파일 우선)."""
     try:
-        if _CHATROOM_ID_CACHE.exists():
-            return _CHATROOM_ID_CACHE.read_text(encoding="utf-8").strip()
+        env_path = _chatroom_id_cache()
+        if env_path.exists():
+            return env_path.read_text(encoding="utf-8").strip()
+        # 레거시 파일은 환경 혼용 위험 있으므로 마이그레이션 안 함
     except Exception:
         pass
     return ""
 
 
 def _save_chatroom_id(chatroom_id: str) -> None:
-    """대화방 ID를 파일에 저장합니다."""
+    """대화방 ID를 파일에 저장합니다 (환경별 파일)."""
     try:
-        _CHATROOM_ID_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        _CHATROOM_ID_CACHE.write_text(chatroom_id, encoding="utf-8")
-        logger.info(f"[Knox] 대화방 ID 저장 완료: {_CHATROOM_ID_CACHE}")
+        p = _chatroom_id_cache()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(chatroom_id, encoding="utf-8")
+        logger.info(f"[Knox] 대화방 ID 저장 완료: {p}")
     except Exception as e:
         logger.warning(f"[Knox] 대화방 ID 저장 실패: {e}")
 
