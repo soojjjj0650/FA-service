@@ -105,7 +105,7 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
             try:
                 await page.wait_for_function(
                     "() => window.netaPrefetchComplete === true",
-                    timeout=90000,
+                    timeout=30000,
                 )
                 logger.info("[PDF] NETA 로딩 완료")
             except Exception:
@@ -247,7 +247,7 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
             try:
                 await page.wait_for_function(
                     "() => document.querySelectorAll('.neta-loading').length === 0",
-                    timeout=25000,
+                    timeout=10000,
                 )
                 logger.info("[PDF] 모든 NETA 패널 로드 완료")
             except Exception:
