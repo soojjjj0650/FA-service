@@ -1,4 +1,6 @@
 .env
+.env.stage
+.env.prod
 data/sessions/
 __pycache__/
 *.pyc
