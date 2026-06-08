@@ -1332,7 +1332,7 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
     _SYSTEM_KEYWORDS = {"intro", "welcome", "join", "leave", "invite"}
     _clean_msg = chat_msg.strip().strip("[]").lower()
     if _clean_msg in _SYSTEM_KEYWORDS:
-        asyncio.create_task(_knox_reply(chatroom_id, _SN_GUIDE, with_card=True))
+        asyncio.create_task(_knox_reply(chatroom_id, "", with_card=True))
         return JSONResponse(status_code=200, content={"status": "intro"})
 
     # 키워드 처리: 카드 재전송
