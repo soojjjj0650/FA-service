@@ -1328,9 +1328,10 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
         asyncio.create_task(_knox_reply(chatroom_id, "SN을 입력해주세요."))
         return JSONResponse(status_code=200, content={"status": "ignored", "reason": "empty"})
 
-    # Knox 시스템 메시지 (대화 시작 이벤트 등) → SN 입력 안내 전송
+    # Knox 시스템 메시지 (대화 시작, 홈버튼 등) → SN 입력 안내 전송
     _SYSTEM_KEYWORDS = {"intro", "welcome", "join", "leave", "invite"}
-    if chat_msg.strip().lower() in _SYSTEM_KEYWORDS:
+    _clean_msg = chat_msg.strip().strip("[]").lower()
+    if _clean_msg in _SYSTEM_KEYWORDS:
         asyncio.create_task(_knox_reply(chatroom_id, _SN_GUIDE, with_card=True))
         return JSONResponse(status_code=200, content={"status": "intro"})
 
