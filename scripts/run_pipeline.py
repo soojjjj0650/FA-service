@@ -55,25 +55,33 @@ async def main():
     print("=" * 60)
     print()
 
-    # Step 1: Mail download
+    # Step 1: Mail download (최대 3회 재시도)
     print("[1/2] Downloading mail attachments...")
     downloaded_files = []
-    try:
-        from app.scraper.mail_downloader import download_mail_attachments
-        downloaded_files = await download_mail_attachments()
-        if downloaded_files:
-            print(f"  -> {len(downloaded_files)} file(s) downloaded:")
-            for f in downloaded_files:
-                print(f"      {f}")
-        else:
-            print("  -> No new attachments found")
-    except Exception as e:
-        print(f"  [ERROR] Mail download failed: {e}")
-        traceback.print_exc()
-        _allow_sleep()
-        print()
-        input("  Press any key to close...")
-        return
+    MAX_RETRY = 3
+    for attempt in range(1, MAX_RETRY + 1):
+        try:
+            from app.scraper.mail_downloader import download_mail_attachments
+            downloaded_files = await download_mail_attachments()
+            if downloaded_files:
+                print(f"  -> {len(downloaded_files)} file(s) downloaded:")
+                for f in downloaded_files:
+                    print(f"      {f}")
+            else:
+                print("  -> No new attachments found")
+            break  # 성공
+        except Exception as e:
+            print(f"  [ERROR] Mail download failed (attempt {attempt}/{MAX_RETRY}): {e}")
+            traceback.print_exc()
+            if attempt < MAX_RETRY:
+                print(f"  -> {5 * attempt}초 후 재시도...")
+                await asyncio.sleep(5 * attempt)
+            else:
+                print("  -> 최대 재시도 횟수 초과. 종료합니다.")
+                _allow_sleep()
+                print()
+                input("  Press any key to close...")
+                return
 
     print()
 
