@@ -189,6 +189,19 @@ def _make_offline(html: str) -> str:
         "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
     )
 
+    # 7. NETA 접근 불가 환경 대응: HEAD 요청 실패 시 즉시 NETA 비활성화
+    _neta_offline_script = (
+        "<script>"
+        "(function(){"
+        "var _t=setTimeout(function(){window.NETA_ENABLED=false;},100);"
+        "fetch('http://10.246.56.50:8000',{method:'HEAD',signal:AbortSignal.timeout(2000)})"
+        ".then(function(){clearTimeout(_t);})"
+        ".catch(function(){clearTimeout(_t);window.NETA_ENABLED=false;});"
+        "})();"
+        "</script>"
+    )
+    html = html.replace("<head>", "<head>\n" + _neta_offline_script, 1)
+
     return html
 
 
