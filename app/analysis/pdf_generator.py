@@ -289,6 +289,22 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
                 margin={"top": "12mm", "bottom": "8mm", "left": "0mm", "right": "0mm"},
             )
             logger.info("[PDF] page.pdf() 완료")
+
+            # 렌더링 완료된 DOM을 정적 HTML로 저장 (BVC 오프라인 변환용)
+            try:
+                rendered_html = await page.content()
+                # NETA API 호출 코드 비활성화 (이미 데이터 렌더링됨)
+                rendered_html = rendered_html.replace(
+                    "const NETA_BASE=",
+                    "window.NETA_ENABLED=false; const NETA_BASE=",
+                    1,
+                )
+                with open(html_path, "w", encoding="utf-8") as _f:
+                    _f.write(rendered_html)
+                logger.info("[PDF] 렌더링된 정적 HTML 저장 완료 (BVC 호환)")
+            except Exception as _e:
+                logger.warning(f"[PDF] 정적 HTML 저장 실패 (무시): {_e}")
+
             await browser.close()
         size_kb = os.path.getsize(pdf_path) // 1024 if os.path.exists(pdf_path) else 0
         logger.info(f"[PDF] 변환 완료: {pdf_path} ({size_kb}KB)")
