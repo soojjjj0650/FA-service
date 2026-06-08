@@ -988,6 +988,85 @@ async def knox_register_device():
     }
 
 
+@app.get("/api/knox/bot-info")
+async def knox_bot_info():
+    """
+    봇의 Knox 등록 정보를 반환합니다.
+    bot_user_id == receiver_user_id 이면 4001 오류가 발생합니다.
+    """
+    from app.messenger.knox_messenger import KnoxMessengerClient
+    client = KnoxMessengerClient(
+        base_url=settings.KNOX_MESSENGER_BASE_URL,
+        access_token=settings.KNOX_ACCESS_TOKEN,
+        system_id=settings.KNOX_SYSTEM_ID,
+        device_id=settings.KNOX_DEVICE_ID,
+        receiver_user_id=settings.KNOX_RECEIVER_USER_ID,
+    )
+    resp_data = {}
+    import requests as _req, urllib3 as _u3
+    _u3.disable_warnings()
+    url = f"{settings.KNOX_MESSENGER_BASE_URL}/messenger/contact/api/v2.0/device/o1/reg"
+    headers = {
+        "Authorization": f"Bearer {settings.KNOX_ACCESS_TOKEN}",
+        "System-ID": settings.KNOX_SYSTEM_ID,
+        "x-device-type": "relation",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    try:
+        r = _req.get(url, headers=headers, verify=False, timeout=(15, 30))
+        resp_data = r.json() if r.status_code < 400 else {"error": r.text[:300]}
+    except Exception as e:
+        resp_data = {"error": str(e)}
+
+    bot_user_id = str(resp_data.get("userID", ""))
+    same = (bot_user_id == settings.KNOX_RECEIVER_USER_ID and bot_user_id != "")
+    return {
+        "env": "prod" if "stage" not in settings.KNOX_MESSENGER_BASE_URL else "stage",
+        "knox_base_url": settings.KNOX_MESSENGER_BASE_URL,
+        "configured_device_id": settings.KNOX_DEVICE_ID,
+        "configured_receiver_user_id": settings.KNOX_RECEIVER_USER_ID,
+        "bot_user_id_from_registration": bot_user_id,
+        "device_server_id": str(resp_data.get("deviceServerID", "")),
+        "WARNING_same_as_receiver": same,
+        "raw_response": resp_data,
+    }
+
+
+@app.get("/api/knox/search-user")
+async def knox_search_user(keyword: str):
+    """
+    Knox Messenger에서 사용자 ID를 검색합니다.
+    keyword: Samsung 계정 (예: sujin06.bae)
+    """
+    import requests as _req, urllib3 as _u3
+    _u3.disable_warnings()
+    headers = {
+        "Authorization": f"Bearer {settings.KNOX_ACCESS_TOKEN}",
+        "System-ID": settings.KNOX_SYSTEM_ID,
+        "x-device-id": settings.KNOX_DEVICE_ID,
+        "x-device-type": "relation",
+        "Accept": "application/json",
+    }
+    results = []
+    # Try multiple contact search endpoints
+    endpoints = [
+        f"{settings.KNOX_MESSENGER_BASE_URL}/messenger/contact/api/v2.0/contact/search?keyword={keyword}",
+        f"{settings.KNOX_MESSENGER_BASE_URL}/messenger/contact/api/v2.0/contact?keyword={keyword}",
+        f"{settings.KNOX_MESSENGER_BASE_URL}/messenger/contact/api/v2.0/user/search?keyword={keyword}",
+    ]
+    for url in endpoints:
+        try:
+            r = _req.get(url, headers=headers, verify=False, timeout=(15, 30))
+            results.append({"url": url, "status": r.status_code, "body": r.text[:500]})
+            if r.status_code < 400:
+                break
+        except Exception as e:
+            results.append({"url": url, "error": str(e)})
+
+    return {"keyword": keyword, "results": results}
+
+
 @app.post("/api/knox/test-message")
 async def knox_test_message():
     """캐시된 대화방에 텍스트 메시지를 전송해 연결을 확인합니다."""
