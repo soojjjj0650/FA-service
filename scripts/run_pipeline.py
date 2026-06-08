@@ -77,11 +77,7 @@ async def main():
                 print(f"  -> {5 * attempt}초 후 재시도...")
                 await asyncio.sleep(5 * attempt)
             else:
-                print("  -> 최대 재시도 횟수 초과. 종료합니다.")
-                _allow_sleep()
-                print()
-                input("  Press any key to close...")
-                return
+                print("  -> 최대 재시도 횟수 초과. 기존 파일로 SN 쿼리를 계속합니다.")
 
     print()
 
