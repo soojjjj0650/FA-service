@@ -177,6 +177,17 @@ async def startup():
     except Exception as e:
         logger.error(f"코드 매핑 로드 중 오류: {e}", exc_info=True)
 
+    # CDN 캐시 사전 다운로드 (Chart.js, Leaflet)
+    try:
+        from app.analysis.runner import _get_chartjs, _fetch_and_cache, _LEAFLET_JS_URL, _LEAFLET_JS_CACHE_PATH, _LEAFLET_CSS_URL, _LEAFLET_CSS_CACHE_PATH
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _get_chartjs)
+        await loop.run_in_executor(None, _fetch_and_cache, _LEAFLET_JS_URL, _LEAFLET_JS_CACHE_PATH, "Leaflet.js")
+        await loop.run_in_executor(None, _fetch_and_cache, _LEAFLET_CSS_URL, _LEAFLET_CSS_CACHE_PATH, "Leaflet.css")
+        logger.info("CDN 캐시 준비 완료 (Chart.js, Leaflet)")
+    except Exception as e:
+        logger.warning(f"CDN 캐시 다운로드 실패 (오프라인 환경에서 계속): {e}")
+
     if settings.PREFETCH_ENABLED:
         asyncio.create_task(_prefetch_scheduler())
         logger.info("[Scheduler] 사전 쿼리 스케줄러 시작 (평일 09:00)")
