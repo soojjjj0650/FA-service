@@ -273,10 +273,12 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
             except Exception:
                 logger.warning("[PDF] Leaflet 타일 15s 대기 타임아웃 — 계속 진행")
 
+            logger.info("[PDF] page.pdf() 변환 시작...")
             await page.pdf(
                 path=pdf_path, format="A4", print_background=True, scale=0.75,
                 margin={"top": "12mm", "bottom": "8mm", "left": "0mm", "right": "0mm"},
             )
+            logger.info("[PDF] page.pdf() 완료")
             await browser.close()
         size_kb = os.path.getsize(pdf_path) // 1024 if os.path.exists(pdf_path) else 0
         logger.info(f"[PDF] 변환 완료: {pdf_path} ({size_kb}KB)")

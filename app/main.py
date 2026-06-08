@@ -1512,7 +1512,7 @@ async def _run_knox_pipeline(job_id: str, sn: str) -> None:
 
     # HTML → PDF 변환
     try:
-        pdf_ok = await asyncio.wait_for(html_to_pdf(html_path, pdf_path, neta_enabled=settings.NETA_ENABLED), timeout=300)
+        pdf_ok = await asyncio.wait_for(html_to_pdf(html_path, pdf_path, neta_enabled=settings.NETA_ENABLED), timeout=600)
     except asyncio.TimeoutError:
         await _fail("PDF 변환 시간 초과.")
         return
