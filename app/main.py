@@ -1354,6 +1354,8 @@ async def _knox_handle_message(data: dict) -> JSONResponse:
 
     # ── 여러 SN 지원: 쉼표/공백/줄바꿈으로 구분 ─────────────────────────────
     import re as _re
+    # 그룹채팅 @멘션 제거 (예: @FA_대응_챗봇 SN번호 → SN번호)
+    chat_msg = _re.sub(r'@\S+', '', chat_msg).strip()
     sn_list = [s.strip().upper() for s in _re.split(r'[,\s]+', chat_msg) if s.strip()]
     valid_sns   = [s for s in sn_list if re.match(r'^[A-Z0-9\-]{5,20}$', s)]
     invalid_sns = [s for s in sn_list if not re.match(r'^[A-Z0-9\-]{5,20}$', s)]
