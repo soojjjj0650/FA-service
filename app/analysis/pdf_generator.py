@@ -100,7 +100,7 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
                 logger.info("[PDF] NETA 비활성화 모드")
             await page.goto(f"file:///{html_path.replace(os.sep, '/')}", wait_until="domcontentloaded", timeout=30000)
 
-            # NETA prefetch 완료까지 대기 (최대 60초, 조기 완료 시 바로 진행)
+            # NETA prefetch 완료까지 대기 (최대 90초, 타임아웃 시 NETA 영역 숨김)
             logger.info("[PDF] NETA 데이터 로딩 대기 중...")
             try:
                 await page.wait_for_function(
@@ -109,7 +109,14 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
                 )
                 logger.info("[PDF] NETA 로딩 완료")
             except Exception:
-                logger.warning("[PDF] NETA 대기 타임아웃(90s), 렌더링 계속 진행")
+                logger.warning("[PDF] NETA 대기 타임아웃(90s) — NETA 영역 숨김 처리 후 PDF 생성")
+                await page.evaluate("""() => {
+                    document.querySelectorAll('.neta-loading').forEach(el => { el.style.display = 'none'; });
+                    document.querySelectorAll('.neta-panel, .neta-section, [class*="neta-"]').forEach(el => {
+                        const spinner = el.querySelector('.neta-loading, .spinner, [class*="loading"]');
+                        if (spinner) spinner.style.display = 'none';
+                    });
+                }""")
 
             # NETA 캐시 추출 → HTML에 주입 (오프라인 열람용)
             try:
@@ -236,7 +243,7 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
             # 차트 렌더링 기본 대기
             await page.wait_for_timeout(3000)
 
-            # NETA 스피너가 모두 사라질 때까지 대기 — 미니맵은 NETA 로드 후 생성되므로 먼저 대기
+            # NETA 스피너가 모두 사라질 때까지 대기 (타임아웃 시 강제 숨김)
             try:
                 await page.wait_for_function(
                     "() => document.querySelectorAll('.neta-loading').length === 0",
@@ -244,7 +251,10 @@ async def html_to_pdf(html_path: str, pdf_path: str, neta_enabled: bool = True) 
                 )
                 logger.info("[PDF] 모든 NETA 패널 로드 완료")
             except Exception:
-                logger.warning("[PDF] NETA 패널 25s 대기 타임아웃 — 미완료 스피너 포함 PDF 생성")
+                logger.warning("[PDF] NETA 패널 25s 대기 타임아웃 — 스피너 강제 숨김")
+                await page.evaluate("""() => {
+                    document.querySelectorAll('.neta-loading').forEach(el => { el.style.display = 'none'; });
+                }""")
 
             # NETA 로드 완료 후 모든 Leaflet 지도 invalidateSize (미니맵 포함)
             await page.evaluate("""() => {
