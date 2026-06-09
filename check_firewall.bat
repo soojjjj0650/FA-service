@@ -1,5 +1,5 @@
 @echo off
-chcp 65001 > /dev/null
+chcp 65001 > nul
 title Windows Firewall Port 80 Check
 
 echo ============================================================
@@ -11,4 +11,4 @@ powershell -Command "Get-NetFirewallRule -Direction Inbound | Where-Object { $_.
 
 echo.
 echo 완료. 아무 키 누르세요.
-pause > /dev/null
+pause > nul

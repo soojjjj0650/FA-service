@@ -1,8 +1,8 @@
 @echo off
-cd /d "%~dp0\.."
+cd /d "%~dp0"
 set "PYTHON=C:\Users\sujin06.bae\AppData\Local\Programs\Python\Python312\python.exe"
-set "USERDATA=%~dp0\..\userdata"
-set "OUTDIR=%~dp0\..\test\output"
+set "USERDATA=%~dp0userdata"
+set "OUTDIR=%~dp0test\output"
 
 echo.
 echo ============================

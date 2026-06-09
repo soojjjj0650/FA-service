@@ -1,5 +1,5 @@
 @echo off
-chcp 65001 > /dev/null
+chcp 65001 > nul
 title FA Service - Playwright Install
 
 echo ============================================================
@@ -8,7 +8,7 @@ echo   (최초 1회만 실행하면 됩니다)
 echo ============================================================
 echo.
 
-cd /d "%~dp0\.."
+cd /d "%~dp0"
 "C:\Users\sujin06.bae\AppData\Local\Programs\Python\Python312\python.exe" -m playwright install chromium
 
 echo.

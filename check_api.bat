@@ -104,3 +104,5 @@ echo.
 echo.
 echo 완료. 위 결과를 복사해서 알려주세요.
 pause
+
+

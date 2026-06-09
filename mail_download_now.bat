@@ -8,7 +8,7 @@ echo   samsung.net -^> D:\FA_Service\userdata\FAdata
 echo ============================================================
 echo.
 
-cd /d "%~dp0\.."
+cd /d "%~dp0"
 python scripts\run_mail_download.py
 
 echo.

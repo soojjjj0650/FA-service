@@ -9,7 +9,7 @@ echo   Output: D:\FA_Service\userdata
 echo ============================================================
 echo.
 
-cd /d "%~dp0\.."
+cd /d "%~dp0"
 
 python --version > nul 2>&1
 if errorlevel 1 (

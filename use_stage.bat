@@ -1,5 +1,5 @@
 @echo off
-cd /d "%~dp0\.."
+cd /d "%~dp0"
 echo Switching to STAGE environment...
 
 (
@@ -26,7 +26,7 @@ echo MAIL_PASSWORD=tnwls1094!
 echo MAIL_SCHEDULE_HOUR=6
 echo MAIL_SCHEDULE_MINUTE=0
 echo MAIL_HEADLESS=false
-) > "%~dp0..\.env"
+) > .env
 
 if exist data\knox_chatroom_id_prod.txt del /Q data\knox_chatroom_id_prod.txt
 if exist data\knox_chatroom_id.txt del /Q data\knox_chatroom_id.txt

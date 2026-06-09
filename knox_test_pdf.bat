@@ -1,6 +1,6 @@
 @echo off
-chcp 65001 > /dev/null
-cd /d "%~dp0\.."
+chcp 65001 > nul
+cd /d "%~dp0"
 echo.
 echo ============================
 echo  Knox PDF Send Test
@@ -8,7 +8,7 @@ echo ============================
 echo.
 
 set SERVER=http://10.246.9.74:80
-set PDF_FILE=%~dp0\..\test\R3CW804XAD_analysis.pdf
+set PDF_FILE=%~dp0test\R3CW804XAD_analysis.pdf
 
 echo [1] Register - chatroom + adaptive card
 curl -s -w "\nHTTP %%{http_code}" ^
@@ -17,7 +17,7 @@ curl -s -w "\nHTTP %%{http_code}" ^
 echo.
 echo.
 
-timeout /t 2 /nobreak > /dev/null
+timeout /t 2 /nobreak > nul
 
 echo [2] Send PDF file
 powershell -NoProfile -Command ^

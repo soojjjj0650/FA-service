@@ -11,8 +11,8 @@ echo   인자 = 경로: 해당 CSV 파일 직접 사용
 echo ================================================================
 echo.
 
-cd /d "%~dp0\.."
-set "PYTHONPATH=%~dp0\.."
+cd /d "%~dp0"
+set "PYTHONPATH=%~dp0"
 set "PYTHON=C:\Users\sujin06.bae\AppData\Local\Programs\Python\Python312\python.exe"
 
 if "%~1"=="" (
