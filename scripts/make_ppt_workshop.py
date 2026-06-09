@@ -726,6 +726,7 @@ txt(sl, "Q & A", Inches(0.7), Inches(6.5), Inches(4), Inches(0.6),
 
 
 # ── 저장 ──────────────────────────────────────────────────────────────────────
-out = "/home/user/FA-service/knox_chatbot_개발가이드.pptx"
+import os as _os
+out = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "knox_chatbot_개발가이드.pptx")
 prs.save(out)
 print(f"저장 완료: {out}")

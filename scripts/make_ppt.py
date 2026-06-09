@@ -425,6 +425,7 @@ add_text(sl, "감사합니다",
          size=20, bold=True, color=WHITE)
 
 # ── 저장 ──────────────────────────────────────────────────────────────────────
-out = "/home/user/FA-service/knox_chatbot_소개.pptx"
+import os as _os
+out = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "knox_chatbot_소개.pptx")
 prs.save(out)
 print(f"저장 완료: {out}")
