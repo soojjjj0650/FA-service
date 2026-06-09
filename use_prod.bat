@@ -23,7 +23,7 @@ echo.
 echo MAIL_ENABLED=true
 echo MAIL_USERNAME=sujin06.bae
 echo MAIL_PASSWORD=tnwls1094!
-echo MAIL_SCHEDULE_HOUR=6
+echo MAIL_SCHEDULE_HOUR=18
 echo MAIL_SCHEDULE_MINUTE=0
 echo MAIL_HEADLESS=false
 ) > .env
