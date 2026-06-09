@@ -476,19 +476,10 @@ async def _mail_scheduler() -> None:
         await asyncio.sleep(max(wait_sec, 1))
 
         logger.info("[MailScheduler] 메일→쿼리 파이프라인 시작")
-        _pipeline_ok = False
-        for _sched_attempt in range(1, 4):
-            try:
-                await _mail_and_query_pipeline()
-                _pipeline_ok = True
-                break
-            except Exception as _se:
-                logger.error(f"[MailScheduler] 파이프라인 오류 (시도 {_sched_attempt}/3): {_se}", exc_info=True)
-                if _sched_attempt < 3:
-                    logger.info("[MailScheduler] 1시간 후 재시도...")
-                    await asyncio.sleep(3600)
-        if not _pipeline_ok:
-            logger.error("[MailScheduler] 3회 모두 실패 — 다음 정기 실행 시까지 대기")
+        try:
+            await _mail_and_query_pipeline()
+        except Exception as e:
+            logger.error(f"[MailScheduler] 오류: {e}", exc_info=True)
 
 
 async def _run_and_push(sn: str) -> None:
