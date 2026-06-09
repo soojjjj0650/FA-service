@@ -192,6 +192,10 @@ async def startup():
         asyncio.create_task(_prefetch_scheduler())
         logger.info("[Scheduler] 사전 쿼리 스케줄러 시작 (평일 09:00)")
 
+    if settings.LOGIN_AUTO_ENABLED:
+        asyncio.create_task(_login_scheduler())
+        logger.info("[Scheduler] 자동 로그인 스케줄러 시작 (매일 09:00)")
+
     if settings.MAIL_ENABLED:
         asyncio.create_task(_mail_scheduler())
         logger.info(f"[Scheduler] 메일 다운로드 스케줄러 시작 (매일 {settings.MAIL_SCHEDULE_HOUR:02d}:00)")
@@ -311,6 +315,27 @@ async def _prefetch_scheduler() -> None:
             await run_daily_prefetch()
         except Exception as e:
             logger.error(f"[Scheduler] 사전 쿼리 오류: {e}", exc_info=True)
+
+
+async def _login_scheduler() -> None:
+    """매일 09:00 자동 로그인 스케줄러 (ID/PW 입력 + Bio 버튼 클릭까지 자동)."""
+    while True:
+        now = datetime.now()
+        target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target = target + timedelta(days=1)
+
+        wait_sec = (target - datetime.now()).total_seconds()
+        logger.info(f"[LoginScheduler] 다음 자동 로그인: {target.strftime('%Y-%m-%d %H:%M')} (대기 {wait_sec/3600:.1f}h)")
+        await asyncio.sleep(max(wait_sec, 1))
+
+        logger.info("[LoginScheduler] 자동 로그인 시작 (Bio 인증 대기 중...)")
+        try:
+            from scripts.manual_login import manual_login
+            await manual_login()
+            logger.info("[LoginScheduler] 자동 로그인 완료")
+        except Exception as e:
+            logger.error(f"[LoginScheduler] 자동 로그인 실패: {e}", exc_info=True)
 
 
 def _prevent_sleep() -> bool:

@@ -93,6 +93,7 @@ class Settings(BaseSettings):
     QINGS_SYMPTOM_KEYWORDS: list[str] = ["통화", "수화", "송화", "데이터 접속"]
     PREFETCH_ENABLED: bool = True         # 평일 9시 자동 사전 쿼리 활성화
     CACHE_MAX_AGE_HOURS: int = 48        # 캐시 유효 시간 (시간)
+    LOGIN_AUTO_ENABLED: bool = False     # 매일 09:00 자동 로그인 시도
 
     # ─── 메일 다운로더 (FA 미결건 엑셀 자동 수집) ───────────────────────────────
     MAIL_ENABLED: bool = False              # True 시 매일 자동 실행

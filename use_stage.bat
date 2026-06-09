@@ -18,6 +18,7 @@ echo KNOX_RECEIVE_URL=http://10.246.9.74:80/message
 echo.
 echo NETA_ENABLED=true
 echo PREFETCH_ENABLED=false
+echo LOGIN_AUTO_ENABLED=true
 echo MOCK_MODE=false
 echo AI_AGENT_ENABLED=false
 echo.
