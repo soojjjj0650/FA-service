@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-title FA Service
+title 통화품질 분석 서비스
 
 cd /d "%~dp0\.."
 set "PYTHONPATH=%~dp0\.."
