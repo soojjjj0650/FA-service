@@ -1,9 +1,0 @@
-@echo off
-echo [1] 최신 코드 pull 중...
-git pull origin claude/fa-chatbot-development-DAjN1
-
-echo [2] Python 캐시 삭제 중...
-for /d /r . %%d in (__pycache__) do @if exist "%%d" rd /s /q "%%d"
-
-echo [3] 서버 시작 중...
-python run.py
