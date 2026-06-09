@@ -59,10 +59,13 @@ async def main():
     print("[1/2] Downloading mail attachments...")
     downloaded_files = []
     MAX_RETRY = 3
+    TIMEOUT_SEC = 180  # 3분 안에 못 끝나면 타임아웃
     for attempt in range(1, MAX_RETRY + 1):
         try:
             from app.scraper.mail_downloader import download_mail_attachments
-            downloaded_files = await download_mail_attachments()
+            downloaded_files = await asyncio.wait_for(
+                download_mail_attachments(), timeout=TIMEOUT_SEC
+            )
             if downloaded_files:
                 print(f"  -> {len(downloaded_files)} file(s) downloaded:")
                 for f in downloaded_files:
@@ -70,6 +73,13 @@ async def main():
             else:
                 print("  -> No new attachments found")
             break  # 성공
+        except asyncio.TimeoutError:
+            print(f"  [ERROR] Mail download timed out after {TIMEOUT_SEC}s (attempt {attempt}/{MAX_RETRY})")
+            if attempt < MAX_RETRY:
+                print(f"  -> {5 * attempt}초 후 재시도...")
+                await asyncio.sleep(5 * attempt)
+            else:
+                print("  -> 최대 재시도 횟수 초과. 기존 파일로 SN 쿼리를 계속합니다.")
         except Exception as e:
             print(f"  [ERROR] Mail download failed (attempt {attempt}/{MAX_RETRY}): {e}")
             traceback.print_exc()

@@ -373,17 +373,39 @@ async def _mail_and_query_pipeline() -> dict:
 
     result = {"files": [], "sns": [], "query_results": []}
 
-    # 1. 메일 첨부파일 다운로드
+    # 1. 메일 첨부파일 다운로드 (타임아웃 3분, 최대 3회 재시도)
+    _MAIL_TIMEOUT = 180
     logger.info("[MailPipeline] 메일 다운로드 시작...")
-    files = await download_mail_attachments()
-    result["files"] = files
-    logger.info(f"[MailPipeline] 다운로드 완료 — {len(files)}개 파일")
+    files = []
+    for _attempt in range(1, 4):
+        try:
+            files = await asyncio.wait_for(download_mail_attachments(), timeout=_MAIL_TIMEOUT)
+            logger.info(f"[MailPipeline] 다운로드 완료 — {len(files)}개 파일")
+            break
+        except asyncio.TimeoutError:
+            logger.warning(f"[MailPipeline] 메일 다운로드 타임아웃 ({_MAIL_TIMEOUT}s) — 시도 {_attempt}/3")
+        except Exception as _e:
+            logger.warning(f"[MailPipeline] 메일 다운로드 실패 — 시도 {_attempt}/3: {_e}")
+        if _attempt < 3:
+            await asyncio.sleep(10 * _attempt)
 
+    result["files"] = files
+
+    # 다운로드 실패 시 기존 최신 Excel 파일로 폴백
     if not files:
-        logger.info("[MailPipeline] 다운로드된 파일 없음 — 쿼리 생략")
-        if sleep_prevented:
-            _restore_sleep()
-        return result
+        _data_dir = Path(settings.MAIL_SAVE_DIR) if settings.MAIL_SAVE_DIR else \
+                    Path(settings.CSV_DOWNLOAD_PATH) / "FAdata"
+        _all_xl = (list(_data_dir.glob("*.xlsx")) + list(_data_dir.glob("*.xls"))
+                   + list(_data_dir.glob("*.xlsm")))
+        _latest = max(_all_xl, key=lambda f: f.stat().st_mtime) if _all_xl else None
+        if _latest:
+            logger.info(f"[MailPipeline] 기존 파일로 폴백: {_latest}")
+            files = [str(_latest)]
+        else:
+            logger.warning("[MailPipeline] 폴백 파일도 없음 — 쿼리 생략")
+            if sleep_prevented:
+                _restore_sleep()
+            return result
 
     # 2. 엑셀에서 SN 추출
     sns: list[str] = []
@@ -454,10 +476,19 @@ async def _mail_scheduler() -> None:
         await asyncio.sleep(max(wait_sec, 1))
 
         logger.info("[MailScheduler] 메일→쿼리 파이프라인 시작")
-        try:
-            await _mail_and_query_pipeline()
-        except Exception as e:
-            logger.error(f"[MailScheduler] 오류: {e}", exc_info=True)
+        _pipeline_ok = False
+        for _sched_attempt in range(1, 4):
+            try:
+                await _mail_and_query_pipeline()
+                _pipeline_ok = True
+                break
+            except Exception as _se:
+                logger.error(f"[MailScheduler] 파이프라인 오류 (시도 {_sched_attempt}/3): {_se}", exc_info=True)
+                if _sched_attempt < 3:
+                    logger.info("[MailScheduler] 1시간 후 재시도...")
+                    await asyncio.sleep(3600)
+        if not _pipeline_ok:
+            logger.error("[MailScheduler] 3회 모두 실패 — 다음 정기 실행 시까지 대기")
 
 
 async def _run_and_push(sn: str) -> None:
