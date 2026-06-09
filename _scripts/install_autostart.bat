@@ -15,7 +15,7 @@ echo   실행 파일 : %SCRIPT_PATH%
 echo   실행 시점 : 로그인 시 자동 시작 (최소화)
 echo.
 
-schtasks /create /tn "%TASK_NAME%" /tr "cmd /c start /min \"FA Service\" \"%SCRIPT_PATH%\"" /sc onlogon /rl highest /f
+schtasks /create /tn "%TASK_NAME%" /tr "cmd /c start /min \"통화품질 분석 서비스\" \"%SCRIPT_PATH%\"" /sc onlogon /rl highest /f
 
 if %errorlevel% == 0 (
     echo.
