@@ -428,12 +428,17 @@ async def _mail_and_query_pipeline() -> dict:
             _restore_sleep()
         return result
 
-    # 3. SN별 Superset 쿼리 실행 (BATCH_CONCURRENCY 제한)
+    # 3. SN별 Superset 쿼리 실행 (48h 이내 캐시 있으면 스킵, BATCH_CONCURRENCY 제한)
+    from app.prefetch.cache_manager import is_cached as _is_cached, get_cache_csv_path as _get_cache_csv_path
     sem = asyncio.Semaphore(settings.BATCH_CONCURRENCY)
 
     async def _query_one(sn: str) -> dict:
         async with sem:
-            logger.info(f"[MailPipeline] [{sn}] 쿼리 시작")
+            if _is_cached(sn):
+                cached_path = str(_get_cache_csv_path(sn))
+                logger.info(f"[MailPipeline] [{sn}] 캐시 사용 (48h 이내) → {cached_path}")
+                return {"sn": sn, "success": True, "csv_path": cached_path, "cached": True}
+            logger.info(f"[MailPipeline] [{sn}] 쿼리 시작 (캐시 없음 또는 48h 초과)")
             try:
                 qr = await query_runner.run(sn)
                 status = "success" if qr.success else "fail"
@@ -446,8 +451,9 @@ async def _mail_and_query_pipeline() -> dict:
     query_results = await asyncio.gather(*[_query_one(sn) for sn in sns])
     result["query_results"] = list(query_results)
 
-    success_cnt = sum(1 for r in query_results if r.get("success"))
-    logger.info(f"[MailPipeline] 쿼리 완료 — {success_cnt}/{len(sns)}개 성공")
+    cached_cnt = sum(1 for r in query_results if r.get("cached"))
+    success_cnt = sum(1 for r in query_results if r.get("success") and not r.get("cached"))
+    logger.info(f"[MailPipeline] 쿼리 완료 — 캐시 {cached_cnt}개 재사용 | 신규 성공 {success_cnt}개 | 전체 {len(sns)}개")
 
     if sleep_prevented:
         _restore_sleep()
