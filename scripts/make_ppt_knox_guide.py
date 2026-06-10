@@ -193,113 +193,154 @@ note_box(sl, Inches(0.5), Inches(4.5), Inches(3.8),
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 4 — STEP 02: 방화벽 개념도
+# SLIDE 4 — STEP 02: 방화벽 개념도 (Knox 수신/발신 서버 구분, 밝은 배경)
+# ══════════════════════════════════════════════════════════════════════════════
+_LBGC  = RGBColor(0xf8, 0xf9, 0xfc)
+_SLATE = RGBColor(0x47, 0x55, 0x69)
+
+sl = prs.slides.add_slide(BLANK)
+rect(sl, 0, 0, W, H, fill=_LBGC)
+rect(sl, 0, 0, W, Inches(0.1), fill=NAVY)
+txt(sl, "STEP 02", Inches(0.5), Inches(0.18), Inches(3), Inches(0.5),
+    size=12, bold=True, color=MBLUE)
+txt(sl, "방화벽 연결하기 — 개념도",
+    Inches(0.5), Inches(0.55), Inches(12), Inches(0.7),
+    size=26, bold=True, color=NAVY)
+txt(sl, "Knox 서버는 수신용(API)과 발신용(Webhook) IP가 다릅니다 — 두 방향 모두 방화벽 정책 등록 필요",
+    Inches(0.5), Inches(1.18), Inches(12), Inches(0.42),
+    size=13, color=_SLATE, italic=True)
+rect(sl, Inches(0.4), Inches(1.55), W - Inches(0.8), Pt(1.5), fill=NAVY)
+
+_bw   = Inches(2.9)
+_bh   = Inches(1.9)
+_bgap = Inches(0.9)
+_btot = 3 * _bw + 2 * _bgap
+_bsx  = (W - _btot) / 2
+
+# ── Row 1: 발신 (Outbound) — 내 서버 → Knox 수신 서버 ────────────────────────
+_r1y = Inches(1.68)
+rect(sl, _bsx, _r1y, _btot, Inches(0.3), fill=NAVY)
+txt(sl, "  ▲  발신 (Outbound) — 내 서버  →  Knox 수신 서버 (API)  |  Port 80, 443",
+    _bsx, _r1y, _btot, Inches(0.3), size=11, bold=True, color=WHITE)
+
+_by1 = _r1y + Inches(0.34)
+_fwx = _bsx + _bw + _bgap
+_knx = _fwx + _bw + _bgap
+
+# 내 서버
+rect(sl, _bsx, _by1, _bw, _bh, fill=NAVY)
+rect(sl, _bsx, _by1, _bw, Inches(0.08), fill=ACCENT)
+txt(sl, "🖥️",  _bsx, _by1 + Inches(0.1),  _bw, Inches(0.65), size=26, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "내 서버", _bsx, _by1 + Inches(0.73), _bw, Inches(0.4),  size=14, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "My Server  Port 80", _bsx, _by1 + Inches(1.18), _bw, Inches(0.32), size=10, color=LBLUE, align=PP_ALIGN.CENTER)
+
+txt(sl, "Port\n80/443", _bsx + _bw, _by1 + Inches(0.12), _bgap, Inches(0.5), size=9, color=MBLUE, align=PP_ALIGN.CENTER)
+txt(sl, "────▶",       _bsx + _bw, _by1 + Inches(0.6),  _bgap, Inches(0.5), size=20, bold=True, color=MBLUE, align=PP_ALIGN.CENTER)
+
+# 방화벽
+rect(sl, _fwx, _by1, _bw, _bh, fill=_SLATE)
+rect(sl, _fwx, _by1, _bw, Inches(0.08), fill=DGRAY)
+txt(sl, "🛡️",    _fwx, _by1 + Inches(0.1),  _bw, Inches(0.65), size=26, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "방화벽",  _fwx, _by1 + Inches(0.73), _bw, Inches(0.4),  size=14, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "Firewall", _fwx, _by1 + Inches(1.18), _bw, Inches(0.32), size=10, color=RGBColor(0xcb, 0xd5, 0xe1), align=PP_ALIGN.CENTER)
+
+txt(sl, "────▶", _fwx + _bw, _by1 + Inches(0.6), _bgap, Inches(0.5), size=20, bold=True, color=MBLUE, align=PP_ALIGN.CENTER)
+
+# Knox 수신 서버 (API 요청을 받는 쪽)
+rect(sl, _knx, _by1, _bw, _bh, fill=MBLUE)
+rect(sl, _knx, _by1, _bw, Inches(0.08), fill=ACCENT)
+txt(sl, "📡",           _knx, _by1 + Inches(0.1),  _bw, Inches(0.65), size=26, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "Knox 수신 서버", _knx, _by1 + Inches(0.73), _bw, Inches(0.4),  size=13, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "openapi.samsung.net\nAPI 요청 수신",  _knx, _by1 + Inches(1.18), _bw, Inches(0.62), size=9.5, color=LBLUE, align=PP_ALIGN.CENTER)
+
+# ── Row 2: 수신 (Inbound) — Knox 발신 서버 → 내 서버 ─────────────────────────
+_r2y = _by1 + _bh + Inches(0.35)
+rect(sl, _bsx, _r2y, _btot, Inches(0.3), fill=_SLATE)
+txt(sl, "  ▼  수신 (Inbound) — Knox 발신 서버 (Webhook)  →  내 서버  |  Port 80  ⚠ 반드시 허용",
+    _bsx, _r2y, _btot, Inches(0.3), size=11, bold=True, color=WHITE)
+
+_by2 = _r2y + Inches(0.34)
+
+# 내 서버 (수신 목적지)
+rect(sl, _bsx, _by2, _bw, _bh, fill=NAVY)
+rect(sl, _bsx, _by2, _bw, Inches(0.08), fill=ACCENT)
+txt(sl, "🖥️",  _bsx, _by2 + Inches(0.1),  _bw, Inches(0.65), size=26, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "내 서버", _bsx, _by2 + Inches(0.73), _bw, Inches(0.4),  size=14, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "My Server  Port 80", _bsx, _by2 + Inches(1.18), _bw, Inches(0.32), size=10, color=LBLUE, align=PP_ALIGN.CENTER)
+
+txt(sl, "Port\n80",  _bsx + _bw, _by2 + Inches(0.12), _bgap, Inches(0.5), size=9, color=_SLATE, align=PP_ALIGN.CENTER)
+txt(sl, "◀────", _bsx + _bw, _by2 + Inches(0.6),  _bgap, Inches(0.5), size=20, bold=True, color=_SLATE, align=PP_ALIGN.CENTER)
+
+# 방화벽 (수신)
+rect(sl, _fwx, _by2, _bw, _bh, fill=_SLATE)
+rect(sl, _fwx, _by2, _bw, Inches(0.08), fill=DGRAY)
+txt(sl, "🛡️",    _fwx, _by2 + Inches(0.1),  _bw, Inches(0.65), size=26, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "방화벽",  _fwx, _by2 + Inches(0.73), _bw, Inches(0.4),  size=14, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "Firewall", _fwx, _by2 + Inches(1.18), _bw, Inches(0.32), size=10, color=RGBColor(0xcb, 0xd5, 0xe1), align=PP_ALIGN.CENTER)
+
+txt(sl, "◀────", _fwx + _bw, _by2 + Inches(0.6), _bgap, Inches(0.5), size=20, bold=True, color=_SLATE, align=PP_ALIGN.CENTER)
+
+# Knox 발신 서버 (Webhook을 보내는 쪽)
+rect(sl, _knx, _by2, _bw, _bh, fill=BLUE)
+rect(sl, _knx, _by2, _bw, Inches(0.08), fill=MBLUE)
+txt(sl, "📡",           _knx, _by2 + Inches(0.1),  _bw, Inches(0.65), size=26, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "Knox 발신 서버", _knx, _by2 + Inches(0.73), _bw, Inches(0.4),  size=13, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+txt(sl, "Webhook POST 전송\n메시지를 내 서버로 발신", _knx, _by2 + Inches(1.18), _bw, Inches(0.62), size=9.5, color=LBLUE, align=PP_ALIGN.CENTER)
+
+# 하단 안내
+_noty = _by2 + _bh + Inches(0.22)
+rect(sl, _bsx, _noty, _btot, Inches(0.52), fill=RGBColor(0xe4, 0xe9, 0xf4))
+rect(sl, _bsx, _noty, Inches(0.06), Inches(0.52), fill=NAVY)
+txt(sl, "  💡  Knox 서버 IP는 방향(수신/발신)과 환경(스테이지/운영)에 따라 다릅니다 — 다음 슬라이드에서 상세 확인",
+    _bsx + Inches(0.1), _noty + Inches(0.06), _btot - Inches(0.2), Inches(0.42),
+    size=11, color=NAVY)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 5 — STEP 02: 방화벽 정책 상세 (Stage + Production, 빨간색 제거)
 # ══════════════════════════════════════════════════════════════════════════════
 sl = prs.slides.add_slide(BLANK)
-header(sl, "STEP 02", "방화벽 연결하기 — 개념도",
-       "내 서버와 Knox 서버 간 발신(Outbound) / 수신(Inbound) 두 방향 모두 정책 등록이 필요합니다")
-
-# 3개 컴포넌트 박스
-nodes = [
-    ("🖥️", "내 서버", "My Server\nPort 80", MBLUE),
-    ("🔥", "방화벽",  "Firewall\n개방 필요", RED),
-    ("📡", "Knox 서버", "openapi.samsung.net\n(Stage / Production)", BLUE),
-]
-nbw = Inches(3.0)
-nbh = Inches(2.0)
-ngap = Inches(1.6)
-ntot = len(nodes) * nbw + (len(nodes) - 1) * ngap
-nsx  = (W - ntot) / 2
-nby  = Inches(1.72)
-
-for i, (icon, title, sub, c) in enumerate(nodes):
-    nbx = nsx + i * (nbw + ngap)
-    rect(sl, nbx, nby, nbw, nbh, fill=c)
-    rect(sl, nbx, nby, nbw, Inches(0.1), fill=ACCENT if c != RED else RED)
-    txt(sl, icon,  nbx, nby + Inches(0.1),  nbw, Inches(0.7),
-        size=28, color=WHITE, align=PP_ALIGN.CENTER)
-    txt(sl, title, nbx, nby + Inches(0.8),  nbw, Inches(0.45),
-        size=14, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
-    txt(sl, sub,   nbx, nby + Inches(1.28), nbw, Inches(0.65),
-        size=10, color=LBLUE if c != RED else WHITE, align=PP_ALIGN.CENTER)
-
-# 화살표 행 — Outbound (위)
-aw_y = nby + Inches(0.3)
-for i in range(len(nodes) - 1):
-    ax = nsx + (i + 1) * nbw + i * ngap
-    txt(sl, "─────▶",
-        ax, aw_y, ngap, Inches(0.5),
-        size=18, bold=True, color=GREEN, align=PP_ALIGN.CENTER)
-txt(sl, "발신 (Outbound)  Port 80/443",
-    nsx + nbw, aw_y - Inches(0.35), ntot - nbw * 2, Inches(0.38),
-    size=11, bold=True, color=GREEN, align=PP_ALIGN.CENTER)
-
-# 화살표 행 — Inbound (아래)
-aw_y2 = nby + nbh - Inches(0.55)
-for i in range(len(nodes) - 1):
-    ax = nsx + (i + 1) * nbw + i * ngap
-    txt(sl, "◀─────",
-        ax, aw_y2, ngap, Inches(0.5),
-        size=18, bold=True, color=RED, align=PP_ALIGN.CENTER)
-txt(sl, "수신 (Inbound)  Port 80  ← 반드시 허용!",
-    nsx + nbw, aw_y2 + Inches(0.4), ntot - nbw * 2, Inches(0.38),
-    size=11, bold=True, color=RED, align=PP_ALIGN.CENTER)
-
-# 핵심 메시지
-msg_y = nby + nbh + Inches(0.9)
-rect(sl, Inches(0.4), msg_y, W - Inches(0.8), Inches(1.5), fill=CODE_BG)
-rect(sl, Inches(0.4), msg_y, Inches(0.06), Inches(1.5), fill=RED)
-txt(sl, "Knox 서버(외부)  →  방화벽  →  내 서버 Port 80  으로 인바운드 HTTP 요청이 들어옵니다",
-    Inches(0.65), msg_y + Inches(0.08), W - Inches(1.2), Inches(0.5),
-    size=14, bold=True, color=WHITE)
-txt(sl, "수신(Inbound) 정책:  Knox 서버 출발지 IP  →  내 서버 IP  Port 80  허용",
-    Inches(0.65), msg_y + Inches(0.58), W - Inches(1.2), Inches(0.38),
-    size=12, color=LBLUE)
-txt(sl, "발신(Outbound) 정책:  내 서버 IP  →  openapi.samsung.net  Port 80, 443  허용",
-    Inches(0.65), msg_y + Inches(0.98), W - Inches(1.2), Inches(0.38),
-    size=12, color=GREEN)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 5 — STEP 02: 방화벽 정책 상세 (Stage + Production)
-# ══════════════════════════════════════════════════════════════════════════════
-sl = prs.slides.add_slide(BLANK)
-header(sl, "STEP 02", "방화벽 정책 상세",
-       "스테이지(개발)와 운영 서버의 IP/포트 정보를 방화벽 담당자에게 전달합니다")
+rect(sl, 0, 0, W, H, fill=_LBGC)
+rect(sl, 0, 0, W, Inches(0.1), fill=NAVY)
+txt(sl, "STEP 02", Inches(0.5), Inches(0.18), Inches(3), Inches(0.5),
+    size=12, bold=True, color=MBLUE)
+txt(sl, "방화벽 정책 상세",
+    Inches(0.5), Inches(0.55), Inches(12), Inches(0.7),
+    size=26, bold=True, color=NAVY)
+txt(sl, "스테이지(개발)와 운영 서버의 IP/포트 정보를 방화벽 담당자에게 전달합니다",
+    Inches(0.5), Inches(1.18), Inches(12), Inches(0.42),
+    size=13, color=_SLATE, italic=True)
+rect(sl, Inches(0.4), Inches(1.55), W - Inches(0.8), Pt(1.5), fill=NAVY)
 
 def fw_panel(sl, ox, title, hdr_color, out_ip, out_host, in_ips):
     pw = Inches(6.0)
-    # 제목
     rect(sl, ox, Inches(1.65), pw, Inches(0.42), fill=hdr_color)
     txt(sl, f"  {title}", ox, Inches(1.65), pw, Inches(0.42),
         size=13, bold=True, color=WHITE)
 
-    # 발신
-    rect(sl, ox, Inches(2.12), pw, Inches(0.36), fill=RGBColor(0x06, 0x3a, 0x20))
-    txt(sl, "  발신 (Outbound) — 내 서버  →  Knox 서버",
-        ox, Inches(2.12), pw, Inches(0.36), size=11, bold=True, color=GREEN)
-
+    # 발신 (Outbound)
+    rect(sl, ox, Inches(2.12), pw, Inches(0.36), fill=RGBColor(0x1a, 0x42, 0x2e))
+    txt(sl, "  ▲  발신 (Outbound) — 내 서버  →  Knox 수신 서버",
+        ox, Inches(2.12), pw, Inches(0.36), size=11, bold=True, color=STR_FG)
     out_lines = [
-        ("출발지", f"내 서버 IP   :   Port 80"),
-        ("목적지", f"{out_ip}"),
-        ("Host",   f"{out_host}"),
+        ("출발지", "내 서버 IP   :   Port 80"),
+        ("목적지", out_ip),
+        ("Host",   out_host),
         ("포트",   "80,  443"),
     ]
     for j, (k, v) in enumerate(out_lines):
         by = Inches(2.52) + j * Inches(0.38)
-        rect(sl, ox, by, Inches(1.3), Inches(0.38),
-             fill=RGBColor(0x0c, 0x2a, 0x18))
-        txt(sl, k, ox + Inches(0.1), by + Inches(0.04),
-            Inches(1.2), Inches(0.32), size=11, bold=True, color=GREEN)
-        txt(sl, v, ox + Inches(1.35), by + Inches(0.04),
-            pw - Inches(1.4), Inches(0.32), size=11, color=WHITE)
+        rect(sl, ox, by, Inches(1.3), Inches(0.38), fill=RGBColor(0x0c, 0x2a, 0x18))
+        txt(sl, k, ox + Inches(0.1), by + Inches(0.04), Inches(1.2), Inches(0.32),
+            size=11, bold=True, color=GREEN)
+        txt(sl, v, ox + Inches(1.35), by + Inches(0.04), pw - Inches(1.4), Inches(0.32),
+            size=11, color=WHITE)
 
-    # 수신
+    # 수신 (Inbound) — 빨간색 → 슬레이트
     ib_y = Inches(4.05)
-    rect(sl, ox, ib_y, pw, Inches(0.36), fill=RGBColor(0x4a, 0x0e, 0x0e))
-    txt(sl, "  수신 (Inbound) — Knox 서버  →  내 서버  ⚠ 반드시 허용",
-        ox, ib_y, pw, Inches(0.36), size=11, bold=True, color=RED)
-
+    rect(sl, ox, ib_y, pw, Inches(0.36), fill=_SLATE)
+    txt(sl, "  ▼  수신 (Inbound) — Knox 발신 서버  →  내 서버  ⚠ 반드시 허용",
+        ox, ib_y, pw, Inches(0.36), size=11, bold=True, color=WHITE)
     in_lines = [
         ("출발지", in_ips),
         ("목적지", "내 서버 IP"),
@@ -307,24 +348,23 @@ def fw_panel(sl, ox, title, hdr_color, out_ip, out_host, in_ips):
     ]
     for j, (k, v) in enumerate(in_lines):
         by = ib_y + Inches(0.4) + j * Inches(0.42)
-        rect(sl, ox, by, Inches(1.3), Inches(0.42),
-             fill=RGBColor(0x3a, 0x0c, 0x0c))
-        txt(sl, k, ox + Inches(0.1), by + Inches(0.05),
-            Inches(1.2), Inches(0.34), size=11, bold=True, color=RED)
-        txt(sl, v, ox + Inches(1.35), by + Inches(0.05),
-            pw - Inches(1.4), Inches(0.34), size=11, color=WHITE)
+        rect(sl, ox, by, Inches(1.3), Inches(0.42), fill=RGBColor(0x2a, 0x32, 0x44))
+        txt(sl, k, ox + Inches(0.1), by + Inches(0.05), Inches(1.2), Inches(0.34),
+            size=11, bold=True, color=LBLUE)
+        txt(sl, v, ox + Inches(1.35), by + Inches(0.05), pw - Inches(1.4), Inches(0.34),
+            size=11, color=WHITE)
 
 fw_panel(sl, Inches(0.4), "🔷  스테이지 (개발 서버)",
          MBLUE,
          "203.254.214.131",
          "openapi.stage.samsung.net",
-         "112.106.197.162  (1개)")
+         "112.106.197.162  (발신 서버 1개)")
 
-fw_panel(sl, Inches(6.93), "🔶  운영 (실사용 서버)",
-         RGBColor(0x5c, 0x35, 0x05),
+fw_panel(sl, Inches(6.93), "🔷  운영 (실사용 서버)",
+         BLUE,
          "112.107.220.134",
          "openapi.samsung.net",
-         "182.195.35.14\n182.195.35.15\n182.195.35.16  (3개)")
+         "182.195.35.14\n182.195.35.15\n182.195.35.16  (발신 서버 3개)")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
