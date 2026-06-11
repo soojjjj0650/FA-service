@@ -553,6 +553,88 @@ note_box(sl, _rx, Inches(6.00), _cw,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 7c — STEP 04: Adaptive Card & PDF 파일 전송 예제
+# ══════════════════════════════════════════════════════════════════════════════
+sl = prs.slides.add_slide(BLANK)
+header(sl, "STEP 04", "Adaptive Card & 파일 전송 예제",
+       "카드 메시지로 링크 버튼을 포함한 알림을 보내고, PDF 파일도 직접 전송할 수 있습니다")
+
+_lx2 = Inches(0.4)
+_rx2 = Inches(6.93)
+_cw2 = Inches(6.1)
+
+# ── Adaptive Card 발신 ─────────────────────────────────────────────────────
+_card = (
+    'res = requests.post(\n'
+    '    f"{BASE}/messenger/bot/v1/message",\n'
+    '    headers={**headers, "x-device-id": device_id},\n'
+    '    json={\n'
+    '        "roomId": room_id,\n'
+    '        "messageType": "CARD",\n'
+    '        "cardTitle": "FA 분석 결과",\n'
+    '        "cardContent": "SN: R3CX1234...\\n이상 항목: 3건",\n'
+    '        "cardButtonList": [\n'
+    '            {\n'
+    '                "buttonType": "LINK",\n'
+    '                "buttonText": "결과 보기",\n'
+    '                "buttonValue": "http://10.246.9.74/result",\n'
+    '            },\n'
+    '        ],\n'
+    '    },\n'
+    ')'
+)
+rect(sl, _lx2, Inches(1.65), _cw2, Inches(0.32), fill=RGBColor(0x14, 0x53, 0x6e))
+txt(sl, "  📋  Adaptive Card 발신 (링크 버튼 포함)",
+    _lx2, Inches(1.65), _cw2, Inches(0.32), size=11, bold=True, color=WHITE)
+rect(sl, _lx2, Inches(1.97), _cw2, Inches(3.25), fill=CODE_BG)
+rect(sl, _lx2, Inches(1.97), Inches(0.05), Inches(3.25), fill=ACCENT)
+txt(sl, _card,
+    _lx2 + Inches(0.12), Inches(2.02),
+    _cw2 - Inches(0.18), Inches(3.18),
+    size=9.5, color=CODE_FG)
+
+note_box(sl, _lx2, Inches(5.35), _cw2,
+         "💡 cardButtonList 에 버튼 여러 개 추가 가능 (LINK / 전화 / 위치 등)", color=LBLUE)
+note_box(sl, _lx2, Inches(5.97), _cw2,
+         "📌 cardContent 줄바꿈:  \\n  사용 (실제 문자열에서 \\\\n → \\n)", color=DGRAY)
+
+# ── PDF 파일 전송 ──────────────────────────────────────────────────────────
+_pdf = (
+    '# ① 파일 업로드 → fileId 획득\n'
+    'with open("fa_report.pdf", "rb") as f:\n'
+    '    res = requests.post(\n'
+    '        f"{BASE}/messenger/bot/v1/file",\n'
+    '        headers={**headers, "x-device-id": device_id},\n'
+    '        files={"file": ("fa_report.pdf", f, "application/pdf")},\n'
+    '    )\n'
+    'file_id = res.json()["fileId"]\n'
+    '\n'
+    '# ② 파일 메시지 전송\n'
+    'res = requests.post(\n'
+    '    f"{BASE}/messenger/bot/v1/message",\n'
+    '    headers={**headers, "x-device-id": device_id},\n'
+    '    json={\n'
+    '        "roomId": room_id,\n'
+    '        "messageType": "FILE",\n'
+    '        "fileId": file_id,\n'
+    '    },\n'
+    ')'
+)
+rect(sl, _rx2, Inches(1.65), _cw2, Inches(0.32), fill=RGBColor(0x4a, 0x27, 0x6e))
+txt(sl, "  📎  PDF 파일 전송 (업로드 → 메시지)",
+    _rx2, Inches(1.65), _cw2, Inches(0.32), size=11, bold=True, color=WHITE)
+rect(sl, _rx2, Inches(1.97), _cw2, Inches(3.85), fill=CODE_BG)
+rect(sl, _rx2, Inches(1.97), Inches(0.05), Inches(3.85), fill=RGBColor(0x9b, 0x5d, 0xe5))
+txt(sl, _pdf,
+    _rx2 + Inches(0.12), Inches(2.02),
+    _cw2 - Inches(0.18), Inches(3.78),
+    size=9.5, color=CODE_FG)
+
+note_box(sl, _rx2, Inches(5.95), _cw2,
+         "💡 파일 크기 제한 및 허용 확장자는 Knox Developer Center 문서를 확인하세요", color=RGBColor(0x9b, 0x5d, 0xe5))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SLIDE 8 — STEP 05: FAQ
 # ══════════════════════════════════════════════════════════════════════════════
 sl = prs.slides.add_slide(BLANK)
