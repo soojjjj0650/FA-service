@@ -726,6 +726,106 @@ note_box(sl, _rx3, Inches(5.95), _cw3,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 7e — STEP 04: 보안 — 암호화 & 토큰 관리
+# ══════════════════════════════════════════════════════════════════════════════
+sl = prs.slides.add_slide(BLANK)
+header(sl, "STEP 04", "보안 — 암호화 & 토큰 관리",
+       "전송 암호화(HTTPS) · Webhook 서명 검증 · 환경변수로 토큰 분리")
+
+_lx4 = Inches(0.4)
+_rx4 = Inches(6.93)
+_cw4 = Inches(6.1)
+
+# ── 좌상: HTTPS 전송 암호화 안내 ────────────────────────────────────────────
+rect(sl, _lx4, Inches(1.65), _cw4, Inches(0.32), fill=NAVY)
+txt(sl, "  🔒  전송 암호화 (HTTPS / TLS)",
+    _lx4, Inches(1.65), _cw4, Inches(0.32), size=11, bold=True, color=WHITE)
+rect(sl, _lx4, Inches(1.97), _cw4, Inches(1.02), fill=RGBColor(0x0d, 0x1e, 0x38))
+rect(sl, _lx4, Inches(1.97), Inches(0.05), Inches(1.02), fill=GREEN)
+_tls_lines = [
+    ("• Knox API Base URL 은 https:// — TLS 1.2+ 자동 적용",  LBLUE),
+    ("• Port 443 사용 시 패킷 내용은 암호화된 상태로 전달",    LBLUE),
+    ("• requests 는 기본으로 SSL 인증서를 검증합니다",         LBLUE),
+    ("  (사내 프록시 환경: verify=False 대신 CA Bundle 권장)", DGRAY),
+]
+for j, (line, c) in enumerate(_tls_lines):
+    txt(sl, line, _lx4 + Inches(0.12), Inches(2.03) + j * Inches(0.23),
+        _cw4 - Inches(0.18), Inches(0.22), size=10, color=c)
+
+# ── 좌하: Webhook 서명 검증 코드 ───────────────────────────────────────────
+_sig = (
+    'import hmac, hashlib, json\n'
+    'from fastapi import HTTPException\n\n'
+    'SECRET = os.environ["KNOX_WEBHOOK_SECRET"]\n\n'
+    '@app.post("/message")\n'
+    'async def receive_message(request: Request):\n'
+    '    body_bytes = await request.body()\n'
+    '    sig = request.headers.get("X-Knox-Signature", "")\n\n'
+    '    expected = hmac.new(\n'
+    '        SECRET.encode(), body_bytes, hashlib.sha256\n'
+    '    ).hexdigest()\n\n'
+    '    if not hmac.compare_digest(sig, expected):\n'
+    '        raise HTTPException(401, "Invalid signature")\n\n'
+    '    body = json.loads(body_bytes)\n'
+    '    ...'
+)
+rect(sl, _lx4, Inches(3.1), _cw4, Inches(0.32), fill=RGBColor(0x2a, 0x42, 0x6e))
+txt(sl, "  🛡  Webhook 서명 검증 (HMAC-SHA256)",
+    _lx4, Inches(3.1), _cw4, Inches(0.32), size=11, bold=True, color=WHITE)
+rect(sl, _lx4, Inches(3.42), _cw4, Inches(3.32), fill=CODE_BG)
+rect(sl, _lx4, Inches(3.42), Inches(0.05), Inches(3.32), fill=GREEN)
+txt(sl, _sig,
+    _lx4 + Inches(0.12), Inches(3.47),
+    _cw4 - Inches(0.18), Inches(3.25),
+    size=9.5, color=CODE_FG)
+
+# ── 우: 환경변수로 토큰 관리 ─────────────────────────────────────────────────
+_env_file = (
+    '# .env  (절대 git 커밋 금지 — .gitignore 에 추가)\n'
+    'KNOX_ACCESS_TOKEN=eyJhbGciOiJSUzI1NiJ9...\n'
+    'KNOX_SYSTEM_ID=KCC10BOT01508\n'
+    'KNOX_WEBHOOK_SECRET=your_shared_secret\n'
+)
+rect(sl, _rx4, Inches(1.65), _cw4, Inches(0.32), fill=RGBColor(0x4a, 0x27, 0x10))
+txt(sl, "  📁  .env 파일 (토큰·시크릿 분리)",
+    _rx4, Inches(1.65), _cw4, Inches(0.32), size=11, bold=True, color=WHITE)
+rect(sl, _rx4, Inches(1.97), _cw4, Inches(0.95), fill=CODE_BG)
+rect(sl, _rx4, Inches(1.97), Inches(0.05), Inches(0.95), fill=ORANGE)
+txt(sl, _env_file,
+    _rx4 + Inches(0.12), Inches(2.02),
+    _cw4 - Inches(0.18), Inches(0.88),
+    size=9.5, color=KEY_FG)
+
+_env_code = (
+    'import os\n'
+    'from dotenv import load_dotenv\n\n'
+    'load_dotenv()   # .env 파일 로드\n\n'
+    'BASE = "https://openapi.stage.samsung.net"\n\n'
+    'headers = {\n'
+    '    "Authorization": f"Bearer {os.environ[\'KNOX_ACCESS_TOKEN\']}",\n'
+    '    "x-system-id":   os.environ["KNOX_SYSTEM_ID"],\n'
+    '    "Content-Type":  "application/json",\n'
+    '}'
+)
+rect(sl, _rx4, Inches(3.03), _cw4, Inches(0.32), fill=RGBColor(0x2a, 0x42, 0x6e))
+txt(sl, "  🐍  Python 코드에서 환경변수 사용",
+    _rx4, Inches(3.03), _cw4, Inches(0.32), size=11, bold=True, color=WHITE)
+rect(sl, _rx4, Inches(3.35), _cw4, Inches(2.42), fill=CODE_BG)
+rect(sl, _rx4, Inches(3.35), Inches(0.05), Inches(2.42), fill=ACCENT)
+txt(sl, _env_code,
+    _rx4 + Inches(0.12), Inches(3.40),
+    _cw4 - Inches(0.18), Inches(2.35),
+    size=9.5, color=CODE_FG)
+
+note_box(sl, _rx4, Inches(5.88), _cw4,
+         "📌 pip install python-dotenv  |  .gitignore 에  .env  반드시 추가",
+         color=ORANGE)
+note_box(sl, _rx4, Inches(6.48), _cw4,
+         "⚠  Access Token 유효기간 확인 후 만료 전 갱신 필요 (Knox Portal에서 재발급)",
+         color=DGRAY)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SLIDE 8 — STEP 05: FAQ
 # ══════════════════════════════════════════════════════════════════════════════
 sl = prs.slides.add_slide(BLANK)
