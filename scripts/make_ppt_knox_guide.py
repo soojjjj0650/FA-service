@@ -467,6 +467,92 @@ photo_box(sl, Inches(6.7), Inches(2.3), Inches(6.3), Inches(4.9),
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 7b — STEP 04: API 코드 예제 (Python)
+# ══════════════════════════════════════════════════════════════════════════════
+sl = prs.slides.add_slide(BLANK)
+header(sl, "STEP 04", "API 코드 예제 — Python",
+       "① Device 등록  →  ② 대화방 생성  →  ③ 메시지 전송 순서로 호출합니다")
+
+_lx = Inches(0.4)
+_rx = Inches(6.93)
+_cw = Inches(6.1)
+
+
+def _cbox(sl, ox, oy, w, h, title, title_fill, code_str):
+    rect(sl, ox, oy, w, Inches(0.32), fill=title_fill)
+    txt(sl, f"  {title}", ox, oy, w, Inches(0.32), size=11, bold=True, color=WHITE)
+    rect(sl, ox, oy + Inches(0.32), w, h, fill=CODE_BG)
+    rect(sl, ox, oy + Inches(0.32), Inches(0.05), h, fill=ACCENT)
+    txt(sl, code_str,
+        ox + Inches(0.12), oy + Inches(0.37),
+        w - Inches(0.18), h - Inches(0.08),
+        size=9.5, color=CODE_FG)
+
+
+# ── 공통 설정 ──────────────────────────────────────────────────────────────
+_c0 = (
+    'import requests\n\n'
+    'BASE = "https://openapi.stage.samsung.net"\n'
+    'headers = {\n'
+    '    "Authorization": "Bearer <ACCESS_TOKEN>",\n'
+    '    "x-system-id":   "<SYSTEM_ID>",\n'
+    '    "Content-Type":  "application/json",\n'
+    '}'
+)
+_cbox(sl, _lx, Inches(1.65), _cw, Inches(1.65), "공통 설정 (Base URL & Headers)", MBLUE, _c0)
+
+# ── ① Device 등록 ──────────────────────────────────────────────────────────
+_c1 = (
+    'res = requests.post(\n'
+    '    f"{BASE}/messenger/bot/v1/device",\n'
+    '    headers=headers,\n'
+    '    json={"deviceName": "fa-service-bot"},\n'
+    ')\n'
+    'device_id = res.json()["deviceId"]\n'
+    '# device_id 를 저장해 두세요'
+)
+_cbox(sl, _lx, Inches(3.72), _cw, Inches(1.65), "① Device 등록", BLUE, _c1)
+
+note_box(sl, _lx, Inches(5.52), _cw,
+         "💡 device_id : 이후 모든 API 호출에  x-device-id  헤더로 사용합니다", color=GREEN)
+note_box(sl, _lx, Inches(6.12), _cw,
+         "📌 운영 서버:  BASE = \"https://openapi.samsung.net\"  으로 변경", color=DGRAY)
+
+# ── ② 대화방 생성 ──────────────────────────────────────────────────────────
+_c2 = (
+    'res = requests.post(\n'
+    '    f"{BASE}/messenger/bot/v1/chatroom",\n'
+    '    headers={**headers, "x-device-id": device_id},\n'
+    '    json={\n'
+    '        "roomName": "FA 분석 알림",\n'
+    '        "memberList": ["hong.gildong@samsung.com"],\n'
+    '    },\n'
+    ')\n'
+    'room_id = res.json()["roomId"]'
+)
+_cbox(sl, _rx, Inches(1.65), _cw, Inches(2.05), "② 대화방 생성", BLUE, _c2)
+
+# ── ③ 메시지 전송 ──────────────────────────────────────────────────────────
+_c3 = (
+    'res = requests.post(\n'
+    '    f"{BASE}/messenger/bot/v1/message",\n'
+    '    headers={**headers, "x-device-id": device_id},\n'
+    '    json={\n'
+    '        "roomId": room_id,\n'
+    '        "messageType": "TEXT",\n'
+    '        "message": "FA 분석이 완료되었습니다.",\n'
+    '    },\n'
+    ')\n'
+    '# 응답: {"result": "success", ...}'
+)
+_cbox(sl, _rx, Inches(3.82), _cw, Inches(2.05), "③ 메시지 전송", MBLUE, _c3)
+
+note_box(sl, _rx, Inches(6.00), _cw,
+         "💡 실제 엔드포인트/파라미터는 Knox Developer Center 공식 문서를 반드시 확인하세요",
+         color=ACCENT)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SLIDE 8 — STEP 05: FAQ
 # ══════════════════════════════════════════════════════════════════════════════
 sl = prs.slides.add_slide(BLANK)
