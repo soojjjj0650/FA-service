@@ -291,16 +291,17 @@ async def _append_history(job: dict) -> None:
             "stations":       stations,
         }
 
+        import json as _json
         async with _get_history_lock():
             _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
             try:
-                existing: list = json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
+                existing: list = _json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
                     if _HISTORY_PATH.exists() else []
             except Exception:
                 existing = []
             existing.insert(0, record)  # 최신 순
             _HISTORY_PATH.write_text(
-                json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8"
+                _json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8"
             )
         logger.info(f"[History] 기록 완료: sn={sn}, requester={requester}, status={status}")
     except Exception as e:
@@ -2038,17 +2039,18 @@ async def dashboard_result_detail(sn: str):
 
 def _load_history_records() -> list:
     """requests_history.json + 기존 *_result.json 폴백으로 이력 반환."""
+    import json as _json
+    import os as _os
     # 1순위: requests_history.json (새 방식)
     try:
         if _HISTORY_PATH.exists() and _HISTORY_PATH.stat().st_size > 10:
-            records = json.loads(_HISTORY_PATH.read_text(encoding="utf-8"))
+            records = _json.loads(_HISTORY_PATH.read_text(encoding="utf-8"))
             if records:
                 return records
     except Exception:
         pass
 
     # 2순위: CSV_DOWNLOAD_PATH 의 *_result.json 파일들 (폴백)
-    import os as _os
     records = []
     try:
         save_dir = settings.CSV_DOWNLOAD_PATH
@@ -2056,7 +2058,9 @@ def _load_history_records() -> list:
             if not fname.endswith("_result.json"):
                 continue
             try:
-                data = json.loads(_os.path.join(save_dir, fname))
+                fpath = _os.path.join(save_dir, fname)
+                with open(fpath, encoding="utf-8") as _f:
+                    data = _json.load(_f)
                 sn   = data.get("sn", fname.replace("_result.json", ""))
                 records.append({
                     "requested_at": str(data.get("analyzed_at", ""))[:16].replace("T", " "),
