@@ -235,18 +235,25 @@ def _get_band_for_station(entry: dict, idx: int, feature_tables: dict) -> str:
 
 
 async def _append_history(job: dict) -> None:
-    """분석 완료 결과를 requests_history.json 에 추가합니다."""
+    """분석 완료/실패 결과를 requests_history.json 에 추가합니다."""
     try:
         sn        = job.get("sn", "")
         requester = str(job.get("userId") or "").strip()
         model     = str(job.get("device_model") or "").strip()
         chipset   = _get_chipset(model)
+        status    = job.get("status", "")
         feature_tables = job.get("feature_tables") or {}
 
-        # 결과 요약: feature_summary (짧고 명확)
-        result_summary = str(job.get("feature_summary") or "").strip() or "-"
+        # 결과 요약: 상태에 따라 결정
+        if job.get("no_data"):
+            result_summary = f"데이터 없음 (최근 {settings.QUERY_LOOKBACK_DAYS}일)"
+        elif status == "error":
+            err = str(job.get("error") or "알 수 없는 오류").strip()
+            result_summary = f"[오류] {err[:80]}"
+        else:
+            result_summary = str(job.get("feature_summary") or "").strip() or "-"
 
-        # 기지국 정보 최대 3개
+        # 기지국 정보 최대 3개 (성공 건에만 있음)
         station_entries = job.get("station_entries") or []
         stations = []
         for i, entry in enumerate(station_entries[:3]):
@@ -271,6 +278,7 @@ async def _append_history(job: dict) -> None:
             "sn":             sn,
             "model":          model     or "-",
             "chipset":        chipset,
+            "status":         status,
             "result_summary": result_summary,
             "stations":       stations,
         }
@@ -286,7 +294,7 @@ async def _append_history(job: dict) -> None:
             _HISTORY_PATH.write_text(
                 json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-        logger.info(f"[History] 기록 완료: sn={sn}, requester={requester}")
+        logger.info(f"[History] 기록 완료: sn={sn}, requester={requester}, status={status}")
     except Exception as e:
         logger.warning(f"[History] 기록 실패: {e}")
 
@@ -2053,12 +2061,23 @@ async def get_history_page():
             f"<td style='text-align:center'>{s.get('band','-')}</td>"
         )
 
+    def _status_badge(r: dict) -> str:
+        st = r.get("status", "")
+        if r.get("no_data") or "데이터 없음" in r.get("result_summary", ""):
+            return "<span style='background:#334155;color:#94a3b8;padding:2px 7px;border-radius:9px;font-size:10px'>데이터없음</span>"
+        if st == "error" or r.get("result_summary", "").startswith("[오류]"):
+            return "<span style='background:#7f1d1d;color:#fca5a5;padding:2px 7px;border-radius:9px;font-size:10px'>실패</span>"
+        if st == "done":
+            return "<span style='background:#14532d;color:#86efac;padding:2px 7px;border-radius:9px;font-size:10px'>완료</span>"
+        return ""
+
     rows_html = ""
     for r in records:
         stations = r.get("stations") or []
         summary  = r.get("result_summary", "-")
+        safe_summary = summary.replace("'", "&#39;")
         if len(summary) > 60:
-            summary = f"<span title='{summary}'>{summary[:60]}…</span>"
+            summary = f"<span title='{safe_summary}'>{summary[:60]}…</span>"
         rows_html += (
             f"<tr>"
             f"<td style='white-space:nowrap'>{r.get('requested_at','-')}</td>"
@@ -2066,6 +2085,7 @@ async def get_history_page():
             f"<td style='font-family:monospace;font-weight:bold;color:#38bdf8'>{r.get('sn','-')}</td>"
             f"<td>{r.get('model','-')}</td>"
             f"<td style='color:#a5f3fc'>{r.get('chipset','-')}</td>"
+            f"<td>{_status_badge(r)}</td>"
             f"<td style='font-size:12px'>{summary}</td>"
             f"{_st_cell(stations,0)}"
             f"{_st_cell(stations,1)}"
@@ -2111,6 +2131,7 @@ async def get_history_page():
     <th rowspan='2'>SN</th>
     <th rowspan='2'>모델명</th>
     <th rowspan='2'>칩셋</th>
+    <th rowspan='2'>상태</th>
     <th rowspan='2'>결과 요약</th>
     <th colspan='4' style='text-align:center;border-left:1px solid #334155'>기지국 1위</th>
     <th colspan='4' style='text-align:center;border-left:1px solid #334155'>기지국 2위</th>
@@ -2765,6 +2786,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
                 "(이 결과는 MOCK 테스트 데이터입니다)"
             )
             job["feature_summary"] = "MUTE: 250건 (Mock)"
+            await _append_history(job)
             await _push_card_to_chatroom(job)
             return
 
@@ -2804,6 +2826,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
                 job["error"] = "db_unstable"
             else:
                 job["error"] = err_msg or "데이터 조회 실패"
+            await _append_history(job)
             await _push_card_to_chatroom(job)
             return
 
@@ -2828,6 +2851,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
             job["no_data"] = True
             job["ai_response"] = f"최근 {days}일간 조회되는 데이터가 없습니다."
             job["feature_summary"] = ""
+            await _append_history(job)
             await _push_card_to_chatroom(job)
             return
 
@@ -2837,6 +2861,7 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
         if processed.error and not processed.summary_text:
             job["status"] = "error"
             job["error"] = processed.error
+            await _append_history(job)
             await _push_card_to_chatroom(job)
             return
 
