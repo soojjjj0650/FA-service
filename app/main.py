@@ -167,7 +167,15 @@ _chatbot_jobs: dict[str, dict] = {}
 
 # ─── 요청 이력 파일 ────────────────────────────────────────────────────────────
 _HISTORY_PATH = Path(__file__).parent.parent / "data" / "requests_history.json"
-_HISTORY_LOCK = asyncio.Lock()
+# asyncio.Lock은 이벤트 루프 내에서 지연 생성 (모듈 레벨 생성 시 루프 불일치 방지)
+_HISTORY_LOCK: asyncio.Lock | None = None
+
+
+def _get_history_lock() -> asyncio.Lock:
+    global _HISTORY_LOCK
+    if _HISTORY_LOCK is None:
+        _HISTORY_LOCK = asyncio.Lock()
+    return _HISTORY_LOCK
 
 # 모델명 prefix → 칩셋명 매핑
 _CHIPSET_MAP: dict[str, str] = {
@@ -283,7 +291,7 @@ async def _append_history(job: dict) -> None:
             "stations":       stations,
         }
 
-        async with _HISTORY_LOCK:
+        async with _get_history_lock():
             _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
             try:
                 existing: list = json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
@@ -296,7 +304,8 @@ async def _append_history(job: dict) -> None:
             )
         logger.info(f"[History] 기록 완료: sn={sn}, requester={requester}, status={status}")
     except Exception as e:
-        logger.warning(f"[History] 기록 실패: {e}")
+        import traceback as _tb
+        logger.warning(f"[History] 기록 실패: {e}\n{_tb.format_exc()}")
 
 
 # ─── 수명 주기 이벤트 ─────────────────────────────────────────────────────────
@@ -2027,14 +2036,63 @@ async def dashboard_result_detail(sn: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _load_history_records() -> list:
+    """requests_history.json + 기존 *_result.json 폴백으로 이력 반환."""
+    # 1순위: requests_history.json (새 방식)
+    try:
+        if _HISTORY_PATH.exists() and _HISTORY_PATH.stat().st_size > 10:
+            records = json.loads(_HISTORY_PATH.read_text(encoding="utf-8"))
+            if records:
+                return records
+    except Exception:
+        pass
+
+    # 2순위: CSV_DOWNLOAD_PATH 의 *_result.json 파일들 (폴백)
+    import os as _os
+    records = []
+    try:
+        save_dir = settings.CSV_DOWNLOAD_PATH
+        for fname in sorted(_os.listdir(save_dir), reverse=True):
+            if not fname.endswith("_result.json"):
+                continue
+            try:
+                data = json.loads(_os.path.join(save_dir, fname))
+                sn   = data.get("sn", fname.replace("_result.json", ""))
+                records.append({
+                    "requested_at": str(data.get("analyzed_at", ""))[:16].replace("T", " "),
+                    "requester":    "-",
+                    "sn":           sn,
+                    "model":        "-",
+                    "chipset":      "-",
+                    "status":       "done",
+                    "result_summary": data.get("feature_summary", "-"),
+                    "stations":     _result_json_to_stations(data.get("station_entries", [])),
+                })
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return records
+
+
+def _result_json_to_stations(entries: list) -> list:
+    stations = []
+    for entry in entries[:3]:
+        row = entry.get("row") or {}
+        stations.append({
+            "label":  entry.get("label", ""),
+            "region": str(row.get("region", "-") or "-"),
+            "tac":    str(row.get("tac",    entry.get("tac",    "-")) or "-"),
+            "pci":    str(row.get("pci",    entry.get("pci",    "-")) or "-"),
+            "band":   "-",
+        })
+    return stations
+
+
 @app.get("/api/history")
 async def api_history():
     """요청 이력 JSON 반환."""
-    try:
-        records = json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
-            if _HISTORY_PATH.exists() else []
-    except Exception:
-        records = []
+    records = _load_history_records()
     return {"total": len(records), "records": records}
 
 
@@ -2049,11 +2107,7 @@ async def api_history_excel():
     except ImportError:
         raise HTTPException(status_code=500, detail="openpyxl 패키지가 필요합니다: pip install openpyxl")
 
-    try:
-        records: list = json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
-            if _HISTORY_PATH.exists() else []
-    except Exception:
-        records = []
+    records = _load_history_records()
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -2160,11 +2214,7 @@ async def api_history_excel():
 @app.get("/history", response_class=HTMLResponse)
 async def get_history_page():
     """요청 현황 대시보드 HTML 페이지."""
-    try:
-        records: list = json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
-            if _HISTORY_PATH.exists() else []
-    except Exception:
-        records = []
+    records = _load_history_records()
 
     def _st_cell(stations: list, idx: int) -> str:
         if idx >= len(stations):
