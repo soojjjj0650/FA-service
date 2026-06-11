@@ -635,6 +635,97 @@ note_box(sl, _rx2, Inches(5.95), _cw2,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 7d — STEP 04: 메시지 수신 (Webhook)
+# ══════════════════════════════════════════════════════════════════════════════
+sl = prs.slides.add_slide(BLANK)
+header(sl, "STEP 04", "메시지 수신 — Webhook 처리",
+       "Knox가 내 서버로 POST를 보냅니다 · ① Webhook URL 등록  ②  FastAPI 수신 핸들러 구현")
+
+_lx3 = Inches(0.4)
+_rx3 = Inches(6.93)
+_cw3 = Inches(6.1)
+
+# ── ① Webhook URL 등록 ─────────────────────────────────────────────────────
+_reg = (
+    '# Knox에 내 서버 수신 URL 등록\n'
+    'res = requests.post(\n'
+    '    f"{BASE}/messenger/bot/v1/webhook",\n'
+    '    headers={**headers, "x-device-id": device_id},\n'
+    '    json={\n'
+    '        "webhookUrl": "http://10.246.9.74/message",\n'
+    '        "eventType": ["MESSAGE"],\n'
+    '    },\n'
+    ')\n'
+    'print(res.json())   # {"result": "success"}'
+)
+rect(sl, _lx3, Inches(1.65), _cw3, Inches(0.32), fill=MBLUE)
+txt(sl, "  ① Webhook URL 등록 (Knox → 내 서버)",
+    _lx3, Inches(1.65), _cw3, Inches(0.32), size=11, bold=True, color=WHITE)
+rect(sl, _lx3, Inches(1.97), _cw3, Inches(2.2), fill=CODE_BG)
+rect(sl, _lx3, Inches(1.97), Inches(0.05), Inches(2.2), fill=ACCENT)
+txt(sl, _reg,
+    _lx3 + Inches(0.12), Inches(2.02),
+    _cw3 - Inches(0.18), Inches(2.13),
+    size=9.5, color=CODE_FG)
+
+# Knox가 보내는 payload 예시
+_payload = (
+    '// Knox 가 내 서버로 POST 하는 payload 예시\n'
+    '{\n'
+    '    "roomId":      "R_abc123",\n'
+    '    "senderId":    "hong.gildong@samsung.com",\n'
+    '    "senderName":  "홍길동",\n'
+    '    "messageType": "TEXT",\n'
+    '    "message":     "안녕하세요",\n'
+    '    "timestamp":   1705300000000\n'
+    '}'
+)
+rect(sl, _lx3, Inches(4.28), _cw3, Inches(0.32), fill=RGBColor(0x2a, 0x42, 0x2a))
+txt(sl, "  수신 Payload 구조 (Knox → 내 서버)",
+    _lx3, Inches(4.28), _cw3, Inches(0.32), size=11, bold=True, color=STR_FG)
+rect(sl, _lx3, Inches(4.60), _cw3, Inches(1.92), fill=CODE_BG)
+rect(sl, _lx3, Inches(4.60), Inches(0.05), Inches(1.92), fill=STR_FG)
+txt(sl, _payload,
+    _lx3 + Inches(0.12), Inches(4.65),
+    _cw3 - Inches(0.18), Inches(1.85),
+    size=9.5, color=STR_FG)
+
+# ── ② FastAPI 수신 핸들러 ──────────────────────────────────────────────────
+_handler = (
+    'from fastapi import FastAPI, Request\n\n'
+    'app = FastAPI()\n\n'
+    '@app.post("/message")\n'
+    'async def receive_message(request: Request):\n'
+    '    body      = await request.json()\n'
+    '    room_id   = body.get("roomId")\n'
+    '    sender    = body.get("senderId")\n'
+    '    msg_type  = body.get("messageType")  # TEXT/FILE/CARD\n'
+    '    message   = body.get("message", "")\n'
+    '\n'
+    '    print(f"[{sender}] {message}")\n'
+    '\n'
+    '    # 자동 응답 예시\n'
+    '    if message == "결과":\n'
+    '        await send_reply(room_id, "분석 결과: ...")\n'
+    '\n'
+    '    return {"result": "ok"}'
+)
+rect(sl, _rx3, Inches(1.65), _cw3, Inches(0.32), fill=RGBColor(0x14, 0x53, 0x6e))
+txt(sl, "  ② FastAPI 수신 핸들러",
+    _rx3, Inches(1.65), _cw3, Inches(0.32), size=11, bold=True, color=WHITE)
+rect(sl, _rx3, Inches(1.97), _cw3, Inches(3.85), fill=CODE_BG)
+rect(sl, _rx3, Inches(1.97), Inches(0.05), Inches(3.85), fill=LBLUE)
+txt(sl, _handler,
+    _rx3 + Inches(0.12), Inches(2.02),
+    _cw3 - Inches(0.18), Inches(3.78),
+    size=9.5, color=CODE_FG)
+
+note_box(sl, _rx3, Inches(5.95), _cw3,
+         "⚠  Knox 발신 서버 IP(방화벽 수신 허용) 에서만 POST가 오므로  IP 화이트리스트 검증 권장",
+         color=ORANGE)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SLIDE 8 — STEP 05: FAQ
 # ══════════════════════════════════════════════════════════════════════════════
 sl = prs.slides.add_slide(BLANK)
