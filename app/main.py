@@ -165,6 +165,131 @@ _batch_jobs: dict[str, dict] = {}
 # job_id → {"status": str, "sn": str, "ai_response": str, "feature_summary": str, "error": str}
 _chatbot_jobs: dict[str, dict] = {}
 
+# ─── 요청 이력 파일 ────────────────────────────────────────────────────────────
+_HISTORY_PATH = Path(__file__).parent.parent / "data" / "requests_history.json"
+_HISTORY_LOCK = asyncio.Lock()
+
+# 모델명 prefix → 칩셋명 매핑
+_CHIPSET_MAP: dict[str, str] = {
+    # Galaxy S25
+    "SM-S938": "Snapdragon 8 Elite", "SM-S936": "Snapdragon 8 Elite", "SM-S931": "Snapdragon 8 Elite",
+    # Galaxy S24
+    "SM-S928B": "Exynos 2400",  "SM-S928U": "Snapdragon 8 Gen 3",
+    "SM-S926B": "Exynos 2400",  "SM-S926U": "Snapdragon 8 Gen 3",
+    "SM-S921B": "Exynos 2400",  "SM-S921U": "Snapdragon 8 Gen 3",
+    # Galaxy S23
+    "SM-S918B": "Snapdragon 8 Gen 2", "SM-S918U": "Snapdragon 8 Gen 2",
+    "SM-S916B": "Snapdragon 8 Gen 2", "SM-S911B": "Snapdragon 8 Gen 2",
+    # Galaxy S22
+    "SM-S908B": "Exynos 2200", "SM-S908U": "Snapdragon 8 Gen 1",
+    "SM-S906B": "Exynos 2200", "SM-S901B": "Exynos 2200",
+    # Galaxy S21
+    "SM-G998B": "Exynos 2100", "SM-G996B": "Exynos 2100", "SM-G991B": "Exynos 2100",
+    # Galaxy Z Fold/Flip 6
+    "SM-F956": "Snapdragon 8 Gen 3", "SM-F741": "Snapdragon 8 Gen 3",
+    # Galaxy Z Fold/Flip 5
+    "SM-F946": "Snapdragon 8 Gen 2", "SM-F731": "Snapdragon 8 Gen 2",
+    # Galaxy A 시리즈
+    "SM-A556": "Exynos 1480", "SM-A546": "Exynos 1380", "SM-A536": "Exynos 1280",
+    "SM-A525": "Snapdragon 750G", "SM-A516": "Exynos 980",
+}
+
+
+def _get_chipset(model: str) -> str:
+    """모델명 prefix로 칩셋명을 조회합니다."""
+    if not model:
+        return "-"
+    m = model.upper()
+    for prefix, chipset in _CHIPSET_MAP.items():
+        if m.startswith(prefix.upper()):
+            return chipset
+    return "-"
+
+
+def _get_band_for_station(entry: dict, idx: int, feature_tables: dict) -> str:
+    """station_entry의 Band·ACT 정보를 feature_tables에서 추출합니다."""
+    label = entry.get("label", "")
+    row_data = entry.get("row") or {}
+
+    feat_key = "MUTE" if "MUTE" in label else ("DROP" if "DROP" in label else None)
+    row_idx = 0
+    if "MUTE" in label:
+        try:
+            row_idx = int(label.replace("MUTE ", "").replace("위", "")) - 1
+        except ValueError:
+            row_idx = 0
+
+    ft = feature_tables.get(feat_key) if (feature_tables and feat_key) else None
+    if ft and ft.rows and row_idx < len(ft.rows):
+        cols = ft.columns
+        row = ft.rows[row_idx]
+        band = row[cols.index("Band")] if "Band" in cols else ""
+        act  = row[cols.index("ACT")]  if "ACT"  in cols else ""
+        parts = [str(x).strip() for x in [act, band] if str(x).strip() and str(x).strip() != "-"]
+        if parts:
+            return " / ".join(parts)
+
+    # fallback: dlch from station row
+    dlch = str(row_data.get("dlch", "") or "").strip()
+    return dlch or "-"
+
+
+async def _append_history(job: dict) -> None:
+    """분석 완료 결과를 requests_history.json 에 추가합니다."""
+    try:
+        sn        = job.get("sn", "")
+        requester = str(job.get("userId") or "").strip()
+        model     = str(job.get("device_model") or "").strip()
+        chipset   = _get_chipset(model)
+        feature_tables = job.get("feature_tables") or {}
+
+        # 결과 요약: feature_summary (짧고 명확)
+        result_summary = str(job.get("feature_summary") or "").strip() or "-"
+
+        # 기지국 정보 최대 3개
+        station_entries = job.get("station_entries") or []
+        stations = []
+        for i, entry in enumerate(station_entries[:3]):
+            row_data = entry.get("row") or {}
+            tac    = str(row_data.get("tac")    or entry.get("tac", "")    or "").strip()
+            pci    = str(row_data.get("pci")    or entry.get("pci", "")    or "").strip()
+            region = str(row_data.get("region") or "").strip()
+            band   = _get_band_for_station(entry, i, feature_tables)
+            stations.append({
+                "label":  entry.get("label", f"{i+1}위"),
+                "region": region or "-",
+                "tac":    tac    or "-",
+                "pci":    pci    or "-",
+                "band":   band   or "-",
+            })
+
+        record = {
+            "requested_at": datetime.fromtimestamp(
+                job.get("created_at", time.time())
+            ).strftime("%Y-%m-%d %H:%M"),
+            "requester":      requester or "-",
+            "sn":             sn,
+            "model":          model     or "-",
+            "chipset":        chipset,
+            "result_summary": result_summary,
+            "stations":       stations,
+        }
+
+        async with _HISTORY_LOCK:
+            _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                existing: list = json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
+                    if _HISTORY_PATH.exists() else []
+            except Exception:
+                existing = []
+            existing.insert(0, record)  # 최신 순
+            _HISTORY_PATH.write_text(
+                json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        logger.info(f"[History] 기록 완료: sn={sn}, requester={requester}")
+    except Exception as e:
+        logger.warning(f"[History] 기록 실패: {e}")
+
 
 # ─── 수명 주기 이벤트 ─────────────────────────────────────────────────────────
 @app.on_event("startup")
@@ -1894,6 +2019,125 @@ async def dashboard_result_detail(sn: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/history")
+async def api_history():
+    """요청 이력 JSON 반환."""
+    try:
+        records = json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
+            if _HISTORY_PATH.exists() else []
+    except Exception:
+        records = []
+    return {"total": len(records), "records": records}
+
+
+@app.get("/history", response_class=HTMLResponse)
+async def get_history_page():
+    """요청 현황 대시보드 HTML 페이지."""
+    try:
+        records: list = json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
+            if _HISTORY_PATH.exists() else []
+    except Exception:
+        records = []
+
+    def _st_cell(stations: list, idx: int) -> str:
+        if idx >= len(stations):
+            return "<td colspan='4' style='color:#aaa;text-align:center'>-</td>"
+        s = stations[idx]
+        label = s.get("label", "")
+        label_color = "#38bdf8" if "MUTE" in label else "#fb923c"
+        return (
+            f"<td><span style='color:{label_color};font-size:11px;font-weight:bold'>{label}</span><br>"
+            f"<span style='color:#cbd5e1;font-size:11px'>{s.get('region','-')}</span></td>"
+            f"<td style='text-align:center'>{s.get('tac','-')}</td>"
+            f"<td style='text-align:center'>{s.get('pci','-')}</td>"
+            f"<td style='text-align:center'>{s.get('band','-')}</td>"
+        )
+
+    rows_html = ""
+    for r in records:
+        stations = r.get("stations") or []
+        summary  = r.get("result_summary", "-")
+        if len(summary) > 60:
+            summary = f"<span title='{summary}'>{summary[:60]}…</span>"
+        rows_html += (
+            f"<tr>"
+            f"<td style='white-space:nowrap'>{r.get('requested_at','-')}</td>"
+            f"<td>{r.get('requester','-')}</td>"
+            f"<td style='font-family:monospace;font-weight:bold;color:#38bdf8'>{r.get('sn','-')}</td>"
+            f"<td>{r.get('model','-')}</td>"
+            f"<td style='color:#a5f3fc'>{r.get('chipset','-')}</td>"
+            f"<td style='font-size:12px'>{summary}</td>"
+            f"{_st_cell(stations,0)}"
+            f"{_st_cell(stations,1)}"
+            f"{_st_cell(stations,2)}"
+            f"</tr>"
+        )
+
+    total = len(records)
+    html = f"""<!DOCTYPE html>
+<html lang='ko'>
+<head>
+<meta charset='utf-8'>
+<title>FA 요청 현황</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; font-size: 13px; padding: 24px; }}
+  h1 {{ font-size: 20px; color: #38bdf8; margin-bottom: 4px; }}
+  .sub {{ color: #64748b; font-size: 12px; margin-bottom: 16px; }}
+  .count {{ color: #a5f3fc; font-weight: bold; }}
+  .scroll-wrap {{ overflow-x: auto; }}
+  table {{ border-collapse: collapse; min-width: 100%; }}
+  th {{ background: #1e3a5f; color: #93c5fd; font-size: 11px; text-transform: uppercase;
+        letter-spacing: .05em; padding: 8px 10px; white-space: nowrap; border-bottom: 2px solid #1e3a6e; }}
+  td {{ padding: 8px 10px; border-bottom: 1px solid #1e293b; vertical-align: top; color: #cbd5e1; }}
+  tr:hover td {{ background: #1e293b; }}
+  .grp {{ background: #162032; }}
+  .grp th {{ background: #162032; color: #60a5fa; font-size: 10px; }}
+  input {{ background:#1e293b; border:1px solid #334155; color:#e2e8f0; padding:6px 10px;
+           border-radius:6px; font-size:13px; margin-bottom:14px; width:280px; }}
+  input::placeholder {{ color:#64748b; }}
+</style>
+</head>
+<body>
+<h1>📋 FA 요청 현황</h1>
+<p class='sub'>챗봇으로 접수된 분석 요청 이력 · 총 <span class='count'>{total}건</span></p>
+<input id='search' placeholder='🔍  SN / 요청자 / 모델 검색...' oninput='filterRows(this.value)'>
+<div class='scroll-wrap'>
+<table id='tbl'>
+<thead>
+  <tr>
+    <th rowspan='2'>날짜</th>
+    <th rowspan='2'>요청자</th>
+    <th rowspan='2'>SN</th>
+    <th rowspan='2'>모델명</th>
+    <th rowspan='2'>칩셋</th>
+    <th rowspan='2'>결과 요약</th>
+    <th colspan='4' style='text-align:center;border-left:1px solid #334155'>기지국 1위</th>
+    <th colspan='4' style='text-align:center;border-left:1px solid #334155'>기지국 2위</th>
+    <th colspan='4' style='text-align:center;border-left:1px solid #334155'>기지국 3위</th>
+  </tr>
+  <tr class='grp'>
+    <th style='border-left:1px solid #334155'>구분/주소</th><th>TAC</th><th>PCI</th><th>Band</th>
+    <th style='border-left:1px solid #334155'>구분/주소</th><th>TAC</th><th>PCI</th><th>Band</th>
+    <th style='border-left:1px solid #334155'>구분/주소</th><th>TAC</th><th>PCI</th><th>Band</th>
+  </tr>
+</thead>
+<tbody>{rows_html if rows_html else "<tr><td colspan='18' style='text-align:center;padding:40px;color:#64748b'>아직 분석 이력이 없습니다</td></tr>"}</tbody>
+</table>
+</div>
+<script>
+function filterRows(q) {{
+  q = q.toLowerCase();
+  document.querySelectorAll('#tbl tbody tr').forEach(r => {{
+    r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none';
+  }});
+}}
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
 # ─── WebSocket 엔드포인트 ─────────────────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
@@ -2676,6 +2920,9 @@ async def _run_chatbot_full_pipeline(job_id: str, sn: str, query_days: int | Non
 
         # 5. 결과 JSON 저장 (대시보드용)
         _save_result_json(sn, ai_response, feature_summary, station_entries, processed.feature_tables)
+
+        # 5-1. 요청 이력 기록
+        await _append_history(job)
 
         # 6. 결과 카드 자동 push (CHATBOT_PUSH_URL 설정 시)
         await _push_card_to_chatroom(job)
