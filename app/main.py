@@ -2038,6 +2038,125 @@ async def api_history():
     return {"total": len(records), "records": records}
 
 
+@app.get("/api/history/excel")
+async def api_history_excel():
+    """요청 이력을 Excel(.xlsx)로 다운로드합니다."""
+    import io
+    from fastapi.responses import StreamingResponse
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except ImportError:
+        raise HTTPException(status_code=500, detail="openpyxl 패키지가 필요합니다: pip install openpyxl")
+
+    try:
+        records: list = json.loads(_HISTORY_PATH.read_text(encoding="utf-8")) \
+            if _HISTORY_PATH.exists() else []
+    except Exception:
+        records = []
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "FA 요청 이력"
+
+    # ── 스타일 정의 ──────────────────────────────────────────────────────────
+    hdr_fill  = PatternFill("solid", fgColor="0F172A")
+    hdr_font  = Font(bold=True, color="93C5FD", size=10)
+    grp_fill  = PatternFill("solid", fgColor="162032")
+    grp_font  = Font(bold=True, color="60A5FA", size=9)
+    done_fill = PatternFill("solid", fgColor="14532D")
+    err_fill  = PatternFill("solid", fgColor="7F1D1D")
+    nd_fill   = PatternFill("solid", fgColor="1E293B")
+    thin      = Border(
+        left=Side(style="thin", color="334155"),
+        right=Side(style="thin", color="334155"),
+        bottom=Side(style="thin", color="334155"),
+    )
+    center    = Alignment(horizontal="center", vertical="top", wrap_text=True)
+    top_left  = Alignment(horizontal="left",   vertical="top", wrap_text=True)
+
+    def _hdr(ws, row, col, text, fill=hdr_fill, font=hdr_font):
+        c = ws.cell(row=row, column=col, value=text)
+        c.fill = fill; c.font = font
+        c.alignment = center; c.border = thin
+
+    # ── 헤더 행 1 (병합) ──────────────────────────────────────────────────
+    base_cols = ["날짜", "요청자", "SN", "모델명", "칩셋", "상태", "결과 요약"]
+    for ci, h in enumerate(base_cols, 1):
+        ws.merge_cells(start_row=1, start_column=ci, end_row=2, end_column=ci)
+        _hdr(ws, 1, ci, h)
+
+    station_starts = [len(base_cols) + 1 + i * 5 for i in range(3)]
+    for i, sc in enumerate(station_starts):
+        ws.merge_cells(start_row=1, start_column=sc, end_row=1, end_column=sc + 4)
+        _hdr(ws, 1, sc, f"기지국 {i+1}위", fill=PatternFill("solid", fgColor="1E3A5F"))
+        for j, sub in enumerate(["구분", "주소", "TAC", "PCI", "Band"]):
+            _hdr(ws, 2, sc + j, sub, fill=grp_fill, font=grp_font)
+
+    # ── 데이터 행 ────────────────────────────────────────────────────────
+    for ri, r in enumerate(records, 3):
+        st = r.get("status", "")
+        if r.get("no_data") or "데이터 없음" in r.get("result_summary", ""):
+            row_fill = nd_fill
+        elif st == "error" or r.get("result_summary", "").startswith("[오류]"):
+            row_fill = err_fill
+        else:
+            row_fill = PatternFill("solid", fgColor="0D1B2A")
+
+        def _cell(col, val, align=top_left):
+            c = ws.cell(row=ri, column=col, value=str(val) if val is not None else "")
+            c.fill = row_fill; c.alignment = align; c.border = thin
+            return c
+
+        _cell(1, r.get("requested_at", "-"), center)
+        _cell(2, r.get("requester", "-"))
+        c = _cell(3, r.get("sn", "-"), center)
+        c.font = Font(bold=True, color="38BDF8")
+        _cell(4, r.get("model", "-"))
+        _cell(5, r.get("chipset", "-"))
+        # 상태
+        status_text = "완료" if st == "done" and not r.get("no_data") else \
+                      "데이터없음" if r.get("no_data") else "실패"
+        _cell(6, status_text, center)
+        _cell(7, r.get("result_summary", "-"))
+
+        stations = r.get("stations") or []
+        for si, sc in enumerate(station_starts):
+            if si < len(stations):
+                s = stations[si]
+                _cell(sc,     s.get("label",  "-"), center)
+                _cell(sc + 1, s.get("region", "-"))
+                _cell(sc + 2, s.get("tac",    "-"), center)
+                _cell(sc + 3, s.get("pci",    "-"), center)
+                _cell(sc + 4, s.get("band",   "-"), center)
+            else:
+                for j in range(5):
+                    _cell(sc + j, "-", center)
+
+    # ── 열 너비 ──────────────────────────────────────────────────────────
+    col_widths = [16, 22, 18, 16, 16, 9, 40,
+                  8, 20, 10, 8, 12,
+                  8, 20, 10, 8, 12,
+                  8, 20, 10, 8, 12]
+    for ci, w in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(ci)].width = w
+
+    ws.freeze_panes = "A3"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    from urllib.parse import quote
+    filename = f"FA_요청이력_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    encoded  = quote(filename)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"},
+    )
+
+
 @app.get("/history", response_class=HTMLResponse)
 async def get_history_page():
     """요청 현황 대시보드 HTML 페이지."""
@@ -2121,7 +2240,10 @@ async def get_history_page():
 <body>
 <h1>📋 FA 요청 현황</h1>
 <p class='sub'>챗봇으로 접수된 분석 요청 이력 · 총 <span class='count'>{total}건</span></p>
-<input id='search' placeholder='🔍  SN / 요청자 / 모델 검색...' oninput='filterRows(this.value)'>
+<div style='display:flex;gap:10px;align-items:center;margin-bottom:14px'>
+  <input id='search' style='margin-bottom:0' placeholder='🔍  SN / 요청자 / 모델 검색...' oninput='filterRows(this.value)'>
+  <a href='/api/history/excel' style='background:#1e3a5f;color:#93c5fd;padding:7px 16px;border-radius:6px;text-decoration:none;font-size:13px;white-space:nowrap'>⬇ 엑셀 다운로드</a>
+</div>
 <div class='scroll-wrap'>
 <table id='tbl'>
 <thead>
